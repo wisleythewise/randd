@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Servo7 — Robot Resilience</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111;
+    --border: #222;
+    --accent: #e8ff47;
+    --text: #f0f0f0;
+    --muted: #666;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  header {
+    padding: 48px 60px 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.2em; color: var(--accent); text-transform: uppercase; margin-bottom: 10px; }
+  header h1 { font-family: 'Syne', sans-serif; font-size: clamp(28px, 4vw, 48px); font-weight: 800; line-height: 1.05; }
+  header h1 span { color: var(--accent); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 60px; }
+  section { margin-bottom: 72px; }
+
+  h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 20px;
+  }
+
+  p { color: #bbb; max-width: 700px; margin-bottom: 10px; }
+  p strong { color: var(--text); font-weight: 500; }
+
+  .stage-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 40px 32px 20px;
+    margin-bottom: 32px;
+  }
+  .stage-label { font-size: 10px; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; margin-bottom: 16px; }
+
+  canvas#robotCanvas {
+    display: block;
+    width: 100%;
+    height: 320px;
+    background: #0d0d0d;
+    border: 1px solid #1a1a1a;
+    border-radius: 2px;
+  }
+
+  .stage-status { display: flex; gap: 24px; margin-top: 14px; font-size: 11px; color: var(--muted); align-items: center; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: blink 1.2s ease-in-out infinite; display: inline-block; margin-right: 6px; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  .context-box {
+    border-left: 2px solid var(--accent);
+    padding: 16px 24px;
+    background: #0f0f0f;
+    margin-bottom: 48px;
+  }
+  .context-box p { color: #999; font-size: 13px; margin: 0; }
+  .context-box p + p { margin-top: 8px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); margin-top: 24px; }
+  .card { background: var(--surface); padding: 28px 24px; transition: background 0.2s; }
+  .card:hover { background: #161616; }
+  .card-num { font-size: 10px; color: var(--muted); letter-spacing: 0.15em; margin-bottom: 12px; }
+  .card h3 { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+  .card p { font-size: 13px; color: #888; max-width: none; margin: 0; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 13px; }
+  th { text-align: left; font-family: 'Syne', sans-serif; font-size: 10px; letter-spacing: 0.15em; color: var(--muted); padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  td { padding: 12px 16px; border-bottom: 1px solid #1a1a1a; color: #aaa; }
+  tr:hover td { background: #111; color: var(--text); }
+  td:first-child { color: var(--text); font-weight: 500; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 2px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .tag-best { background: #1a2a10; color: var(--accent); }
+  .tag-ok { background: #1a1a1a; color: #888; }
+
+  footer { border-top: 1px solid var(--border); padding: 32px 60px; font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Servo7</div>
+  <h1>Making robots <span>production-ready</span></h1>
+</header>
+
+<main>
+
+  <section>
+    <h2>Task Demo — SO-100 Block Stacking</h2>
+    <div class="stage-wrap">
+      <div class="stage-label">// SO-100 arm · pick and stack · autonomous reset loop</div>
+      <canvas id="robotCanvas"></canvas>
+      <div class="stage-status">
+        <span><span class="dot"></span> Running</span>
+        <span id="taskLabel">Phase: IDLE</span>
+        <span id="cycleLabel">Cycle: 0</span>
+      </div>
+    </div>
+
+    <div class="context-box">
+      <p>What you see above is exactly what we need to build. A robot that stacks three coloured blocks in order, then resets the environment itself, and repeats indefinitely.</p>
+      <p>This loop is not a demo. It is a data collection engine. Every cycle generates labelled trajectory data across stacking and resetting. Running this autonomously at scale is how we get answers to the questions below.</p>
+    </div>
+
+    <p>Current vision-language-action models fail silently in unstructured environments. They have no concept of whether a task succeeded and no mechanism to recover. This is the core problem we are solving.</p>
+  </section>
+
+  <section>
+    <h2>The Problem</h2>
+    <div class="grid">
+      <div class="card"><div class="card-num">01</div><h3>Brittle Models</h3><p>VLA models trained on narrow datasets break on minor shifts in lighting, object placement, or surface friction. We need to understand at what point a model stops generalising and why.</p></div>
+      <div class="card"><div class="card-num">02</div><h3>Silent Failures</h3><p>The robot completes a motion but the task outcome is wrong. Nothing alerts. Nothing retries. We need a way to detect when the world is not in the state the model expected.</p></div>
+      <div class="card"><div class="card-num">03</div><h3>Data Gaps</h3><p>Failure modes are rare in training data. The model has never seen the edge cases that matter most in production. We need a method to identify those gaps and fill them efficiently.</p></div>
+      <div class="card"><div class="card-num">04</div><h3>No Recovery</h3><p>Once in a failed state the robot has no strategy to return to a known-good configuration. We need to understand what recovery looks like and how to train for it.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Open Questions</h2>
+    <div class="grid">
+      <div class="card"><div class="card-num">Q1</div><h3>How much data do we need?</h3><p>This is asking: what is the minimum number of demonstrations required to reliably fine-tune a model on a new task, and what factors push that number up or down.</p></div>
+      <div class="card"><div class="card-num">Q2</div><h3>How do we detect a failure?</h3><p>This is asking: what does a failed state actually look like in data, what signals are reliable indicators, and how do we build software that acts on them in real time.</p></div>
+      <div class="card"><div class="card-num">Q3</div><h3>How do we recover?</h3><p>This is asking: once a failure is detected, what is the best path back to a state the robot can continue from, and how do we train a policy specifically for that transition.</p></div>
+      <div class="card"><div class="card-num">Q4</div><h3>How do we add data efficiently?</h3><p>This is asking: how do we incorporate new demonstrations into an existing model without degrading what it already knows, and what is the right method for doing that incrementally.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>AI Models Worth Evaluating</h2>
+    <table>
+      <thead><tr><th>Model</th><th>Role</th><th>Why it is relevant</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>pi0 / OpenVLA-OFT</td><td>Primary action policy</td><td>Strong generalisation, fast fine-tuning on new task demonstrations</td><td><span class="tag tag-best">Strong fit</span></td></tr>
+        <tr><td>GR00T N1</td><td>Primary action policy</td><td>Sim-to-real transfer, dual-arm support, NVIDIA-backed development</td><td><span class="tag tag-best">Strong fit</span></td></tr>
+        <tr><td>GPT-4o / Gemini 2.0</td><td>Failure reasoning</td><td>Vision-language model can judge task state from an image and explain what went wrong</td><td><span class="tag tag-best">Strong fit</span></td></tr>
+        <tr><td>Diffusion Policy</td><td>Recovery policy</td><td>Smooth short-horizon trajectories, trains reliably from a small number of demonstrations</td><td><span class="tag tag-ok">Good</span></td></tr>
+        <tr><td>ACT / ACT++</td><td>Recovery policy</td><td>Proven on manipulation tasks, lightweight to fine-tune, well-understood behaviour</td><td><span class="tag tag-ok">Good</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</main>
+
+<footer>
+  <span>Servo7, Inc. W26</span>
+  <span>Robot resilience research 2026</span>
+</footer>
+
+<script>
+const canvas = document.getElementById('robotCanvas');
+const ctx = canvas.getContext('2d');
+
+function resize(){ canvas.width=canvas.offsetWidth; canvas.height=canvas.offsetHeight; }
+resize();
+window.addEventListener('resize', resize);
+
+const COLORS=['#ff4d4d','#47d97a','#4d9fff'];
+const LABELS=['R','G','B'];
+const BW=34, BH=28;
+const PHASE_DUR=[30,24,42,24]; // approach, lift, transport, place
+
+// State machine
+// resetting=false: stack blocks 0,1,2 left to right
+// resetting=true:  return blocks 2,1,0 from stack back to source
+let blockIdx=0;
+let resetting=false;
+let phase=0; // 0 approach 1 lift 2 transport 3 place
+let phaseT=0;
+let cycle=0;
+let placed=[]; // colorIndices stacked bottom to top
+let sourcePresent=[true,true,true]; // which source slots have blocks
+let gripX, gripY;
+let pausing=false, pauseFrames=0;
+
+function lerp(a,b,t){ return a+(b-a)*t; }
+function ease(t){ return t<0.5?2*t*t:-1+(4-2*t)*t; }
+function clamp01(t){ return Math.max(0,Math.min(1,t)); }
+
+function tableY(H){ return H*0.72; }
+function hoverY(H){ return H*0.72-110; }
+
+function srcPos(i,W,H){
+  // three positions evenly spaced on the left
+  const cx=W*0.25;
+  return { x: cx + (i-1)*(BW+10), y: tableY(H) };
+}
+function dstPos(stackIdx,W,H){
+  return { x: W*0.73, y: tableY(H)-stackIdx*BH };
+}
+
+function drawScene(W,H){
+  // table
+  const ty=tableY(H);
+  ctx.fillStyle='#161616'; ctx.fillRect(0,ty,W,H-ty);
+  ctx.strokeStyle='#242424'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,ty); ctx.lineTo(W,ty); ctx.stroke();
+  for(let x=0;x<W;x+=48){
+    ctx.beginPath(); ctx.moveTo(x,ty); ctx.lineTo(x,H); ctx.stroke();
+  }
+}
+
+function drawBlock(x,y,ci,alpha){
+  alpha=alpha||1;
+  ctx.globalAlpha=alpha*0.9;
+  ctx.fillStyle=COLORS[ci];
+  ctx.fillRect(x-BW/2,y-BH,BW,BH);
+  ctx.globalAlpha=alpha;
+  ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=1;
+  ctx.strokeRect(x-BW/2,y-BH,BW,BH);
+  ctx.fillStyle='rgba(0,0,0,0.65)';
+  ctx.font='bold 11px monospace';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(LABELS[ci],x,y-BH/2);
+  ctx.globalAlpha=1;
+}
+
+function drawArm(gx,gy,W,H,gripping){
+  const bx=W*0.5, by=tableY(H);
+  const L1=88,L2=78;
+  const dx=gx-bx, dy=gy-by;
+  const d=Math.min(Math.sqrt(dx*dx+dy*dy),L1+L2-5);
+  const ang=Math.atan2(dy,dx);
+  const cosA=Math.max(-1,Math.min(1,(L1*L1+d*d-L2*L2)/(2*L1*d)));
+  const beta=Math.acos(cosA);
+  const j1x=bx+L1*Math.cos(ang+beta);
+  const j1y=by+L1*Math.sin(ang+beta);
+
+  ctx.fillStyle='#2e2e2e';
+  ctx.beginPath(); ctx.ellipse(bx,by,28,10,0,0,Math.PI*2); ctx.fill();
+
+  ctx.lineCap='round';
+  ctx.strokeStyle='#686868'; ctx.lineWidth=12;
+  ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(j1x,j1y); ctx.stroke();
+  ctx.strokeStyle='#aaa'; ctx.lineWidth=8;
+  ctx.beginPath(); ctx.moveTo(j1x,j1y); ctx.lineTo(gx,gy); ctx.stroke();
+
+  ctx.fillStyle='#e8ff47';
+  ctx.beginPath(); ctx.arc(bx,by,7,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(j1x,j1y,5,0,Math.PI*2); ctx.fill();
+
+  const gw=gripping?3:11;
+  ctx.strokeStyle='#e8ff47'; ctx.lineWidth=3; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(gx-gw,gy); ctx.lineTo(gx-gw,gy+14); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(gx+gw,gy); ctx.lineTo(gx+gw,gy+14); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(gx,gy-7); ctx.lineTo(gx,gy); ctx.stroke();
+}
+
+function currentOp(){
+  // Returns {fromX, fromY, toX, toY, ci} for current block operation
+  const W=canvas.width, H=canvas.height;
+  if(!resetting){
+    const ci=blockIdx;
+    const src=srcPos(ci,W,H);
+    const dst=dstPos(placed.length,W,H);
+    return {fromX:src.x, fromY:src.y, toX:dst.x, toY:dst.y, ci};
+  } else {
+    // return top of stack to source position
+    const ci=placed.length-1; // index in placed array of top block
+    const colorIdx=placed[ci];
+    const dst=dstPos(ci,W,H);
+    const src=srcPos(blockIdx,W,H); // blockIdx counts down 2,1,0
+    return {fromX:dst.x, fromY:dst.y, toX:src.x, toY:src.y, ci:colorIdx};
+  }
+}
+
+function draw(){
+  const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  drawScene(W,H);
+
+  if(pausing){
+    // draw static scene
+    for(let i=0;i<3;i++){
+      if(sourcePresent[i]){ const p=srcPos(i,W,H); drawBlock(p.x,p.y,i); }
+    }
+    placed.forEach((ci,si)=>{ const p=dstPos(si,W,H); drawBlock(p.x,p.y,ci); });
+    drawArm(gripX,gripY,W,H,false);
+    pauseFrames--;
+    if(pauseFrames<=0) pausing=false;
+    requestAnimationFrame(draw); return;
+  }
+
+  const dur=PHASE_DUR[phase];
+  const pt=ease(clamp01(phaseT/dur));
+  const op=currentOp();
+  const hy=hoverY(H);
+
+  let carrying=false;
+  let gripping=false;
+
+  if(phase===0){
+    // approach: arm moves toward block
+    gripX=lerp(gripX,op.fromX,pt);
+    gripY=lerp(gripY,op.fromY-BH,pt);
+    gripping=false;
+    document.getElementById('taskLabel').textContent='Phase: APPROACH'+(resetting?' (reset)':'');
+  } else if(phase===1){
+    // lift
+    gripX=op.fromX;
+    gripY=lerp(op.fromY-BH,hy,pt);
+    carrying=true; gripping=true;
+    document.getElementById('taskLabel').textContent='Phase: LIFT';
+  } else if(phase===2){
+    // transport
+    gripX=lerp(op.fromX,op.toX,pt);
+    gripY=hy;
+    carrying=true; gripping=true;
+    document.getElementById('taskLabel').textContent='Phase: TRANSPORT';
+  } else if(phase===3){
+    // place
+    gripX=op.toX;
+    gripY=lerp(hy,op.toY-BH,pt);
+    carrying=pt<0.85; gripping=carrying;
+    document.getElementById('taskLabel').textContent='Phase: PLACE';
+  }
+
+  // Draw static source blocks (skip current if being lifted/transported/placed)
+  for(let i=0;i<3;i++){
+    if(!sourcePresent[i]) continue;
+    if(!resetting && i===blockIdx && phase>=1) continue; // being carried
+    const p=srcPos(i,W,H); drawBlock(p.x,p.y,i);
+  }
+
+  // Draw placed stack (skip top if being carried during reset)
+  placed.forEach((ci,si)=>{
+    if(resetting && si===placed.length-1 && phase>=1) return; // being carried back
+    const p=dstPos(si,W,H); drawBlock(p.x,p.y,ci);
+  });
+
+  // Draw carried block
+  if(carrying){ drawBlock(gripX,gripY+BH,op.ci); }
+
+  drawArm(gripX,gripY,W,H,gripping);
+
+  // Advance timer
+  phaseT++;
+  if(phaseT>=dur){
+    phaseT=0;
+    const nextPhase=phase+1;
+    if(nextPhase<4){
+      phase=nextPhase;
+    } else {
+      phase=0;
+      if(!resetting){
+        // block placed
+        placed.push(blockIdx);
+        sourcePresent[blockIdx]=false;
+        blockIdx++;
+        if(blockIdx>=3){
+          // all stacked, begin reset
+          pausing=true; pauseFrames=55;
+          resetting=true;
+          blockIdx=2; // will return block at placed[2], then placed[1], placed[0]
+        }
+      } else {
+        // block returned to source
+        const returnedCi=placed.pop();
+        sourcePresent[blockIdx]=true;
+        blockIdx--;
+        if(blockIdx<0){
+          // all returned, begin next stack cycle
+          pausing=true; pauseFrames=55;
+          resetting=false;
+          blockIdx=0;
+          cycle++;
+          document.getElementById('cycleLabel').textContent='Cycle: '+cycle;
+        }
+      }
+    }
+  }
+
+  requestAnimationFrame(draw);
+}
+
+// Init gripper position
+function init(){
+  gripX=canvas.width*0.5;
+  gripY=hoverY(canvas.height);
+  draw();
+}
+init();
+</script>
+</body>
+</html>
