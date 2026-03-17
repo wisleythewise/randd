@@ -110,6 +110,11 @@
 
 <main>
 
+    <div class="context-box">
+      <p>Marc ik stel voor om het volgende indefinit cycle te proberen te maken met de SO100s</p>
+      <p>We moeten die modellen namelijk naar production krijgen en ik denk dat als dit lukt we facking goed gepositioneerd zijn om het met moelijkere taken te proberen</p>
+    </div>
+
   <section>
     <h2>Task Demo — SO-100 Block Stacking</h2>
     <div class="stage-wrap">
@@ -123,19 +128,17 @@
     </div>
 
     <div class="context-box">
-      <p>What you see above is exactly what we need to build. A robot that stacks three coloured blocks in order, then resets the environment itself, and repeats indefinitely.</p>
-      <p>This loop is not a demo. It is a data collection engine. Every cycle generates labelled trajectory data across stacking and resetting. Running this autonomously at scale is how we get answers to the questions below.</p>
+      <p>A robot that stacks three coloured blocks in order, then resets the environment itself, and repeats indefinitely.</p>
     </div>
 
-    <p>Current vision-language-action models fail silently in unstructured environments. They have no concept of whether a task succeeded and no mechanism to recover. This is the core problem we are solving.</p>
   </section>
 
   <section>
     <h2>The Problem</h2>
     <div class="grid">
-      <div class="card"><div class="card-num">01</div><h3>Brittle Models</h3><p>VLA models trained on narrow datasets break on minor shifts in lighting, object placement, or surface friction. We need to understand at what point a model stops generalising and why.</p></div>
+      <div class="card"><div class="card-num">01</div><h3>Brittle Models</h3><p>VLA models trained on narrow datasets break on minor shifts in lighting, object placement, or surface friction.</p></div>
       <div class="card"><div class="card-num">02</div><h3>Silent Failures</h3><p>The robot completes a motion but the task outcome is wrong. Nothing alerts. Nothing retries. We need a way to detect when the world is not in the state the model expected.</p></div>
-      <div class="card"><div class="card-num">03</div><h3>Data Gaps</h3><p>Failure modes are rare in training data. The model has never seen the edge cases that matter most in production. We need a method to identify those gaps and fill them efficiently.</p></div>
+      <div class="card"><div class="card-num">03</div><h3>Data Gaps</h3><p>The model has never seen the edge cases that matter most in production. We need a method to identify those gaps and fill them efficiently.</p></div>
       <div class="card"><div class="card-num">04</div><h3>No Recovery</h3><p>Once in a failed state the robot has no strategy to return to a known-good configuration. We need to understand what recovery looks like and how to train for it.</p></div>
     </div>
   </section>
@@ -151,17 +154,10 @@
   </section>
 
   <section>
-    <h2>AI Models Worth Evaluating</h2>
-    <table>
-      <thead><tr><th>Model</th><th>Role</th><th>Why it is relevant</th><th></th></tr></thead>
-      <tbody>
-        <tr><td>pi0 / OpenVLA-OFT</td><td>Primary action policy</td><td>Strong generalisation, fast fine-tuning on new task demonstrations</td><td><span class="tag tag-best">Strong fit</span></td></tr>
-        <tr><td>GR00T N1</td><td>Primary action policy</td><td>Sim-to-real transfer, dual-arm support, NVIDIA-backed development</td><td><span class="tag tag-best">Strong fit</span></td></tr>
-        <tr><td>GPT-4o / Gemini 2.0</td><td>Failure reasoning</td><td>Vision-language model can judge task state from an image and explain what went wrong</td><td><span class="tag tag-best">Strong fit</span></td></tr>
-        <tr><td>Diffusion Policy</td><td>Recovery policy</td><td>Smooth short-horizon trajectories, trains reliably from a small number of demonstrations</td><td><span class="tag tag-ok">Good</span></td></tr>
-        <tr><td>ACT / ACT++</td><td>Recovery policy</td><td>Proven on manipulation tasks, lightweight to fine-tune, well-understood behaviour</td><td><span class="tag tag-ok">Good</span></td></tr>
-      </tbody>
-    </table>
+    <h2>General remarks</h2>
+        <p>Ik denk dat we de vragen door ze zo op te splitsen lekker hapbaar
+          hebben gemaakt ook denk ik dat how do we detect een failure mischien
+        een determisische manier heeft om dit op te lossen</p>
   </section>
 
 </main>
