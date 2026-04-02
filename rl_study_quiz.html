@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reinforcement Learning Study Quiz</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Georgia, 'Times New Roman', serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #2c3e50; background: #fafafa; }
+        h1 { text-align: center; color: #1a5276; font-size: 2.2em; margin-bottom: 10px; border-bottom: 3px solid #3498db; padding-bottom: 15px; }
+        .subtitle { text-align: center; color: #7f8c8d; font-style: italic; margin-bottom: 30px; }
+        .section-header { background: linear-gradient(135deg, #2980b9, #1a5276); color: white; padding: 15px 20px; margin: 30px 0 20px 0; border-radius: 8px; font-size: 1.4em; font-weight: bold; box-shadow: 0 3px 10px rgba(0,0,0,0.2); }
+        .section-header .count { float: right; font-size: 0.7em; opacity: 0.9; font-weight: normal; }
+        .question-block { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); page-break-inside: avoid; }
+        .question-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .question-number { background: #1a5276; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9em; flex-shrink: 0; }
+        .difficulty { padding: 3px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+        .easy { background: #27ae60; color: white; }
+        .medium { background: #f39c12; color: white; }
+        .hard { background: #e74c3c; color: white; }
+        .question-text { font-size: 1.05em; color: #2c3e50; margin-bottom: 15px; }
+        .equation-box { background: linear-gradient(135deg, #f3e5f5, #e8daef); border: 2px solid #9b59b6; border-radius: 6px; padding: 12px 15px; margin: 12px 0; font-family: 'Courier New', monospace; font-size: 0.95em; color: #6c3483; overflow-x: auto; }
+        .answer-space { border: 2px dashed #bdc3c7; border-radius: 6px; min-height: 80px; margin-top: 10px; background: #fefefe; }
+        .answer-space.large { min-height: 120px; }
+        .toggle-btn { display: block; width: 100%; max-width: 300px; margin: 40px auto; padding: 15px 30px; background: linear-gradient(135deg, #27ae60, #1e8449); color: white; border: none; border-radius: 8px; font-family: Georgia, serif; font-size: 1.1em; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(39, 174, 96, 0.3); }
+        .toggle-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(39, 174, 96, 0.4); }
+        .answers-section { display: none; margin-top: 50px; padding-top: 30px; border-top: 4px solid #27ae60; }
+        .answers-section.visible { display: block; }
+        .answers-header { background: linear-gradient(135deg, #27ae60, #1e8449); color: white; padding: 20px; text-align: center; font-size: 1.8em; border-radius: 8px; margin-bottom: 30px; }
+        .answer-block { background: #e8f6f3; border-left: 4px solid #27ae60; padding: 15px 20px; margin-bottom: 15px; border-radius: 0 8px 8px 0; }
+        .answer-block .q-num { font-weight: bold; color: #1e8449; font-size: 1.1em; }
+        .answer-block .answer-text { margin-top: 8px; color: #2c3e50; }
+        .answer-block .equation-box { background: linear-gradient(135deg, #d5f5e3, #abebc6); border-color: #27ae60; color: #1e8449; }
+        .key-insight { background: #fff9e6; border: 1px solid #f1c40f; border-radius: 6px; padding: 10px 15px; margin-top: 10px; font-style: italic; }
+        .key-insight::before { content: "💡 "; }
+        .section-divider { color: #2980b9; border-bottom: 2px solid #2980b9; padding-bottom: 8px; margin-top: 30px; }
+        @media print { body { background: white; padding: 10px; font-size: 11pt; } .toggle-btn { display: none !important; } .question-block { box-shadow: none; border: 1px solid #ccc; } .answers-section { page-break-before: always; } }
+        @media (max-width: 600px) { body { padding: 12px; } h1 { font-size: 1.6em; } .section-header { font-size: 1.1em; } }
+    </style>
+</head>
+<body>
+    <h1>🎯 Reinforcement Learning Study Quiz</h1>
+    <p class="subtitle">50 Questions • From Q-Learning to SAC • Pen & Paper Ready</p>
+
+    <div class="section-header">1. Q-Learning <span class="count">8 questions</span></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">1</div><span class="difficulty easy">Easy</span></div><div class="question-text">Write the Bellman optimality equation for Q*(s, a). What does each term represent?</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">2</div><span class="difficulty easy">Easy</span></div><div class="question-text">What is the TD (Temporal Difference) error in Q-learning? Write the formula and explain why it's called an "error."</div><div class="equation-box">δ = r + γ · max_a' Q(s', a') - Q(s, a)</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">3</div><span class="difficulty medium">Medium</span></div><div class="question-text">What is epsilon-greedy exploration? Why do we typically decay ε over time? What happens if ε = 0 vs ε = 1?</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">4</div><span class="difficulty medium">Medium</span></div><div class="question-text">Why does Q-learning need a replay buffer? What two problems does it solve?</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">5</div><span class="difficulty medium">Medium</span></div><div class="question-text">What is a target network in DQN? Why can't we just use Q(s, a) for both the prediction and the target?</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">6</div><span class="difficulty hard">Hard</span></div><div class="question-text">Q-learning is "off-policy." What does this mean, and why is it an advantage for sample efficiency?</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">7</div><span class="difficulty medium">Medium</span></div><div class="question-text">Write the Q-learning update rule. What is the role of the learning rate α?</div><div class="equation-box">Q(s, a) ← Q(s, a) + α · [_______________]</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">8</div><span class="difficulty hard">Hard</span></div><div class="question-text">Why does Q-learning suffer from "maximization bias"? How does Double DQN address this?</div><div class="answer-space large"></div></div>
+
+    <div class="section-header">2. Policy Gradient <span class="count">8 questions</span></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">9</div><span class="difficulty easy">Easy</span></div><div class="question-text">In policy gradient methods, what do we optimize directly? How is this different from Q-learning?</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">10</div><span class="difficulty medium">Medium</span></div><div class="question-text">Write the policy gradient theorem. What does ∇_θ log π(a|s) represent intuitively?</div><div class="equation-box">∇_θ J(θ) = E_τ [ Σ_t ∇_θ log π_θ(a_t|s_t) · G_t ]</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">11</div><span class="difficulty hard">Hard</span></div><div class="question-text">Explain the "log-derivative trick." Why do we need it, and how does it let us compute gradients through sampling?</div><div class="equation-box">∇_θ E[f(x)] = E[ f(x) · ∇_θ log p_θ(x) ]</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">12</div><span class="difficulty easy">Easy</span></div><div class="question-text">What is G_t (return-to-go)? Write the formula. Why do we use this instead of total episode return?</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">13</div><span class="difficulty medium">Medium</span></div><div class="question-text">What is a baseline in REINFORCE? Why does subtracting a baseline reduce variance without changing the expected gradient?</div><div class="equation-box">∇_θ J(θ) = E[ ∇_θ log π(a|s) · (G_t - b(s)) ]</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">14</div><span class="difficulty medium">Medium</span></div><div class="question-text">If an action leads to reward +100, what does the policy gradient do to π(a|s)? What if reward is -100?</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">15</div><span class="difficulty hard">Hard</span></div><div class="question-text">REINFORCE is "on-policy." Why can't we reuse old trajectories collected from a previous policy?</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">16</div><span class="difficulty medium">Medium</span></div><div class="question-text">Why is vanilla policy gradient known for high variance? Name two techniques to reduce it.</div><div class="answer-space"></div></div>
+
+    <div class="section-header">3. Actor-Critic <span class="count">8 questions</span></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">17</div><span class="difficulty easy">Easy</span></div><div class="question-text">What are the two networks in Actor-Critic? What does each one learn?</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">18</div><span class="difficulty easy">Easy</span></div><div class="question-text">Write the formula for the advantage function A(s, a). What does a positive vs. negative advantage mean?</div><div class="equation-box">A(s, a) = Q(s, a) - V(s)</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">19</div><span class="difficulty medium">Medium</span></div><div class="question-text">We often estimate advantage using TD error: A(s,a) ≈ δ = r + γV(s') - V(s). Why is this valid? (Hint: What is Q(s,a) in terms of r, γ, and V?)</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">20</div><span class="difficulty hard">Hard</span></div><div class="question-text">Write the GAE (Generalized Advantage Estimation) formula. What does λ control?</div><div class="equation-box">A_t^GAE = Σ_{l=0}^{∞} (γλ)^l · δ_{t+l}</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">21</div><span class="difficulty medium">Medium</span></div><div class="question-text">What is the bias-variance tradeoff in advantage estimation? Compare using TD(0) error vs. Monte Carlo returns.</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">22</div><span class="difficulty medium">Medium</span></div><div class="question-text">What loss function does the Critic use? Write it out.</div><div class="equation-box">L_critic = E[ (V_θ(s) - _________ )² ]</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">23</div><span class="difficulty hard">Hard</span></div><div class="question-text">In GAE, what happens when λ = 0? When λ = 1? Which has more bias? More variance?</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">24</div><span class="difficulty medium">Medium</span></div><div class="question-text">Why is Actor-Critic generally lower variance than REINFORCE? What's the key difference?</div><div class="answer-space"></div></div>
+
+    <div class="section-header">4. PPO (Proximal Policy Optimization) <span class="count">7 questions</span></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">25</div><span class="difficulty easy">Easy</span></div><div class="question-text">What is the probability ratio r(θ) in PPO? Write the formula.</div><div class="equation-box">r(θ) = π_θ(a|s) / π_θ_old(a|s)</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">26</div><span class="difficulty medium">Medium</span></div><div class="question-text">Write the PPO clipped objective. What does clipping achieve?</div><div class="equation-box">L^CLIP = E[ min( r(θ)·A, clip(r(θ), 1-ε, 1+ε)·A ) ]</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">27</div><span class="difficulty hard">Hard</span></div><div class="question-text">Explain why clipping works differently for A > 0 vs A < 0. Draw or describe what happens in each case.</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">28</div><span class="difficulty medium">Medium</span></div><div class="question-text">What is importance sampling? Why does PPO need it to reuse data from the old policy?</div><div class="equation-box">E_{x~p}[f(x)] = E_{x~q}[f(x) · p(x)/q(x)]</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">29</div><span class="difficulty medium">Medium</span></div><div class="question-text">What is a "trust region" conceptually? Why do we want to stay close to the old policy?</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">30</div><span class="difficulty hard">Hard</span></div><div class="question-text">If r(θ) = 2 and A > 0, what does PPO do? What if r(θ) = 0.5 and A < 0?</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">31</div><span class="difficulty medium">Medium</span></div><div class="question-text">PPO is "on-policy" but reuses data for multiple epochs. How is this possible? What limits how many epochs we can do?</div><div class="answer-space"></div></div>
+
+    <div class="section-header">5. SAC (Soft Actor-Critic) <span class="count">8 questions</span></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">32</div><span class="difficulty easy">Easy</span></div><div class="question-text">What is entropy H(π) of a policy? Why is higher entropy generally better for exploration?</div><div class="equation-box">H(π) = -E[ log π(a|s) ]</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">33</div><span class="difficulty medium">Medium</span></div><div class="question-text">Write SAC's maximum entropy objective. How is it different from standard RL?</div><div class="equation-box">J(π) = E[ Σ_t r_t + α · H(π(·|s_t)) ]</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">34</div><span class="difficulty medium">Medium</span></div><div class="question-text">Write the soft Bellman equation. What's the extra term compared to standard Bellman?</div><div class="equation-box">Q(s,a) = r + γ · E[ Q(s',a') - α·log π(a'|s') ]</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">35</div><span class="difficulty hard">Hard</span></div><div class="question-text"><strong>THE REPARAMETERIZATION TRICK (in simple terms):</strong><br><br>Problem: We want to take gradients to improve our policy, but actions come from <em>sampling</em> (like rolling dice). You can't do calculus on dice rolls!<br><br>Explain the solution:</div><div class="equation-box">Instead of: a = sample from π(a|s)<br>Use: a = μ_θ(s) + σ_θ(s) × ε, where ε ~ N(0, 1)</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">36</div><span class="difficulty medium">Medium</span></div><div class="question-text">Why does SAC use twin Q-networks (two critics)? What problem does this solve?</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">37</div><span class="difficulty hard">Hard</span></div><div class="question-text">What is automatic temperature tuning in SAC? What is the target entropy, and why do we tune α?</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">38</div><span class="difficulty medium">Medium</span></div><div class="question-text">SAC is off-policy. What does this mean for sample efficiency compared to PPO?</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">39</div><span class="difficulty hard">Hard</span></div><div class="question-text">Why can SAC directly optimize Q-values through the policy (unlike PPO which needs the log-derivative trick)?</div><div class="answer-space large"></div></div>
+
+    <div class="section-header">6. Gradient Flow <span class="count">6 questions</span></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">40</div><span class="difficulty medium">Medium</span></div><div class="question-text">In REINFORCE, gradients flow through log π(a|s). The return G_t is treated as a constant. Why must we NOT backprop through G_t?</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">41</div><span class="difficulty hard">Hard</span></div><div class="question-text">In Actor-Critic (and PPO), why do we "detach" the advantage A when computing the actor loss? What would go wrong if we didn't?</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">42</div><span class="difficulty hard">Hard</span></div><div class="question-text">In SAC, gradients flow from Q(s, a) through the action a back to the policy. Draw/describe this gradient path. Why is this possible?</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">43</div><span class="difficulty medium">Medium</span></div><div class="question-text">Why do we use a target network that updates slowly (soft update)? What's the formula?</div><div class="equation-box">θ_target ← τ·θ + (1-τ)·θ_target, where τ << 1</div><div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">44</div><span class="difficulty hard">Hard</span></div><div class="question-text">Compare gradient flow in these three algorithms:<br>• REINFORCE: policy ← log π × G<br>• PPO: policy ← log π × A (detached)<br>• SAC: policy ← Q(s, a_sampled)<br>Which has lowest variance? Why?</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">45</div><span class="difficulty medium">Medium</span></div><div class="question-text">What is "bootstrapping" in RL? Which algorithms bootstrap, and what's the tradeoff?</div><div class="answer-space"></div></div>
+
+    <div class="section-header">7. Big Picture <span class="count">5 questions</span></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">46</div><span class="difficulty medium">Medium</span></div><div class="question-text">Fill in this table comparing on-policy vs off-policy:</div>
+        <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+            <tr style="background: #ecf0f1;"><th style="border: 1px solid #bdc3c7; padding: 10px;"></th><th style="border: 1px solid #bdc3c7; padding: 10px;">On-Policy</th><th style="border: 1px solid #bdc3c7; padding: 10px;">Off-Policy</th></tr>
+            <tr><td style="border: 1px solid #bdc3c7; padding: 10px; font-weight: bold;">Example algorithms</td><td style="border: 1px solid #bdc3c7; padding: 10px;"></td><td style="border: 1px solid #bdc3c7; padding: 10px;"></td></tr>
+            <tr><td style="border: 1px solid #bdc3c7; padding: 10px; font-weight: bold;">Sample efficiency</td><td style="border: 1px solid #bdc3c7; padding: 10px;"></td><td style="border: 1px solid #bdc3c7; padding: 10px;"></td></tr>
+            <tr><td style="border: 1px solid #bdc3c7; padding: 10px; font-weight: bold;">Replay buffer?</td><td style="border: 1px solid #bdc3c7; padding: 10px;"></td><td style="border: 1px solid #bdc3c7; padding: 10px;"></td></tr>
+            <tr><td style="border: 1px solid #bdc3c7; padding: 10px; font-weight: bold;">Stability</td><td style="border: 1px solid #bdc3c7; padding: 10px;"></td><td style="border: 1px solid #bdc3c7; padding: 10px;"></td></tr>
+        </table>
+    <div class="answer-space"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">47</div><span class="difficulty medium">Medium</span></div><div class="question-text">Trace the evolution: REINFORCE → Actor-Critic → PPO. What problem did each solve?</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">48</div><span class="difficulty medium">Medium</span></div><div class="question-text">When would you choose PPO over SAC? When would you choose SAC over PPO?</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">49</div><span class="difficulty hard">Hard</span></div><div class="question-text">Why is continuous action space harder than discrete? Name two challenges and how SAC addresses them.</div><div class="answer-space large"></div></div>
+    
+    <div class="question-block"><div class="question-header"><div class="question-number">50</div><span class="difficulty hard">Hard</span></div><div class="question-text">You're training a robot arm with expensive real-world samples. Which algorithm family would you prefer and why? What if you had a fast simulator instead?</div><div class="answer-space large"></div></div>
+
+    <button class="toggle-btn" onclick="toggleAnswers()">📖 Show Answer Key</button>
+
+    <div class="answers-section" id="answers">
+        <div class="answers-header">✅ Complete Answer Key</div>
+        
+        <h3 class="section-divider">Q-Learning Answers</h3>
+        
+        <div class="answer-block"><div class="q-num">Q1: Bellman Optimality Equation</div><div class="answer-text"><div class="equation-box">Q*(s, a) = E[ r + γ · max_{a'} Q*(s', a') ]</div><strong>Terms:</strong><br>• Q*(s, a): Optimal action-value<br>• r: Immediate reward<br>• γ: Discount factor (0 to 1)<br>• max_{a'} Q*(s', a'): Best possible value from the next state</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q2: TD Error</div><div class="answer-text"><div class="equation-box">δ = r + γ · max_{a'} Q(s', a') - Q(s, a)</div>It's called an "error" because it measures the <strong>difference between what we predicted</strong> (Q(s,a)) <strong>and a better estimate</strong>. If our Q-function were perfect, δ would be zero.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q3: Epsilon-Greedy</div><div class="answer-text"><strong>Epsilon-greedy:</strong> With probability ε, choose random action (explore). With probability 1-ε, choose best action (exploit).<br><br><strong>Why decay ε:</strong> Early: need exploration. Later: exploit what we've learned.<br><br><strong>ε = 0:</strong> Pure exploitation - can get stuck<br><strong>ε = 1:</strong> Pure random - won't converge</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q4: Replay Buffer</div><div class="answer-text">Solves two problems:<br><strong>1. Correlation:</strong> Consecutive experiences are correlated. Random sampling breaks correlations.<br><strong>2. Sample efficiency:</strong> Reuse experiences multiple times instead of once.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q5: Target Network</div><div class="answer-text">A <strong>frozen copy</strong> of Q-network, updated slowly.<br><br><strong>Why needed:</strong> Using Q for both prediction AND target creates "moving target" problem. Target network provides <strong>stable targets</strong>.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q6: Off-Policy</div><div class="answer-text"><strong>Off-policy</strong> = learn about optimal policy while following different behavior policy.<br><br><strong>Advantage:</strong> Can reuse ANY past experience. Very sample-efficient.<div class="key-insight">The "max" makes it off-policy - we consider the best action, not the one we took.</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q7: Q-Learning Update</div><div class="answer-text"><div class="equation-box">Q(s, a) ← Q(s, a) + α · [r + γ·max_{a'} Q(s', a') - Q(s, a)]</div><strong>α</strong> controls how much we adjust toward the new estimate. Small α = stability but slower learning.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q8: Maximization Bias</div><div class="answer-text"><strong>Problem:</strong> Same network selects AND evaluates best action. Noisy overestimates get selected, causing systematic bias.<br><br><strong>Double DQN:</strong> One network SELECTS, different network EVALUATES:<div class="equation-box">target = r + γ · Q_target(s', argmax_{a'} Q(s', a'))</div></div></div>
+        
+        <h3 class="section-divider">Policy Gradient Answers</h3>
+        
+        <div class="answer-block"><div class="q-num">Q9: Policy Gradient vs Q-Learning</div><div class="answer-text"><strong>Policy gradient:</strong> Directly optimizes policy π(a|s).<br><strong>Q-learning:</strong> Learns value function Q(s,a), derives policy from it.<br><br>Policy gradient handles continuous actions naturally.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q10: Policy Gradient Theorem</div><div class="answer-text"><div class="equation-box">∇_θ J(θ) = E_τ [ Σ_t ∇_θ log π_θ(a_t|s_t) · G_t ]</div><strong>∇_θ log π(a|s)</strong> points toward making action a MORE likely.<br><br>Positive G_t → increase probability. Negative G_t → decrease probability.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q11: Log-Derivative Trick</div><div class="answer-text"><strong>Problem:</strong> Can't move gradient inside expectation over θ-dependent distribution.<br><br><strong>Solution:</strong> ∇_θ p_θ(x) = p_θ(x) · ∇_θ log p_θ(x)<br><br>Rewrites to: E[f(x)·∇_θ log p_θ(x)]<div class="key-insight">Now we can sample from current π_θ and compute the gradient!</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q12: Return-to-Go</div><div class="answer-text"><div class="equation-box">G_t = r_t + γr_{t+1} + γ²r_{t+2} + ...</div><strong>Why:</strong> Action at time t only affects rewards from t onward. Total return would credit action for past rewards (noise).</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q13: Baseline</div><div class="answer-text"><strong>Baseline b(s):</strong> Subtracted from return to reduce variance.<br><br><strong>Why zero expected gradient:</strong> E[∇_θ log π(a|s) · b(s)] = b(s) · ∇_θ 1 = 0<br><br>Reduces variance by centering reward signal.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q14: Positive/Negative Reward</div><div class="answer-text"><strong>+100:</strong> Gradient increases π(a|s) - do this more.<br><strong>-100:</strong> Gradient decreases π(a|s) - do this less.<div class="key-insight">Policy gradient: "do more of what worked, less of what didn't."</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q15: Why On-Policy</div><div class="answer-text">Gradient requires E_{τ ~ π_θ}[...] - samples from CURRENT policy.<br><br>Old trajectories from π_old have wrong probability weights.<div class="key-insight">Every update invalidates old data - sample inefficient.</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q16: High Variance</div><div class="answer-text"><strong>Why:</strong> G_t depends on ALL future randomness (compounds).<br><br><strong>Two techniques:</strong><br>1. <strong>Baselines:</strong> Subtract V(s) to center signal<br>2. <strong>Actor-Critic:</strong> Replace G_t with TD estimates</div></div>
+        
+        <h3 class="section-divider">Actor-Critic Answers</h3>
+        
+        <div class="answer-block"><div class="q-num">Q17: Two Networks</div><div class="answer-text"><strong>Actor:</strong> Policy π_θ(a|s) - learns WHICH actions to take.<br><strong>Critic:</strong> Value V_φ(s) or Q_φ(s,a) - learns HOW GOOD states/actions are.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q18: Advantage Function</div><div class="answer-text"><div class="equation-box">A(s, a) = Q(s, a) - V(s)</div><strong>Positive A:</strong> Action is BETTER than average - do more.<br><strong>Negative A:</strong> Action is WORSE than average - do less.<div class="key-insight">Advantage = how much better/worse than typical.</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q19: TD Error as Advantage</div><div class="answer-text">Q(s,a) = E[r + γV(s')]<br><br>So: A = Q - V = E[r + γV(s')] - V(s) ≈ r + γV(s') - V(s) = δ<br><br>TD error is a sampled advantage estimate (biased but low variance).</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q20: GAE Formula</div><div class="answer-text"><div class="equation-box">A_t^GAE = Σ_{l=0}^{∞} (γλ)^l · δ_{t+l}</div><strong>λ controls bias-variance:</strong><br>• λ=0: Just TD error (high bias, low variance)<br>• λ=1: Monte Carlo (low bias, high variance)<div class="key-insight">GAE = exponentially-weighted average of n-step advantages!</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q21: Bias-Variance Tradeoff</div><div class="answer-text"><strong>TD(0):</strong> Low variance (one step), high bias (trusts V)<br><strong>Monte Carlo:</strong> High variance (many steps), low bias (actual returns)<br><br>Usually want something in between (GAE λ≈0.95).</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q22: Critic Loss</div><div class="answer-text"><div class="equation-box">L_critic = E[ (V_θ(s) - G_t)² ] or E[ (V_θ(s) - (r + γV(s')))² ]</div>MSE between predicted value and target (Monte Carlo or TD).</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q23: GAE λ Extremes</div><div class="answer-text"><strong>λ=0:</strong> A_t = δ_t (TD error only). HIGH BIAS, LOW VARIANCE.<br><strong>λ=1:</strong> A_t = G_t - V(s_t) (Monte Carlo). LOW BIAS, HIGH VARIANCE.<div class="key-insight">λ interpolates between TD (λ=0) and Monte Carlo (λ=1).</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q24: Lower Variance than REINFORCE</div><div class="answer-text"><strong>REINFORCE:</strong> Full Monte Carlo returns (high variance).<br><strong>Actor-Critic:</strong> Critic provides learned baseline + shorter horizon estimates.<div class="key-insight">Trade some bias for much lower variance - usually worth it.</div></div></div>
+        
+        <h3 class="section-divider">PPO Answers</h3>
+        
+        <div class="answer-block"><div class="q-num">Q25: Probability Ratio</div><div class="answer-text"><div class="equation-box">r(θ) = π_θ(a|s) / π_{θ_old}(a|s)</div>• r=1: Same probability<br>• r>1: New policy makes action MORE likely<br>• r<1: New policy makes action LESS likely</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q26: Clipped Objective</div><div class="answer-text"><div class="equation-box">L^CLIP = E[ min( r(θ)·A, clip(r(θ), 1-ε, 1+ε)·A ) ]</div><strong>Clipping:</strong> Prevents policy from changing too much. Creates "trust region" - only trust advantage estimates near old policy.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q27: Clipping for A>0 vs A<0</div><div class="answer-text"><strong>A>0 (good action):</strong> Want to increase π. But capped at (1+ε)·A. Can't increase beyond clip.<br><br><strong>A<0 (bad action):</strong> Want to decrease π. min() picks less negative term. Can't decrease beyond clip.<div class="key-insight">Clipping always prevents changes that make objective artificially good!</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q28: Importance Sampling</div><div class="answer-text"><div class="equation-box">E_{x~p}[f(x)] = E_{x~q}[f(x) · p(x)/q(x)]</div><strong>Why PPO needs it:</strong> Data from π_old, but optimizing π_θ. Ratio reweights samples for distribution mismatch.<div class="key-insight">Enables multiple gradient updates on same batch.</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q29: Trust Region</div><div class="answer-text"><strong>Trust region:</strong> Neighborhood where value estimates are reliable.<br><br><strong>Why stay close:</strong><br>1. Advantage estimates from old policy become wrong<br>2. Large changes can be catastrophic<br>3. Importance weights become high-variance</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q30: Specific Examples</div><div class="answer-text"><strong>r=2, A>0:</strong> min(2A, 1.2A) = 1.2A. Capped - gradient is zero.<br><br><strong>r=0.5, A<0:</strong> min(0.5A, 0.8A). Since A<0, 0.5A more negative. Uses 0.8A. Gradient is zero.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q31: Data Reuse</div><div class="answer-text"><strong>How:</strong> Importance sampling corrects for old data. Clipping prevents drift.<br><br><strong>Limit:</strong> After many epochs, π_θ diverges from π_old. Clipping triggers constantly. Typically K=3-10 epochs.</div></div>
+        
+        <h3 class="section-divider">SAC Answers</h3>
+        
+        <div class="answer-block"><div class="q-num">Q32: Entropy</div><div class="answer-text"><div class="equation-box">H(π) = -E[ log π(a|s) ]</div><strong>Entropy:</strong> Measures randomness/spread of policy.<br><br><strong>Higher entropy → exploration:</strong> Maintains diversity, prevents premature convergence.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q33: Maximum Entropy Objective</div><div class="answer-text"><div class="equation-box">J(π) = E[ Σ_t r_t + α · H(π(·|s_t)) ]</div><strong>Difference:</strong> Standard RL only maximizes return. SAC ALSO maximizes entropy.<div class="key-insight">"Among similar-reward policies, prefer the most random one."</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q34: Soft Bellman</div><div class="answer-text"><div class="equation-box">Q(s,a) = r + γ · E[ Q(s',a') - α·log π(a'|s') ]</div><strong>Extra term:</strong> -α·log π (entropy bonus). High-entropy futures valued more highly.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q35: Reparameterization Trick</div><div class="answer-text"><strong>Problem:</strong> Can't do calculus on dice rolls (sampling).<br><br><strong>Solution:</strong> a = μ_θ(s) + σ_θ(s) × ε, where ε ~ N(0,1)<br><br>1. Roll dice FIRST (sample ε)<br>2. Now a is a FORMULA (μ + σ × fixed number)<br>3. Formulas are differentiable!<div class="key-insight">Moved randomness into ε (constant w.r.t. θ). Action is now differentiable!</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q36: Twin Q-Networks</div><div class="answer-text">Uses min(Q_1, Q_2) for targets.<br><br><strong>Problem solved:</strong> Q-function overestimation. Policy exploits errors.<br><br><strong>Why min:</strong> Pessimistic estimate counteracts overestimation.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q37: Auto Temperature Tuning</div><div class="answer-text"><strong>Target entropy:</strong> Typically -dim(action_space).<br><br><strong>Why tune α:</strong> Fixed α works poorly. Optimal depends on task.<br><br>Entropy below target → increase α (more exploration)<br>Entropy above target → decrease α (more reward focus)</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q38: Sample Efficiency</div><div class="answer-text"><strong>Off-policy:</strong> Reuse ANY past experience from replay buffer.<br><br><strong>vs PPO:</strong> PPO must throw away data after few epochs. SAC can train on same data indefinitely.<div class="key-insight">For expensive interactions (robotics), SAC's efficiency is huge.</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q39: Direct Q Optimization</div><div class="answer-text"><strong>PPO:</strong> Log-derivative trick (score function). High variance.<br><br><strong>SAC:</strong> Reparameterization makes a differentiable. Gradient flows: Q → a → θ<div class="key-insight">SAC uses pathwise derivatives (low variance) vs score function (high variance).</div></div></div>
+        
+        <h3 class="section-divider">Gradient Flow Answers</h3>
+        
+        <div class="answer-block"><div class="q-num">Q40: Why Not Backprop Through G_t</div><div class="answer-text">G_t comes from ENVIRONMENT (not differentiable). Can't compute ∂reward/∂θ.<br><br>Even with differentiable sim: high variance, exploding gradients, intractable.<div class="key-insight">G_t tells us HOW MUCH to change, not WHICH DIRECTION.</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q41: Why Detach Advantage</div><div class="answer-text">A involves critic V. Without detaching:<br><br><strong>Problem:</strong> Actor gradients flow into critic. Actor tries to change V to make A larger, not learn better policy.<br><br>Both networks become corrupted.<div class="key-insight">Actor treats A as "given information."</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q42: SAC Gradient Path</div><div class="answer-text">Loss = -Q(s,a) + α·log π<br>↓<br>a = μ_θ(s) + σ_θ(s) × ε<br>↓<br>∂Loss/∂θ = ∂Loss/∂a × ∂a/∂θ<br><br><strong>Why possible:</strong> Reparameterization makes a differentiable. Can chain: Q → a → θ.<div class="key-insight">SAC asks critic "what's ∂Q/∂a?" and uses it directly.</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q43: Target Network Soft Updates</div><div class="answer-text"><div class="equation-box">θ_target ← τ·θ + (1-τ)·θ_target, τ ≈ 0.005</div><strong>Why:</strong> Stable targets for Q-learning. Changing every step → moving target.<br><br>Soft update provides smoother training than hard copies.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q44: Variance Comparison</div><div class="answer-text"><strong>REINFORCE:</strong> Highest. G_t = all future randomness + score function.<br><br><strong>PPO:</strong> Medium. Learned baseline, GAE. Still score function.<br><br><strong>SAC:</strong> Lowest. Pathwise derivatives through Q. No score function.<div class="key-insight">Pathwise (SAC) < score+baseline (PPO) < vanilla score (REINFORCE)</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q45: Bootstrapping</div><div class="answer-text"><strong>Bootstrapping:</strong> Using own estimates as targets (e.g., r + γV(s')).<br><br><strong>Who bootstraps:</strong> Q-learning, Actor-Critic, PPO (TD), SAC. NOT REINFORCE.<br><br><strong>Tradeoff:</strong> Introduces bias (estimates wrong) but reduces variance. Usually worth it.</div></div>
+        
+        <h3 class="section-divider">Big Picture Answers</h3>
+        
+        <div class="answer-block"><div class="q-num">Q46: On vs Off-Policy Table</div><div class="answer-text">
+            <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                <tr style="background: #d5f5e3;"><th style="border: 1px solid #27ae60; padding: 8px;"></th><th style="border: 1px solid #27ae60; padding: 8px;">On-Policy</th><th style="border: 1px solid #27ae60; padding: 8px;">Off-Policy</th></tr>
+                <tr><td style="border: 1px solid #27ae60; padding: 8px;"><strong>Examples</strong></td><td style="border: 1px solid #27ae60; padding: 8px;">REINFORCE, PPO, A2C</td><td style="border: 1px solid #27ae60; padding: 8px;">DQN, SAC, DDPG, TD3</td></tr>
+                <tr><td style="border: 1px solid #27ae60; padding: 8px;"><strong>Sample eff.</strong></td><td style="border: 1px solid #27ae60; padding: 8px;">Lower (data discarded)</td><td style="border: 1px solid #27ae60; padding: 8px;">Higher (replay buffer)</td></tr>
+                <tr><td style="border: 1px solid #27ae60; padding: 8px;"><strong>Replay?</strong></td><td style="border: 1px solid #27ae60; padding: 8px;">No / limited</td><td style="border: 1px solid #27ae60; padding: 8px;">Yes (essential)</td></tr>
+                <tr><td style="border: 1px solid #27ae60; padding: 8px;"><strong>Stability</strong></td><td style="border: 1px solid #27ae60; padding: 8px;">More stable</td><td style="border: 1px solid #27ae60; padding: 8px;">Can be less stable</td></tr>
+            </table>
+        </div></div>
+        
+        <div class="answer-block"><div class="q-num">Q47: Algorithm Evolution</div><div class="answer-text"><strong>REINFORCE:</strong> First policy gradient. Problem: HIGH VARIANCE.<br><br><strong>Actor-Critic:</strong> Solved VARIANCE with critic's value estimates.<br><br><strong>PPO:</strong> Solved STABILITY & DATA REUSE with clipping, enabling multiple epochs.<div class="key-insight">Each step trades off sample efficiency, stability, complexity.</div></div></div>
+        
+        <div class="answer-block"><div class="q-num">Q48: PPO vs SAC</div><div class="answer-text"><strong>Choose PPO:</strong> Fast/cheap simulation, need stability, discrete actions, easy parallelization, simpler tuning.<br><br><strong>Choose SAC:</strong> Real-world robotics (expensive samples), continuous actions, need max sample efficiency, want built-in exploration.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q49: Continuous Action Challenges</div><div class="answer-text"><strong>1. Can't enumerate max:</strong> SAC learns policy that maximizes Q via reparameterization.<br><br><strong>2. Exploration harder:</strong> Random continuous actions usually terrible. SAC uses entropy maximization for principled exploration.</div></div>
+        
+        <div class="answer-block"><div class="q-num">Q50: Real Robot vs Simulator</div><div class="answer-text"><strong>Real robot:</strong> Choose <strong>SAC</strong>. Max sample efficiency. Every interaction costly.<br><br><strong>Fast simulator:</strong> Choose <strong>PPO</strong>. Parallelize across many instances. Stability matters more than efficiency.<div class="key-insight">Optimal algorithm depends on cost of environment interaction!</div></div></div>
+    </div>
+
+    <script>
+        function toggleAnswers() {
+            const answers = document.getElementById('answers');
+            const btn = document.querySelector('.toggle-btn');
+            if (answers.classList.contains('visible')) {
+                answers.classList.remove('visible');
+                btn.textContent = '📖 Show Answer Key';
+            } else {
+                answers.classList.add('visible');
+                btn.textContent = '📕 Hide Answer Key';
+                answers.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+    </script>
+</body>
+</html>

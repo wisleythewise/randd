@@ -1,0 +1,1436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soft Actor-Critic: From Entropy to Q-Values</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #0a0a0f;
+            --bg-card: #12121a;
+            --bg-elevated: #1a1a24;
+            --accent-orange: #ff6b35;
+            --accent-blue: #4ecdc4;
+            --accent-purple: #a855f7;
+            --accent-pink: #ec4899;
+            --text-primary: #f0f0f5;
+            --text-secondary: #9090a0;
+            --text-dim: #606070;
+            --border-subtle: #2a2a3a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Crimson Pro', Georgia, serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            line-height: 1.7;
+            font-size: 18px;
+        }
+
+        /* Noise texture overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 60px 40px;
+        }
+
+        /* Hero Section */
+        .hero {
+            text-align: center;
+            padding: 80px 0 60px;
+            position: relative;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(ellipse, rgba(78, 205, 196, 0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .hero h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 3.5rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero .subtitle {
+            font-size: 1.3rem;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .source-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 24px;
+            padding: 8px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 100px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+        }
+
+        .source-badge::before {
+            content: '📚';
+        }
+
+        /* Navigation */
+        .nav {
+            position: sticky;
+            top: 0;
+            background: rgba(10, 10, 15, 0.9);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-subtle);
+            z-index: 100;
+            padding: 16px 0;
+            margin-bottom: 40px;
+        }
+
+        .nav-inner {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 0 40px;
+            display: flex;
+            gap: 24px;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+
+        .nav-inner::-webkit-scrollbar {
+            display: none;
+        }
+
+        .nav-link {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-decoration: none;
+            white-space: nowrap;
+            padding: 6px 0;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            color: var(--accent-blue);
+            border-bottom-color: var(--accent-blue);
+        }
+
+        /* Sections */
+        section {
+            margin-bottom: 80px;
+        }
+
+        h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 24px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        h2 .num {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            color: var(--accent-orange);
+            background: rgba(255, 107, 53, 0.1);
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+
+        h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin: 32px 0 16px;
+            color: var(--accent-blue);
+        }
+
+        p {
+            margin-bottom: 20px;
+            color: var(--text-secondary);
+        }
+
+        /* Math blocks */
+        .math-block {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 32px;
+            margin: 24px 0;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .math-block::before {
+            content: attr(data-label);
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            background: var(--bg-elevated);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .math {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            color: var(--text-primary);
+            line-height: 2;
+            white-space: pre-wrap;
+        }
+
+        .math .keyword {
+            color: var(--accent-purple);
+        }
+
+        .math .function {
+            color: var(--accent-blue);
+        }
+
+        .math .operator {
+            color: var(--accent-orange);
+        }
+
+        .math .variable {
+            color: var(--accent-pink);
+            font-style: italic;
+        }
+
+        .math .comment {
+            color: var(--text-dim);
+            font-style: italic;
+        }
+
+        /* Info boxes */
+        .info-box {
+            background: linear-gradient(135deg, rgba(78, 205, 196, 0.08) 0%, rgba(168, 85, 247, 0.05) 100%);
+            border-left: 3px solid var(--accent-blue);
+            padding: 20px 24px;
+            margin: 24px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .info-box.warning {
+            background: linear-gradient(135deg, rgba(255, 107, 53, 0.1) 0%, rgba(236, 72, 153, 0.05) 100%);
+            border-left-color: var(--accent-orange);
+        }
+
+        .info-box h4 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--accent-blue);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .info-box.warning h4 {
+            color: var(--accent-orange);
+        }
+
+        .info-box p {
+            margin-bottom: 0;
+            font-size: 0.95rem;
+        }
+
+        /* Visualization containers */
+        .viz-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 32px;
+            margin: 32px 0;
+        }
+
+        .viz-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        /* Canvas for visualizations */
+        canvas {
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+        }
+
+        /* Interactive controls */
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .control-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .control-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .control-value {
+            color: var(--accent-blue);
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: var(--bg-elevated);
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        /* Step indicators */
+        .steps {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin: 24px 0;
+        }
+
+        .step {
+            display: flex;
+            gap: 16px;
+            padding: 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .step:hover {
+            border-color: var(--accent-blue);
+            transform: translateX(4px);
+        }
+
+        .step-num {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            color: var(--accent-orange);
+            font-weight: 600;
+            flex-shrink: 0;
+            width: 24px;
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .step-desc {
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            margin: 0;
+        }
+
+        /* Comparison table */
+        .comparison {
+            overflow-x: auto;
+            margin: 24px 0;
+        }
+
+        .comparison table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .comparison th, .comparison td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .comparison th {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            color: var(--text-primary);
+            background: var(--bg-card);
+        }
+
+        .comparison td {
+            color: var(--text-secondary);
+        }
+
+        .comparison tr:hover td {
+            background: var(--bg-card);
+        }
+
+        /* Code blocks */
+        .code-block {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-x: auto;
+        }
+
+        .code-block code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.8;
+        }
+
+        /* Notation table */
+        .notation-table {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 8px 24px;
+            background: var(--bg-card);
+            padding: 24px;
+            border-radius: 12px;
+            margin: 24px 0;
+        }
+
+        .notation-symbol {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-purple);
+            font-size: 1rem;
+        }
+
+        .notation-desc {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Diagram SVG styles */
+        .diagram {
+            width: 100%;
+            margin: 24px 0;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 40px 0;
+            border-top: 1px solid var(--border-subtle);
+            margin-top: 60px;
+        }
+
+        .footer p {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        section {
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        /* Highlight text */
+        .highlight {
+            color: var(--accent-blue);
+            font-weight: 600;
+        }
+
+        .highlight-orange {
+            color: var(--accent-orange);
+        }
+
+        .highlight-purple {
+            color: var(--accent-purple);
+        }
+
+        /* Flow diagram */
+        .flow-diagram {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding: 24px;
+            background: var(--bg-card);
+            border-radius: 12px;
+            margin: 24px 0;
+        }
+
+        .flow-box {
+            padding: 12px 20px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            text-align: center;
+        }
+
+        .flow-arrow {
+            color: var(--accent-orange);
+            font-size: 1.2rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 40px 20px;
+            }
+
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            h2 {
+                font-size: 1.5rem;
+            }
+
+            .math-block {
+                padding: 20px;
+            }
+
+            .math {
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="hero">
+        <h1>Soft Actor-Critic</h1>
+        <p class="subtitle">How entropy becomes negative Q-value, explained from first principles</p>
+        <div class="source-badge">Based on OpenAI Spinning Up Documentation</div>
+    </div>
+
+    <nav class="nav">
+        <div class="nav-inner">
+            <a href="#foundations" class="nav-link">Foundations</a>
+            <a href="#entropy" class="nav-link">Entropy</a>
+            <a href="#value-functions" class="nav-link">Value Functions</a>
+            <a href="#the-trick" class="nav-link">The Trick</a>
+            <a href="#q-learning" class="nav-link">Learning Q</a>
+            <a href="#policy" class="nav-link">Learning π</a>
+            <a href="#notation" class="nav-link">Notation</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        
+        <!-- Section 1: Foundations -->
+        <section id="foundations">
+            <h2><span class="num">01</span>The Big Picture</h2>
+            
+            <p>Soft Actor-Critic (SAC) is a state-of-the-art reinforcement learning algorithm that bridges two worlds: <span class="highlight">stochastic policy optimization</span> (like PPO) and <span class="highlight">off-policy Q-learning</span> (like DDPG/TD3). The key insight that makes SAC special is <strong>entropy regularization</strong>.</p>
+
+            <div class="info-box">
+                <h4>The Core Idea</h4>
+                <p>Instead of just maximizing reward, SAC maximizes <em>reward + entropy</em>. This means the agent is rewarded for being uncertain, for keeping its options open, for exploring. The entropy term literally adds to the reward signal.</p>
+            </div>
+
+            <h3>What SAC Learns</h3>
+            <p>SAC simultaneously learns three things:</p>
+
+            <div class="steps">
+                <div class="step">
+                    <span class="step-num">1.</span>
+                    <div class="step-content">
+                        <div class="step-title">A stochastic policy π<sub>θ</sub></div>
+                        <div class="step-desc">Given a state s, outputs a probability distribution over actions (not just a single action)</div>
+                    </div>
+                </div>
+                <div class="step">
+                    <span class="step-num">2.</span>
+                    <div class="step-content">
+                        <div class="step-title">Two Q-functions Q<sub>φ₁</sub>, Q<sub>φ₂</sub></div>
+                        <div class="step-desc">Two independent estimates of the action-value function (the "clipped double-Q trick" from TD3)</div>
+                    </div>
+                </div>
+                <div class="step">
+                    <span class="step-num">3.</span>
+                    <div class="step-content">
+                        <div class="step-title">Temperature parameter α</div>
+                        <div class="step-desc">Controls the exploration-exploitation trade-off (can be fixed or learned)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flow-diagram">
+                <div class="flow-box">State s</div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-box" style="border-color: var(--accent-purple);">Policy π<sub>θ</sub>(·|s)</div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-box">Sample action a</div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-box" style="border-color: var(--accent-blue);">Q<sub>φ</sub>(s, a)</div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-box" style="border-color: var(--accent-orange);">Update</div>
+            </div>
+        </section>
+
+        <!-- Section 2: Entropy -->
+        <section id="entropy">
+            <h2><span class="num">02</span>Understanding Entropy</h2>
+
+            <p>Before we can understand how entropy becomes part of the Q-value, we need to understand what entropy actually is and why we care about it.</p>
+
+            <h3>What is Entropy?</h3>
+            <p>Entropy measures how "random" or "uncertain" a probability distribution is. Think of it as measuring surprise: if you're pretty sure what's going to happen, there's no surprise (low entropy). If anything could happen, there's maximum surprise (high entropy).</p>
+
+            <div class="math-block" data-label="Definition">
+<span class="math"><span class="comment">// For a random variable x with distribution P:</span>
+
+<span class="function">H</span>(<span class="variable">P</span>) = <span class="keyword">𝔼</span><sub>x ~ P</sub>[ <span class="operator">-</span>log <span class="variable">P</span>(x) ]
+
+<span class="comment">// Expanding the expectation:</span>
+
+<span class="function">H</span>(<span class="variable">P</span>) = <span class="operator">-</span> ∑<sub>x</sub> <span class="variable">P</span>(x) log <span class="variable">P</span>(x)    <span class="comment">// discrete</span>
+
+<span class="function">H</span>(<span class="variable">P</span>) = <span class="operator">-</span> ∫ <span class="variable">P</span>(x) log <span class="variable">P</span>(x) dx   <span class="comment">// continuous</span></span>
+            </div>
+
+            <div class="viz-container">
+                <div class="viz-title">Interactive: Entropy of a Two-Outcome Distribution</div>
+                <canvas id="entropyViz" width="600" height="300"></canvas>
+                <div class="controls">
+                    <div class="control-group">
+                        <div class="control-label">
+                            <span>Probability of outcome A</span>
+                            <span class="control-value" id="probValue">0.50</span>
+                        </div>
+                        <input type="range" id="probSlider" min="0.01" max="0.99" step="0.01" value="0.5">
+                    </div>
+                </div>
+            </div>
+
+            <h3>Entropy of a Policy</h3>
+            <p>In RL, we care about the entropy of our policy π(·|s) — the distribution over actions given a state. For a Gaussian policy (which SAC uses), the entropy has a nice closed form:</p>
+
+            <div class="math-block" data-label="Gaussian Entropy">
+<span class="math"><span class="comment">// For a Gaussian with standard deviation σ:</span>
+
+<span class="function">H</span>(<span class="variable">π</span>(·|s)) = ½ log(2πeσ²)
+
+<span class="comment">// Key insight: entropy increases with σ</span>
+<span class="comment">// Wider distribution → more uncertainty → higher entropy</span></span>
+            </div>
+
+            <div class="info-box warning">
+                <h4>Why Maximize Entropy?</h4>
+                <p>By adding entropy to the reward, we're telling the agent: "don't just find <em>a</em> good action, find <em>all</em> the good actions." This prevents premature convergence to suboptimal deterministic policies and encourages robust exploration.</p>
+            </div>
+        </section>
+
+        <!-- Section 3: Value Functions -->
+        <section id="value-functions">
+            <h2><span class="num">03</span>Entropy-Regularized Value Functions</h2>
+
+            <p>Here's where it gets interesting. In standard RL, we maximize expected return. In entropy-regularized RL, we maximize <em>expected return plus entropy bonuses</em>:</p>
+
+            <div class="math-block" data-label="New Objective">
+<span class="math"><span class="comment">// Standard RL objective:</span>
+<span class="variable">π</span>* = arg max<sub>π</sub> <span class="keyword">𝔼</span><sub>τ ~ π</sub>[ ∑<sub>t=0</sub><sup>∞</sup> γ<sup>t</sup> <span class="variable">R</span>(s<sub>t</sub>, a<sub>t</sub>, s<sub>t+1</sub>) ]
+
+<span class="comment">// SAC's entropy-regularized objective:</span>
+<span class="variable">π</span>* = arg max<sub>π</sub> <span class="keyword">𝔼</span><sub>τ ~ π</sub>[ ∑<sub>t=0</sub><sup>∞</sup> γ<sup>t</sup> ( <span class="variable">R</span>(s<sub>t</sub>, a<sub>t</sub>, s<sub>t+1</sub>) <span class="operator">+</span> <span class="highlight-orange">α</span> <span class="function">H</span>(<span class="variable">π</span>(·|s<sub>t</sub>)) ) ]
+
+<span class="comment">// α > 0 is the temperature: higher α → more exploration</span></span>
+            </div>
+
+            <h3>The Modified Value Function V<sup>π</sup></h3>
+            <p>The value function now includes entropy bonuses from every timestep:</p>
+
+            <div class="math-block" data-label="Soft V">
+<span class="math"><span class="function">V</span><sup>π</sup>(s) = <span class="keyword">𝔼</span><sub>τ ~ π</sub>[ ∑<sub>t=0</sub><sup>∞</sup> γ<sup>t</sup> ( <span class="variable">R</span>(s<sub>t</sub>, a<sub>t</sub>, s<sub>t+1</sub>) <span class="operator">+</span> <span class="highlight-orange">α</span> <span class="function">H</span>(<span class="variable">π</span>(·|s<sub>t</sub>)) ) | s<sub>0</sub> = s ]</span>
+            </div>
+
+            <h3>The Modified Q-Function Q<sup>π</sup></h3>
+            <p>The Q-function includes entropy bonuses from <strong>every timestep except the first</strong>. This is the crucial design choice:</p>
+
+            <div class="math-block" data-label="Soft Q">
+<span class="math"><span class="function">Q</span><sup>π</sup>(s, a) = <span class="keyword">𝔼</span><sub>τ ~ π</sub>[ ∑<sub>t=0</sub><sup>∞</sup> γ<sup>t</sup> <span class="variable">R</span>(s<sub>t</sub>, a<sub>t</sub>, s<sub>t+1</sub>) <span class="operator">+</span> <span class="highlight-orange">α</span> ∑<sub><span class="highlight-purple">t=1</span></sub><sup>∞</sup> γ<sup>t</sup> <span class="function">H</span>(<span class="variable">π</span>(·|s<sub>t</sub>)) | s<sub>0</sub> = s, a<sub>0</sub> = a ]
+            
+<span class="comment">// Notice: entropy sum starts at t=1, not t=0!</span>
+<span class="comment">// Q(s,a) assumes action a is already taken (no entropy for that choice)</span></span>
+            </div>
+
+            <div class="info-box">
+                <h4>Why Exclude the First Timestep?</h4>
+                <p>Q(s, a) measures the value of taking specific action a in state s. Since we've already committed to action a, there's no uncertainty about that first action — hence no entropy bonus for it. The entropy bonuses only apply to future action choices.</p>
+            </div>
+
+            <h3>The Connection Between V and Q</h3>
+            <p>This is where the magic happens. The relationship between V and Q reveals why entropy shows up as a <em>negative log probability</em> in the Q-target:</p>
+
+            <div class="math-block" data-label="V-Q Relationship">
+<span class="math"><span class="comment">// V is the expected Q plus the entropy of the current policy:</span>
+
+<span class="function">V</span><sup>π</sup>(s) = <span class="keyword">𝔼</span><sub>a ~ π</sub>[ <span class="function">Q</span><sup>π</sup>(s, a) ] <span class="operator">+</span> <span class="highlight-orange">α</span> <span class="function">H</span>(<span class="variable">π</span>(·|s))
+
+<span class="comment">// Expand the entropy using its definition:</span>
+
+<span class="function">V</span><sup>π</sup>(s) = <span class="keyword">𝔼</span><sub>a ~ π</sub>[ <span class="function">Q</span><sup>π</sup>(s, a) ] <span class="operator">+</span> <span class="highlight-orange">α</span> <span class="keyword">𝔼</span><sub>a ~ π</sub>[ <span class="operator">-</span>log <span class="variable">π</span>(a|s) ]
+
+<span class="comment">// Combine the expectations (both over a ~ π):</span>
+
+<span class="function">V</span><sup>π</sup>(s) = <span class="keyword">𝔼</span><sub>a ~ π</sub>[ <span class="function">Q</span><sup>π</sup>(s, a) <span class="operator">-</span> <span class="highlight-orange">α</span> log <span class="variable">π</span>(a|s) ]</span>
+            </div>
+
+            <p>This last equation is <strong>the key insight</strong>. It says: the value of a state equals the expected [Q-value minus α times log-probability of the action].</p>
+        </section>
+
+        <!-- Section 4: The Trick -->
+        <section id="the-trick">
+            <h2><span class="num">04</span>The Central Trick: Entropy → Negative Log π</h2>
+
+            <p>Now let's derive the Bellman equation for the soft Q-function and see exactly how entropy transforms into -log π(a|s).</p>
+
+            <h3>Step 1: Start with the Soft Bellman Equation</h3>
+
+            <div class="math-block" data-label="Bellman for Soft Q">
+<span class="math"><span class="comment">// Q(s,a) = immediate reward + discounted value of next state</span>
+
+<span class="function">Q</span><sup>π</sup>(s, a) = <span class="keyword">𝔼</span><sub>s' ~ P, a' ~ π</sub>[ <span class="variable">R</span>(s, a, s') <span class="operator">+</span> γ ( <span class="function">Q</span><sup>π</sup>(s', a') <span class="operator">+</span> <span class="highlight-orange">α</span> <span class="function">H</span>(<span class="variable">π</span>(·|s')) ) ]
+
+<span class="comment">// The entropy H(π(·|s')) appears because V includes it</span></span>
+            </div>
+
+            <h3>Step 2: Expand the Entropy</h3>
+
+            <div class="math-block" data-label="Expanding H">
+<span class="math"><span class="comment">// Replace H with its definition: H(P) = 𝔼[-log P]</span>
+
+<span class="function">H</span>(<span class="variable">π</span>(·|s')) = <span class="keyword">𝔼</span><sub>a' ~ π</sub>[ <span class="operator">-</span>log <span class="variable">π</span>(a'|s') ]
+
+<span class="comment">// Substitute back into Bellman equation:</span>
+
+<span class="function">Q</span><sup>π</sup>(s, a) = <span class="keyword">𝔼</span><sub>s' ~ P, a' ~ π</sub>[ <span class="variable">R</span>(s, a, s') <span class="operator">+</span> γ ( <span class="function">Q</span><sup>π</sup>(s', a') <span class="operator">+</span> <span class="highlight-orange">α</span> · (<span class="operator">-</span>log <span class="variable">π</span>(a'|s')) ) ]
+
+<span class="comment">// Simplify:</span>
+
+<span class="function">Q</span><sup>π</sup>(s, a) = <span class="keyword">𝔼</span><sub>s' ~ P, a' ~ π</sub>[ <span class="variable">R</span>(s, a, s') <span class="operator">+</span> γ ( <span class="function">Q</span><sup>π</sup>(s', a') <span class="operator">-</span> <span class="highlight-orange">α</span> log <span class="variable">π</span>(a'|s') ) ]</span>
+            </div>
+
+            <div class="info-box">
+                <h4>🎯 There It Is!</h4>
+                <p>The entropy <em>H(π)</em> has become <em>-α log π(a'|s')</em> inside the Q-target. This is the fundamental transformation: maximizing entropy = subtracting log-probability from Q-values.</p>
+            </div>
+
+            <h3>Step 3: Sample Approximation</h3>
+            <p>Since we're taking an expectation over s' (from replay buffer) and a' (from current policy), we can approximate with samples:</p>
+
+            <div class="math-block" data-label="Sample Target">
+<span class="math"><span class="comment">// Approximate the expectation with a single sample:</span>
+
+<span class="function">Q</span><sup>π</sup>(s, a) ≈ r <span class="operator">+</span> γ ( <span class="function">Q</span><sup>π</sup>(s', ã') <span class="operator">-</span> <span class="highlight-orange">α</span> log <span class="variable">π</span>(ã'|s') )
+
+where:
+  • r, s' come from replay buffer
+  • ã' ~ <span class="variable">π</span>(·|s')  <span class="comment">// fresh sample from current policy</span>
+
+<span class="comment">// The tilde ã' emphasizes: sample fresh, don't use stored action!</span></span>
+            </div>
+
+            <div class="viz-container">
+                <div class="viz-title">Visualizing the Soft Q-Target</div>
+                <canvas id="targetViz" width="700" height="350"></canvas>
+                <div class="controls">
+                    <div class="control-group">
+                        <div class="control-label">
+                            <span>Temperature α</span>
+                            <span class="control-value" id="alphaValue">0.20</span>
+                        </div>
+                        <input type="range" id="alphaSlider" min="0.01" max="1.0" step="0.01" value="0.2">
+                    </div>
+                    <div class="control-group">
+                        <div class="control-label">
+                            <span>Policy std dev σ</span>
+                            <span class="control-value" id="sigmaValue">0.30</span>
+                        </div>
+                        <input type="range" id="sigmaSlider" min="0.1" max="1.0" step="0.01" value="0.3">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 5: Q Learning -->
+        <section id="q-learning">
+            <h2><span class="num">05</span>Learning the Q-Functions</h2>
+
+            <p>SAC uses two Q-networks (the "clipped double-Q" trick from TD3) to reduce overestimation bias. Both are trained to minimize MSBE (mean squared Bellman error).</p>
+
+            <h3>The Loss Function</h3>
+
+            <div class="math-block" data-label="Q Loss">
+<span class="math"><span class="comment">// Loss for each Q-function (i = 1, 2):</span>
+
+L(φ<sub>i</sub>, 𝒟) = <span class="keyword">𝔼</span><sub>(s,a,r,s',d) ~ 𝒟</sub>[ ( <span class="function">Q</span><sub>φ<sub>i</sub></sub>(s, a) <span class="operator">-</span> y(r, s', d) )² ]
+
+<span class="comment">// where 𝒟 is the replay buffer</span></span>
+            </div>
+
+            <h3>The Target (This is Where It All Comes Together)</h3>
+
+            <div class="math-block" data-label="SAC Target">
+<span class="math"><span class="comment">// The complete SAC target:</span>
+
+y(r, s', d) = r <span class="operator">+</span> γ (1 - d) · (<span class="highlight-purple">min</span><sub>j=1,2</sub> <span class="function">Q</span><sub>φ<sub>targ,j</sub></sub>(s', ã') <span class="operator">-</span> <span class="highlight-orange">α</span> log <span class="variable">π</span><sub>θ</sub>(ã'|s'))
+
+where ã' ~ <span class="variable">π</span><sub>θ</sub>(·|s')
+
+<span class="comment">// Breaking it down:</span>
+<span class="comment">//   r              → immediate reward from buffer</span>
+<span class="comment">//   γ              → discount factor</span>
+<span class="comment">//   (1 - d)        → zero out if terminal state</span>
+<span class="comment">//   min Q          → clipped double-Q (conservative estimate)</span>
+<span class="comment">//   -α log π       → THE ENTROPY TERM (encourages exploration)</span></span>
+            </div>
+
+            <h3>Comparing with TD3</h3>
+
+            <div class="comparison">
+                <table>
+                    <tr>
+                        <th>Aspect</th>
+                        <th>TD3</th>
+                        <th>SAC</th>
+                    </tr>
+                    <tr>
+                        <td>Policy type</td>
+                        <td>Deterministic μ(s)</td>
+                        <td>Stochastic π(a|s)</td>
+                    </tr>
+                    <tr>
+                        <td>Next action in target</td>
+                        <td>From target policy μ'(s') + noise</td>
+                        <td>From current policy π(·|s')</td>
+                    </tr>
+                    <tr>
+                        <td>Entropy term</td>
+                        <td>None (uses explicit noise)</td>
+                        <td>-α log π(a'|s')</td>
+                    </tr>
+                    <tr>
+                        <td>Double-Q</td>
+                        <td>Yes (min of two)</td>
+                        <td>Yes (min of two)</td>
+                    </tr>
+                    <tr>
+                        <td>Target networks</td>
+                        <td>Yes (Polyak averaged)</td>
+                        <td>Yes (Polyak averaged)</td>
+                    </tr>
+                </table>
+            </div>
+        </section>
+
+        <!-- Section 6: Policy Learning -->
+        <section id="policy">
+            <h2><span class="num">06</span>Learning the Policy</h2>
+
+            <p>The policy should maximize the soft value function V<sup>π</sup>(s) — that is, expected Q-value minus entropy penalty:</p>
+
+            <div class="math-block" data-label="Policy Objective">
+<span class="math"><span class="comment">// We want to maximize:</span>
+
+<span class="function">V</span><sup>π</sup>(s) = <span class="keyword">𝔼</span><sub>a ~ π</sub>[ <span class="function">Q</span><sup>π</sup>(s, a) <span class="operator">-</span> <span class="highlight-orange">α</span> log <span class="variable">π</span>(a|s) ]
+
+<span class="comment">// Policy gradient (maximize w.r.t. θ):</span>
+
+max<sub>θ</sub> <span class="keyword">𝔼</span><sub>s ~ 𝒟, ξ ~ 𝒩</sub>[ <span class="highlight-purple">min</span><sub>j=1,2</sub> <span class="function">Q</span><sub>φ<sub>j</sub></sub>(s, ã<sub>θ</sub>(s, ξ)) <span class="operator">-</span> <span class="highlight-orange">α</span> log <span class="variable">π</span><sub>θ</sub>(ã<sub>θ</sub>(s, ξ)|s) ]</span>
+            </div>
+
+            <h3>The Reparameterization Trick</h3>
+            <p>To backpropagate through the sampling process, SAC uses the reparameterization trick. Instead of sampling a ~ π(·|s), we sample noise ξ and compute action deterministically:</p>
+
+            <div class="math-block" data-label="Squashed Gaussian">
+<span class="math"><span class="comment">// SAC uses a "squashed Gaussian" policy:</span>
+
+ã<sub>θ</sub>(s, ξ) = <span class="function">tanh</span>( μ<sub>θ</sub>(s) <span class="operator">+</span> σ<sub>θ</sub>(s) <span class="operator">⊙</span> ξ )
+
+where:
+  • μ<sub>θ</sub>(s)  → neural network outputs mean
+  • σ<sub>θ</sub>(s)  → neural network outputs std dev  
+  • ξ ~ 𝒩(0, I)  → standard Gaussian noise
+  • ⊙         → element-wise multiplication
+  • tanh      → squashes to [-1, 1]
+
+<span class="comment">// Why tanh? Bounds actions to valid range!</span></span>
+            </div>
+
+            <div class="info-box">
+                <h4>The Reparameterization Insight</h4>
+                <p>By writing a = f(s, θ, ξ) where ξ is independent noise, we can backpropagate gradients through the sampling: ∂a/∂θ is well-defined, even though a is stochastic. This is the same trick used in VAEs.</p>
+            </div>
+
+            <h3>Computing Log Probability with Tanh</h3>
+            <p>The tanh squashing changes the distribution, so we need to account for the Jacobian when computing log π(a|s):</p>
+
+            <div class="math-block" data-label="Log Prob Correction">
+<span class="math"><span class="comment">// Let u = μ + σξ (pre-tanh), a = tanh(u)</span>
+
+log <span class="variable">π</span>(a|s) = log <span class="variable">π</span><sub>gauss</sub>(u|s) <span class="operator">-</span> ∑<sub>i</sub> log(1 - a<sub>i</sub>²)
+
+<span class="comment">// The second term is the log-Jacobian of tanh</span>
+<span class="comment">// This correction is crucial for correct entropy computation!</span></span>
+            </div>
+
+            <div class="viz-container">
+                <div class="viz-title">Squashed Gaussian Distribution</div>
+                <canvas id="policyViz" width="600" height="300"></canvas>
+                <div class="controls">
+                    <div class="control-group">
+                        <div class="control-label">
+                            <span>Mean μ</span>
+                            <span class="control-value" id="muValue">0.00</span>
+                        </div>
+                        <input type="range" id="muSlider" min="-2" max="2" step="0.1" value="0">
+                    </div>
+                    <div class="control-group">
+                        <div class="control-label">
+                            <span>Std dev σ</span>
+                            <span class="control-value" id="policyStdValue">0.50</span>
+                        </div>
+                        <input type="range" id="policyStdSlider" min="0.1" max="1.5" step="0.05" value="0.5">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 7: Notation -->
+        <section id="notation">
+            <h2><span class="num">07</span>Complete Notation Reference</h2>
+
+            <p>Following Spinning Up's conventions, here's every symbol used in SAC:</p>
+
+            <div class="notation-table">
+                <span class="notation-symbol">s, s'</span>
+                <span class="notation-desc">Current state, next state</span>
+                
+                <span class="notation-symbol">a, a', ã'</span>
+                <span class="notation-desc">Action, next action from buffer, fresh sample from policy</span>
+                
+                <span class="notation-symbol">r</span>
+                <span class="notation-desc">Reward (from replay buffer)</span>
+                
+                <span class="notation-symbol">d</span>
+                <span class="notation-desc">Done flag (1 if terminal, 0 otherwise)</span>
+                
+                <span class="notation-symbol">γ</span>
+                <span class="notation-desc">Discount factor ∈ (0, 1)</span>
+                
+                <span class="notation-symbol">π<sub>θ</sub></span>
+                <span class="notation-desc">Stochastic policy with parameters θ</span>
+                
+                <span class="notation-symbol">Q<sub>φ₁</sub>, Q<sub>φ₂</sub></span>
+                <span class="notation-desc">Two Q-function approximators</span>
+                
+                <span class="notation-symbol">Q<sub>φ<sub>targ</sub></sub></span>
+                <span class="notation-desc">Target Q-networks (Polyak averaged)</span>
+                
+                <span class="notation-symbol">α</span>
+                <span class="notation-desc">Temperature/entropy coefficient</span>
+                
+                <span class="notation-symbol">H(P)</span>
+                <span class="notation-desc">Entropy of distribution P</span>
+                
+                <span class="notation-symbol">𝒟</span>
+                <span class="notation-desc">Replay buffer</span>
+                
+                <span class="notation-symbol">ρ</span>
+                <span class="notation-desc">Polyak averaging coefficient (typically 0.995)</span>
+                
+                <span class="notation-symbol">μ<sub>θ</sub>(s)</span>
+                <span class="notation-desc">Mean of Gaussian policy</span>
+                
+                <span class="notation-symbol">σ<sub>θ</sub>(s)</span>
+                <span class="notation-desc">Standard deviation of Gaussian policy</span>
+                
+                <span class="notation-symbol">ξ</span>
+                <span class="notation-desc">Noise sample from 𝒩(0, I)</span>
+            </div>
+
+            <h3>The Complete Algorithm</h3>
+
+            <div class="code-block">
+                <code>
+<span style="color: var(--accent-purple);">Initialize:</span>
+    Policy parameters θ
+    Q-function parameters φ₁, φ₂  
+    Target parameters φ_targ,1 ← φ₁, φ_targ,2 ← φ₂
+    Empty replay buffer 𝒟
+
+<span style="color: var(--accent-purple);">Loop:</span>
+    <span style="color: var(--text-dim);">// Collect experience</span>
+    Observe s, sample a ~ π_θ(·|s)
+    Execute a, observe s', r, d
+    Store (s, a, r, s', d) in 𝒟
+
+    <span style="color: var(--text-dim);">// Update (when it's time)</span>
+    Sample batch B from 𝒟
+    
+    <span style="color: var(--accent-blue);">// Compute targets:</span>
+    ã' ~ π_θ(·|s')
+    y = r + γ(1-d)(min_j Q_φtarg,j(s', ã') <span style="color: var(--accent-orange);">- α log π_θ(ã'|s')</span>)
+    
+    <span style="color: var(--accent-blue);">// Update Q-functions:</span>
+    ∇_φᵢ (1/|B|) Σ (Q_φᵢ(s,a) - y)²  for i=1,2
+    
+    <span style="color: var(--accent-blue);">// Update policy:</span>
+    ∇_θ (1/|B|) Σ (min_j Q_φⱼ(s, ã_θ(s)) <span style="color: var(--accent-orange);">- α log π_θ(ã_θ(s)|s)</span>)
+    where ã_θ(s) = tanh(μ_θ(s) + σ_θ(s) ⊙ ξ), ξ ~ 𝒩(0,I)
+    
+    <span style="color: var(--accent-blue);">// Update target networks:</span>
+    φ_targ,i ← ρ φ_targ,i + (1-ρ) φᵢ  for i=1,2
+                </code>
+            </div>
+
+            <div class="info-box">
+                <h4>The Punchline</h4>
+                <p>Every time you see <code style="color: var(--accent-orange);">-α log π(a|s)</code> in SAC, remember: this IS the entropy regularization. The expectation of -log π IS the entropy H(π). By subtracting log-probabilities from Q-values, we're making "random" actions appear more valuable, encouraging exploration.</p>
+            </div>
+        </section>
+
+        <div class="footer">
+            <p>Built for deep understanding. Based on OpenAI Spinning Up documentation.</p>
+        </div>
+    </div>
+
+    <script>
+        // ========================================
+        // VISUALIZATION 1: Entropy of binary distribution
+        // ========================================
+        const entropyCanvas = document.getElementById('entropyViz');
+        const entropyCtx = entropyCanvas.getContext('2d');
+        const probSlider = document.getElementById('probSlider');
+        const probValue = document.getElementById('probValue');
+
+        function entropy(p) {
+            if (p <= 0 || p >= 1) return 0;
+            return -p * Math.log2(p) - (1-p) * Math.log2(1-p);
+        }
+
+        function drawEntropyViz() {
+            const width = entropyCanvas.width;
+            const height = entropyCanvas.height;
+            const p = parseFloat(probSlider.value);
+            
+            entropyCtx.fillStyle = '#12121a';
+            entropyCtx.fillRect(0, 0, width, height);
+            
+            // Draw entropy curve
+            entropyCtx.beginPath();
+            entropyCtx.strokeStyle = '#4ecdc4';
+            entropyCtx.lineWidth = 3;
+            
+            const padding = 60;
+            const graphWidth = width - 2 * padding;
+            const graphHeight = height - 2 * padding;
+            
+            for (let i = 0; i <= graphWidth; i++) {
+                const x = padding + i;
+                const prob = i / graphWidth;
+                const h = entropy(prob);
+                const y = height - padding - h * graphHeight;
+                
+                if (i === 0) entropyCtx.moveTo(x, y);
+                else entropyCtx.lineTo(x, y);
+            }
+            entropyCtx.stroke();
+            
+            // Draw current point
+            const currentX = padding + p * graphWidth;
+            const currentH = entropy(p);
+            const currentY = height - padding - currentH * graphHeight;
+            
+            // Vertical line to point
+            entropyCtx.beginPath();
+            entropyCtx.strokeStyle = '#ff6b3550';
+            entropyCtx.setLineDash([5, 5]);
+            entropyCtx.moveTo(currentX, height - padding);
+            entropyCtx.lineTo(currentX, currentY);
+            entropyCtx.stroke();
+            entropyCtx.setLineDash([]);
+            
+            // Current point
+            entropyCtx.beginPath();
+            entropyCtx.arc(currentX, currentY, 8, 0, Math.PI * 2);
+            entropyCtx.fillStyle = '#ff6b35';
+            entropyCtx.fill();
+            
+            // Labels
+            entropyCtx.fillStyle = '#9090a0';
+            entropyCtx.font = '12px JetBrains Mono';
+            entropyCtx.textAlign = 'center';
+            entropyCtx.fillText('P(A) = 0', padding, height - 30);
+            entropyCtx.fillText('P(A) = 1', width - padding, height - 30);
+            entropyCtx.fillText('0.5', width/2, height - 30);
+            
+            // Y axis
+            entropyCtx.textAlign = 'right';
+            entropyCtx.fillText('H = 0', padding - 10, height - padding + 4);
+            entropyCtx.fillText('H = 1', padding - 10, padding + 4);
+            
+            // Current entropy value
+            entropyCtx.fillStyle = '#ff6b35';
+            entropyCtx.font = 'bold 14px JetBrains Mono';
+            entropyCtx.textAlign = 'left';
+            entropyCtx.fillText(`H = ${currentH.toFixed(3)} bits`, currentX + 15, currentY - 10);
+            
+            // Axis lines
+            entropyCtx.strokeStyle = '#2a2a3a';
+            entropyCtx.lineWidth = 1;
+            entropyCtx.beginPath();
+            entropyCtx.moveTo(padding, padding);
+            entropyCtx.lineTo(padding, height - padding);
+            entropyCtx.lineTo(width - padding, height - padding);
+            entropyCtx.stroke();
+        }
+
+        probSlider.addEventListener('input', () => {
+            probValue.textContent = parseFloat(probSlider.value).toFixed(2);
+            drawEntropyViz();
+        });
+
+        drawEntropyViz();
+
+        // ========================================
+        // VISUALIZATION 2: Soft Q-Target breakdown
+        // ========================================
+        const targetCanvas = document.getElementById('targetViz');
+        const targetCtx = targetCanvas.getContext('2d');
+        const alphaSlider = document.getElementById('alphaSlider');
+        const alphaValue = document.getElementById('alphaValue');
+        const sigmaSlider = document.getElementById('sigmaSlider');
+        const sigmaValue = document.getElementById('sigmaValue');
+
+        function drawTargetViz() {
+            const width = targetCanvas.width;
+            const height = targetCanvas.height;
+            const alpha = parseFloat(alphaSlider.value);
+            const sigma = parseFloat(sigmaSlider.value);
+            
+            targetCtx.fillStyle = '#12121a';
+            targetCtx.fillRect(0, 0, width, height);
+            
+            // Simulated values
+            const r = 1.0;
+            const gamma = 0.99;
+            const Q_next = 5.0;
+            
+            // For a Gaussian, -log π ≈ 0.5 * (a-μ)²/σ² + log(σ√2π)
+            // Average entropy contribution for standard action
+            const avgLogProb = Math.log(sigma * Math.sqrt(2 * Math.PI)) + 0.5;
+            const entropyBonus = alpha * avgLogProb;
+            
+            const target = r + gamma * (Q_next - alpha * avgLogProb);
+            
+            // Bar chart layout
+            const barWidth = 80;
+            const maxBarHeight = 200;
+            const baseline = height - 80;
+            const spacing = 40;
+            
+            const values = [
+                { label: 'r', value: r, color: '#4ecdc4' },
+                { label: 'γQ(s\',ã\')', value: gamma * Q_next, color: '#a855f7' },
+                { label: '-αlog π', value: -gamma * alpha * avgLogProb, color: '#ff6b35' },
+                { label: 'TARGET', value: target, color: '#ec4899' }
+            ];
+            
+            const maxVal = Math.max(...values.map(v => Math.abs(v.value))) * 1.2;
+            
+            const startX = (width - (values.length * (barWidth + spacing) - spacing)) / 2;
+            
+            values.forEach((item, i) => {
+                const x = startX + i * (barWidth + spacing);
+                const barHeight = (item.value / maxVal) * maxBarHeight;
+                const y = item.value >= 0 ? baseline - barHeight : baseline;
+                
+                // Bar
+                targetCtx.fillStyle = item.color;
+                targetCtx.fillRect(x, item.value >= 0 ? baseline - barHeight : baseline, barWidth, Math.abs(barHeight));
+                
+                // Value
+                targetCtx.fillStyle = '#f0f0f5';
+                targetCtx.font = 'bold 14px JetBrains Mono';
+                targetCtx.textAlign = 'center';
+                const valueY = item.value >= 0 ? baseline - barHeight - 10 : baseline + Math.abs(barHeight) + 20;
+                targetCtx.fillText(item.value.toFixed(2), x + barWidth/2, valueY);
+                
+                // Label
+                targetCtx.fillStyle = '#9090a0';
+                targetCtx.font = '11px JetBrains Mono';
+                targetCtx.fillText(item.label, x + barWidth/2, baseline + 40);
+            });
+            
+            // Baseline
+            targetCtx.strokeStyle = '#2a2a3a';
+            targetCtx.lineWidth = 2;
+            targetCtx.beginPath();
+            targetCtx.moveTo(startX - 20, baseline);
+            targetCtx.lineTo(startX + values.length * (barWidth + spacing), baseline);
+            targetCtx.stroke();
+            
+            // Formula
+            targetCtx.fillStyle = '#606070';
+            targetCtx.font = '12px JetBrains Mono';
+            targetCtx.textAlign = 'center';
+            targetCtx.fillText('y = r + γ(min Q(s\',ã\') - α log π(ã\'|s\'))', width/2, 30);
+            
+            // Show alpha effect
+            targetCtx.fillStyle = '#ff6b35';
+            targetCtx.fillText(`Higher α → larger entropy bonus → more exploration`, width/2, 55);
+        }
+
+        alphaSlider.addEventListener('input', () => {
+            alphaValue.textContent = parseFloat(alphaSlider.value).toFixed(2);
+            drawTargetViz();
+        });
+
+        sigmaSlider.addEventListener('input', () => {
+            sigmaValue.textContent = parseFloat(sigmaSlider.value).toFixed(2);
+            drawTargetViz();
+        });
+
+        drawTargetViz();
+
+        // ========================================
+        // VISUALIZATION 3: Squashed Gaussian Policy
+        // ========================================
+        const policyCanvas = document.getElementById('policyViz');
+        const policyCtx = policyCanvas.getContext('2d');
+        const muSlider = document.getElementById('muSlider');
+        const muValue = document.getElementById('muValue');
+        const policyStdSlider = document.getElementById('policyStdSlider');
+        const policyStdValue = document.getElementById('policyStdValue');
+
+        function gaussian(x, mu, sigma) {
+            return Math.exp(-0.5 * Math.pow((x - mu) / sigma, 2)) / (sigma * Math.sqrt(2 * Math.PI));
+        }
+
+        function drawPolicyViz() {
+            const width = policyCanvas.width;
+            const height = policyCanvas.height;
+            const mu = parseFloat(muSlider.value);
+            const sigma = parseFloat(policyStdSlider.value);
+            
+            policyCtx.fillStyle = '#12121a';
+            policyCtx.fillRect(0, 0, width, height);
+            
+            const padding = 60;
+            const graphWidth = width - 2 * padding;
+            const graphHeight = height - 2 * padding;
+            
+            // Sample points and compute histogram of tanh-transformed values
+            const numSamples = 10000;
+            const numBins = 50;
+            const bins = new Array(numBins).fill(0);
+            
+            for (let i = 0; i < numSamples; i++) {
+                // Box-Muller transform for Gaussian
+                const u1 = Math.random();
+                const u2 = Math.random();
+                const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+                const x = mu + sigma * z;
+                const a = Math.tanh(x);
+                
+                // Map [-1, 1] to bin index
+                const binIdx = Math.floor((a + 1) / 2 * (numBins - 1));
+                if (binIdx >= 0 && binIdx < numBins) {
+                    bins[binIdx]++;
+                }
+            }
+            
+            const maxBin = Math.max(...bins);
+            
+            // Draw histogram
+            const barWidth = graphWidth / numBins;
+            bins.forEach((count, i) => {
+                const x = padding + i * barWidth;
+                const barHeight = (count / maxBin) * graphHeight * 0.9;
+                const y = height - padding - barHeight;
+                
+                // Gradient fill
+                const gradient = policyCtx.createLinearGradient(x, y, x, height - padding);
+                gradient.addColorStop(0, '#a855f780');
+                gradient.addColorStop(1, '#a855f720');
+                policyCtx.fillStyle = gradient;
+                policyCtx.fillRect(x, y, barWidth - 1, barHeight);
+            });
+            
+            // Draw original Gaussian (scaled and shifted)
+            policyCtx.beginPath();
+            policyCtx.strokeStyle = '#4ecdc4';
+            policyCtx.lineWidth = 2;
+            policyCtx.setLineDash([5, 5]);
+            
+            const xRange = 4;
+            for (let i = 0; i <= graphWidth; i++) {
+                const t = (i / graphWidth) * 2 - 1; // [-1, 1]
+                const x_orig = t * xRange; // map to viewing range
+                const y_val = gaussian(x_orig, mu, sigma);
+                const y_normalized = y_val / gaussian(mu, mu, sigma);
+                const x = padding + i;
+                const y = height - padding - y_normalized * graphHeight * 0.7;
+                
+                if (i === 0) policyCtx.moveTo(x, y);
+                else policyCtx.lineTo(x, y);
+            }
+            policyCtx.stroke();
+            policyCtx.setLineDash([]);
+            
+            // Axis
+            policyCtx.strokeStyle = '#2a2a3a';
+            policyCtx.lineWidth = 1;
+            policyCtx.beginPath();
+            policyCtx.moveTo(padding, height - padding);
+            policyCtx.lineTo(width - padding, height - padding);
+            policyCtx.stroke();
+            
+            // Labels
+            policyCtx.fillStyle = '#9090a0';
+            policyCtx.font = '12px JetBrains Mono';
+            policyCtx.textAlign = 'center';
+            policyCtx.fillText('a = -1', padding, height - 30);
+            policyCtx.fillText('a = 0', width/2, height - 30);
+            policyCtx.fillText('a = 1', width - padding, height - 30);
+            
+            // Legend
+            policyCtx.fillStyle = '#a855f7';
+            policyCtx.fillRect(width - 200, 20, 15, 15);
+            policyCtx.fillStyle = '#9090a0';
+            policyCtx.textAlign = 'left';
+            policyCtx.fillText('After tanh', width - 180, 32);
+            
+            policyCtx.strokeStyle = '#4ecdc4';
+            policyCtx.setLineDash([5, 5]);
+            policyCtx.beginPath();
+            policyCtx.moveTo(width - 200, 50);
+            policyCtx.lineTo(width - 185, 50);
+            policyCtx.stroke();
+            policyCtx.setLineDash([]);
+            policyCtx.fillText('Original Gaussian', width - 180, 54);
+            
+            // Explanation
+            policyCtx.fillStyle = '#606070';
+            policyCtx.textAlign = 'center';
+            policyCtx.font = '11px JetBrains Mono';
+            policyCtx.fillText('tanh squashes unbounded Gaussian into [-1, 1]', width/2, height - 5);
+        }
+
+        muSlider.addEventListener('input', () => {
+            muValue.textContent = parseFloat(muSlider.value).toFixed(2);
+            drawPolicyViz();
+        });
+
+        policyStdSlider.addEventListener('input', () => {
+            policyStdValue.textContent = parseFloat(policyStdSlider.value).toFixed(2);
+            drawPolicyViz();
+        });
+
+        drawPolicyViz();
+
+        // Smooth scroll for navigation
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const targetId = link.getAttribute('href').slice(1);
+                document.getElementById(targetId).scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+
+        // Highlight active nav on scroll
+        const sections = document.querySelectorAll('section');
+        const navLinks = document.querySelectorAll('.nav-link');
+
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (scrollY >= sectionTop - 200) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === `#${current}`) {
+                    link.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
