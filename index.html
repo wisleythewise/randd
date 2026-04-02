@@ -5,6 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Servo7 — R&D</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;700;800&display=swap');
+
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111;
+      --border: #222;
+      --accent: #e8ff47;
+      --text: #f0f0f0;
+      --muted: #666;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
     /* ── Auth overlay ── */
     #auth-overlay {
       position: fixed; inset: 0;
@@ -13,9 +34,7 @@
       z-index: 999;
     }
 
-    #auth-box {
-      width: 320px;
-    }
+    #auth-box { width: 320px; }
 
     #auth-box .logo {
       font-family: 'Syne', sans-serif;
@@ -76,30 +95,10 @@
       margin-top: 10px;
       min-height: 16px;
     }
-  </style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;700;800&display=swap');
 
-    :root {
-      --bg: #0a0a0a;
-      --surface: #111;
-      --border: #222;
-      --accent: #e8ff47;
-      --text: #f0f0f0;
-      --muted: #666;
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'DM Mono', monospace;
-      font-size: 14px;
-      line-height: 1.6;
-    }
-
+    /* ── Layout ── */
     header {
-      padding: 48px 60px 32px;
+      padding: 48px 60px 0;
       border-bottom: 1px solid var(--border);
     }
 
@@ -118,16 +117,46 @@
       font-size: clamp(28px, 4vw, 48px);
       font-weight: 800;
       line-height: 1.05;
+      margin-bottom: 32px;
     }
 
     header h1 span { color: var(--accent); }
 
-    main {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 60px;
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-top: 8px;
     }
 
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 10px 20px 10px 0;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+      margin-right: 24px;
+    }
+
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 48px 60px 60px;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Section label ── */
     h2 {
       font-family: 'Syne', sans-serif;
       font-size: 11px;
@@ -138,6 +167,7 @@
       margin-bottom: 20px;
     }
 
+    /* ── Search ── */
     .search-wrap {
       margin-bottom: 24px;
       position: relative;
@@ -178,6 +208,7 @@
       border: 1px solid var(--border);
     }
 
+    /* ── Pages list ── */
     .pages {
       display: grid;
       gap: 1px;
@@ -240,6 +271,144 @@
       margin-left: 16px;
     }
 
+    /* ── Podcast table ── */
+    .pod-search-wrap {
+      margin-bottom: 24px;
+      position: relative;
+    }
+
+    .pod-search-wrap input {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      padding: 12px 16px 12px 40px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .pod-search-wrap input::placeholder { color: var(--muted); }
+    .pod-search-wrap input:focus { border-color: var(--accent); }
+    .pod-search-wrap .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 13px; pointer-events: none; }
+
+    .pod-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--border);
+    }
+
+    .pod-table thead th {
+      background: #0e0e0e;
+      font-family: 'Syne', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .pod-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.12s;
+    }
+
+    .pod-table tbody tr:last-child { border-bottom: none; }
+    .pod-table tbody tr:hover { background: #161616; }
+    .pod-table tbody tr[hidden] { display: none; }
+
+    .pod-table td {
+      padding: 14px 16px;
+      vertical-align: middle;
+      font-size: 13px;
+    }
+
+    .ep-num {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      color: var(--accent);
+      white-space: nowrap;
+      font-size: 12px;
+    }
+
+    .ep-date-cell {
+      color: var(--muted);
+      white-space: nowrap;
+      font-size: 12px;
+    }
+
+    .ep-title-cell {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .ep-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .ep-chip {
+      font-size: 10px;
+      background: #1a1a1a;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 2px 7px;
+      white-space: nowrap;
+    }
+
+    .ep-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      white-space: nowrap;
+    }
+
+    .ep-listen-btn {
+      display: inline-block;
+      background: var(--accent);
+      color: #0a0a0a;
+      font-family: 'Syne', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 5px 12px;
+      text-decoration: none;
+      transition: opacity 0.15s;
+    }
+
+    .ep-listen-btn:hover { opacity: 0.8; }
+
+    .ep-blueprint-btn {
+      font-size: 11px;
+      color: var(--muted);
+      text-decoration: none;
+      border-bottom: 1px dashed #444;
+      transition: color 0.15s;
+    }
+
+    .ep-blueprint-btn:hover { color: var(--accent); }
+
+    .pod-no-results {
+      display: none;
+      padding: 28px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top: none;
+    }
+
+    /* ── Footer ── */
     footer {
       border-top: 1px solid var(--border);
       padding: 32px 60px;
@@ -265,119 +434,303 @@
 <header>
   <div class="logo">Servo7</div>
   <h1>R&amp;D <span>index</span></h1>
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="pages">Pages</button>
+    <button class="tab-btn" data-tab="podcasts">Podcasts</button>
+  </nav>
 </header>
 
 <main>
-  <h2>Pages</h2>
 
-  <div class="search-wrap">
-    <span class="search-icon">⌕</span>
-    <input type="text" id="search" placeholder="Search pages…" autocomplete="off" spellcheck="false">
+  <!-- ── Pages tab ── -->
+  <div class="tab-panel active" id="tab-pages">
+    <h2>Pages</h2>
+    <div class="search-wrap">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="search" placeholder="Search pages…" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="pages" id="pages">
+      <a class="page-link" href="dagger.html" data-search="dagger jasper">
+        <div>
+          <div class="page-title">Dagger</div>
+          <div class="page-meta">
+            <span class="page-path">dagger.html</span>
+            <span class="tag tag-jasper">Jasper</span>
+          </div>
+        </div>
+        <span class="arrow">→</span>
+      </a>
+      <a class="page-link" href="dagger/" data-search="dagger alt jasper">
+        <div>
+          <div class="page-title">Dagger (alt)</div>
+          <div class="page-meta">
+            <span class="page-path">dagger/</span>
+            <span class="tag tag-jasper">Jasper</span>
+          </div>
+        </div>
+        <span class="arrow">→</span>
+      </a>
+      <a class="page-link" href="active-set-tutorial.html" data-search="active set methods lagrange multipliers constrained optimization jasper">
+        <div>
+          <div class="page-title">Active Set Methods</div>
+          <div class="page-meta">
+            <span class="page-path">active-set-tutorial.html</span>
+            <span class="tag tag-jasper">Jasper</span>
+          </div>
+        </div>
+        <span class="arrow">→</span>
+      </a>
+      <a class="page-link" href="lqr-tutorial.html" data-search="lqr quadratic functions discrete time control jasper">
+        <div>
+          <div class="page-title">Quadratic Functions in Discrete-Time Control</div>
+          <div class="page-meta">
+            <span class="page-path">lqr-tutorial.html</span>
+            <span class="tag tag-jasper">Jasper</span>
+          </div>
+        </div>
+        <span class="arrow">→</span>
+      </a>
+      <a class="page-link" href="mpc-tutorial.html" data-search="mpc model predictive control jasper">
+        <div>
+          <div class="page-title">Model Predictive Control</div>
+          <div class="page-meta">
+            <span class="page-path">mpc-tutorial.html</span>
+            <span class="tag tag-jasper">Jasper</span>
+          </div>
+        </div>
+        <span class="arrow">→</span>
+      </a>
+      <a class="page-link" href="x86-64-kernel-tutorial.html" data-search="x86 64 kernel internals memory context switches jasper">
+        <div>
+          <div class="page-title">x86-64 Kernel Internals</div>
+          <div class="page-meta">
+            <span class="page-path">x86-64-kernel-tutorial.html</span>
+            <span class="tag tag-jasper">Jasper</span>
+          </div>
+        </div>
+        <span class="arrow">→</span>
+      </a>
+      <a class="page-link" href="gripper_viewer.html" data-search="e2 gripper servo7 viewer stl jasper">
+        <div>
+          <div class="page-title">E2 Gripper</div>
+          <div class="page-meta">
+            <span class="page-path">gripper_viewer.html</span>
+            <span class="tag tag-jasper">Jasper</span>
+          </div>
+        </div>
+        <span class="arrow">→</span>
+      </a>
+      <a class="page-link" href="rl_study_quiz.html" data-search="reinforcement learning study quiz rl jasper">
+        <div>
+          <div class="page-title">Reinforcement Learning Study Quiz</div>
+          <div class="page-meta">
+            <span class="page-path">rl_study_quiz.html</span>
+            <span class="tag tag-jasper">Jasper</span>
+          </div>
+        </div>
+        <span class="arrow">→</span>
+      </a>
+      <a class="page-link" href="sac_guide.html" data-search="soft actor critic entropy q-values sac jasper">
+        <div>
+          <div class="page-title">Soft Actor-Critic: From Entropy to Q-Values</div>
+          <div class="page-meta">
+            <span class="page-path">sac_guide.html</span>
+            <span class="tag tag-jasper">Jasper</span>
+          </div>
+        </div>
+        <span class="arrow">→</span>
+      </a>
+      <a class="page-link" href="vae-elbo-explainer.html" data-search="vae elbo variational autoencoder first principles jasper">
+        <div>
+          <div class="page-title">VAEs &amp; The ELBO — From First Principles</div>
+          <div class="page-meta">
+            <span class="page-path">vae-elbo-explainer.html</span>
+            <span class="tag tag-jasper">Jasper</span>
+          </div>
+        </div>
+        <span class="arrow">→</span>
+      </a>
+    </div>
+    <div class="no-results" id="no-results">No pages match your search.</div>
   </div>
 
-  <div class="pages" id="pages">
-    <a class="page-link" href="dagger.html" data-search="dagger jasper">
-      <div>
-        <div class="page-title">Dagger</div>
-        <div class="page-meta">
-          <span class="page-path">dagger.html</span>
-          <span class="tag tag-jasper">Jasper</span>
-        </div>
-      </div>
-      <span class="arrow">→</span>
-    </a>
-    <a class="page-link" href="dagger/" data-search="dagger alt jasper">
-      <div>
-        <div class="page-title">Dagger (alt)</div>
-        <div class="page-meta">
-          <span class="page-path">dagger/</span>
-          <span class="tag tag-jasper">Jasper</span>
-        </div>
-      </div>
-      <span class="arrow">→</span>
-    </a>
-    <a class="page-link" href="active-set-tutorial.html" data-search="active set methods lagrange multipliers constrained optimization jasper">
-      <div>
-        <div class="page-title">Active Set Methods</div>
-        <div class="page-meta">
-          <span class="page-path">active-set-tutorial.html</span>
-          <span class="tag tag-jasper">Jasper</span>
-        </div>
-      </div>
-      <span class="arrow">→</span>
-    </a>
-    <a class="page-link" href="lqr-tutorial.html" data-search="lqr quadratic functions discrete time control jasper">
-      <div>
-        <div class="page-title">Quadratic Functions in Discrete-Time Control</div>
-        <div class="page-meta">
-          <span class="page-path">lqr-tutorial.html</span>
-          <span class="tag tag-jasper">Jasper</span>
-        </div>
-      </div>
-      <span class="arrow">→</span>
-    </a>
-    <a class="page-link" href="mpc-tutorial.html" data-search="mpc model predictive control jasper">
-      <div>
-        <div class="page-title">Model Predictive Control</div>
-        <div class="page-meta">
-          <span class="page-path">mpc-tutorial.html</span>
-          <span class="tag tag-jasper">Jasper</span>
-        </div>
-      </div>
-      <span class="arrow">→</span>
-    </a>
-    <a class="page-link" href="x86-64-kernel-tutorial.html" data-search="x86 64 kernel internals memory context switches jasper">
-      <div>
-        <div class="page-title">x86-64 Kernel Internals</div>
-        <div class="page-meta">
-          <span class="page-path">x86-64-kernel-tutorial.html</span>
-          <span class="tag tag-jasper">Jasper</span>
-        </div>
-      </div>
-      <span class="arrow">→</span>
-    </a>
-    <a class="page-link" href="gripper_viewer.html" data-search="e2 gripper servo7 viewer stl jasper">
-      <div>
-        <div class="page-title">E2 Gripper</div>
-        <div class="page-meta">
-          <span class="page-path">gripper_viewer.html</span>
-          <span class="tag tag-jasper">Jasper</span>
-        </div>
-      </div>
-      <span class="arrow">→</span>
-    </a>
-    <a class="page-link" href="rl_study_quiz.html" data-search="reinforcement learning study quiz rl jasper">
-      <div>
-        <div class="page-title">Reinforcement Learning Study Quiz</div>
-        <div class="page-meta">
-          <span class="page-path">rl_study_quiz.html</span>
-          <span class="tag tag-jasper">Jasper</span>
-        </div>
-      </div>
-      <span class="arrow">→</span>
-    </a>
-    <a class="page-link" href="sac_guide.html" data-search="soft actor critic entropy q-values sac jasper">
-      <div>
-        <div class="page-title">Soft Actor-Critic: From Entropy to Q-Values</div>
-        <div class="page-meta">
-          <span class="page-path">sac_guide.html</span>
-          <span class="tag tag-jasper">Jasper</span>
-        </div>
-      </div>
-      <span class="arrow">→</span>
-    </a>
-    <a class="page-link" href="vae-elbo-explainer.html" data-search="vae elbo variational autoencoder first principles jasper">
-      <div>
-        <div class="page-title">VAEs &amp; The ELBO — From First Principles</div>
-        <div class="page-meta">
-          <span class="page-path">vae-elbo-explainer.html</span>
-          <span class="tag tag-jasper">Jasper</span>
-        </div>
-      </div>
-      <span class="arrow">→</span>
-    </a>
+  <!-- ── Podcasts tab ── -->
+  <div class="tab-panel" id="tab-podcasts">
+    <h2>Podcasts — 23 episodes</h2>
+    <div class="pod-search-wrap">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="pod-search" placeholder="Search episodes…" autocomplete="off" spellcheck="false">
+    </div>
+    <table class="pod-table">
+      <thead>
+        <tr>
+          <th>EP</th>
+          <th>Date</th>
+          <th>Title</th>
+          <th>Topics</th>
+          <th>Links</th>
+        </tr>
+      </thead>
+      <tbody id="pod-tbody">
+        <tr data-search="ep23 statistical thinking robot policy evaluation tri step statistics policy evaluation robotics research">
+          <td class="ep-num">EP 23</td>
+          <td class="ep-date-cell">Apr 02, 2026</td>
+          <td class="ep-title-cell">Statistical Thinking for Robot Policy Evaluation (TRI/STEP)</td>
+          <td><div class="ep-tags"><span class="ep-chip">Statistics</span><span class="ep-chip">Policy Eval</span><span class="ep-chip">Robotics</span><span class="ep-chip">Research</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/2026-04-02.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2026-04-02.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep22 daily insights december 23 braindump">
+          <td class="ep-num">EP 22</td>
+          <td class="ep-date-cell">Dec 23, 2025</td>
+          <td class="ep-title-cell">Daily Insights — December 23</td>
+          <td><div class="ep-tags"><span class="ep-chip">Braindump</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/2025-12-23.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-12-23.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep21 learnings session 1 braindump">
+          <td class="ep-num">EP 21</td>
+          <td class="ep-date-cell">Dec 19, 2025</td>
+          <td class="ep-title-cell">Learnings — Session 1</td>
+          <td><div class="ep-tags"><span class="ep-chip">Braindump</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/learnings_1.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-12-19.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep20 linux kernel issues debugging">
+          <td class="ep-num">EP 20</td>
+          <td class="ep-date-cell">Dec 16, 2025</td>
+          <td class="ep-title-cell">Linux Kernel Issues</td>
+          <td><div class="ep-tags"><span class="ep-chip">Linux</span><span class="ep-chip">Kernel</span><span class="ep-chip">Debugging</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/linux_kernel_issues.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-12-16.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep19 inference speed up performance ml">
+          <td class="ep-num">EP 19</td>
+          <td class="ep-date-cell">Dec 10, 2025</td>
+          <td class="ep-title-cell">Inference Speed-Up</td>
+          <td><div class="ep-tags"><span class="ep-chip">Inference</span><span class="ep-chip">Performance</span><span class="ep-chip">ML</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/inference_speed_up.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-12-10.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep18 multi head attention transformers deep learning">
+          <td class="ep-num">EP 18</td>
+          <td class="ep-date-cell">Dec 09, 2025</td>
+          <td class="ep-title-cell">Multi-Head Attention</td>
+          <td><div class="ep-tags"><span class="ep-chip">Transformers</span><span class="ep-chip">Attention</span><span class="ep-chip">Deep Learning</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/multi_head_attention.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-12-09.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep16 ceva deep dive architecture">
+          <td class="ep-num">EP 16</td>
+          <td class="ep-date-cell">Dec 08, 2025</td>
+          <td class="ep-title-cell">CEVA Deep Dive</td>
+          <td><div class="ep-tags"><span class="ep-chip">Architecture</span><span class="ep-chip">CEVA</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/ceva.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-12-08.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep15 log likelihood math training statistics">
+          <td class="ep-num">EP 15</td>
+          <td class="ep-date-cell">Dec 05, 2025</td>
+          <td class="ep-title-cell">Log Likelihood</td>
+          <td><div class="ep-tags"><span class="ep-chip">Math</span><span class="ep-chip">Training</span><span class="ep-chip">Statistics</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/log_likehood.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-12-05.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep14 daily insights december 3 braindump">
+          <td class="ep-num">EP 14</td>
+          <td class="ep-date-cell">Dec 03, 2025</td>
+          <td class="ep-title-cell">Daily Insights — December 3</td>
+          <td><div class="ep-tags"><span class="ep-chip">Braindump</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/2025-12-03.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-12-03.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep13 recap reinforcement learning rl ml">
+          <td class="ep-num">EP 13</td>
+          <td class="ep-date-cell">Nov 27, 2025</td>
+          <td class="ep-title-cell">Recap — Reinforcement Learning</td>
+          <td><div class="ep-tags"><span class="ep-chip">RL</span><span class="ep-chip">Recap</span><span class="ep-chip">ML</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/recap_rl.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-11-27.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep12 daily insights november 26 braindump">
+          <td class="ep-num">EP 12</td>
+          <td class="ep-date-cell">Nov 26, 2025</td>
+          <td class="ep-title-cell">Daily Insights — November 26</td>
+          <td><div class="ep-tags"><span class="ep-chip">Braindump</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/2025-11-26.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-11-26.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep11 self improving models ml research">
+          <td class="ep-num">EP 11</td>
+          <td class="ep-date-cell">Nov 26, 2025</td>
+          <td class="ep-title-cell">Self-Improving Models</td>
+          <td><div class="ep-tags"><span class="ep-chip">Self-Improvement</span><span class="ep-chip">ML</span><span class="ep-chip">Research</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/self_imporoving_models.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-11-26.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep10 pi0.6 reinforcement learning deep dive ppo reward models robotics rl">
+          <td class="ep-num">EP 10</td>
+          <td class="ep-date-cell">Nov 25, 2025</td>
+          <td class="ep-title-cell">π0.6 Reinforcement Learning Deep Dive</td>
+          <td><div class="ep-tags"><span class="ep-chip">PPO</span><span class="ep-chip">Reward Models</span><span class="ep-chip">Robotics</span><span class="ep-chip">RL</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/pi06_follow_up.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-11-25.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep9 atlas data flow queue architecture adam ros">
+          <td class="ep-num">EP 9</td>
+          <td class="ep-date-cell">Nov 20, 2025</td>
+          <td class="ep-title-cell">Atlas Data Flow and Queue Architecture</td>
+          <td><div class="ep-tags"><span class="ep-chip">Atlas</span><span class="ep-chip">Queues</span><span class="ep-chip">Adam</span><span class="ep-chip">ROS</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/2025-11-20.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-11-20.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep8 lerobot integration bug hunting pyarrow monkey-patching ros">
+          <td class="ep-num">EP 8</td>
+          <td class="ep-date-cell">Nov 19, 2025</td>
+          <td class="ep-title-cell">LeRobot Integration and Bug Hunting</td>
+          <td><div class="ep-tags"><span class="ep-chip">LeRobot</span><span class="ep-chip">PyArrow</span><span class="ep-chip">ROS</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/2025-11-19.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-11-19.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep7 multiprocessing queues robot safety shared memory atlas">
+          <td class="ep-num">EP 7</td>
+          <td class="ep-date-cell">Nov 18, 2025</td>
+          <td class="ep-title-cell">Multiprocessing Queues and Robot Safety</td>
+          <td><div class="ep-tags"><span class="ep-chip">Multiprocessing</span><span class="ep-chip">Shared Memory</span><span class="ep-chip">Safety</span><span class="ep-chip">Atlas</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/2025-11-18.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="2025-11-18.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep6 robot mastery recap training pi0.6 vla flow matching">
+          <td class="ep-num">EP 6</td>
+          <td class="ep-date-cell">Nov 18, 2025</td>
+          <td class="ep-title-cell">Robot Mastery Through RECAP Training</td>
+          <td><div class="ep-tags"><span class="ep-chip">π0.6</span><span class="ep-chip">VLA</span><span class="ep-chip">Flow Matching</span><span class="ep-chip">RECAP</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/Robot_Mastery_Through_RECAP_Training.m4a">▶ Listen</a></td>
+        </tr>
+        <tr data-search="ep5 threading myths dds reality ros2 fast-dds">
+          <td class="ep-num">EP 5</td>
+          <td class="ep-date-cell">Nov 13, 2025</td>
+          <td class="ep-title-cell">Threading Myths and DDS Reality</td>
+          <td><div class="ep-tags"><span class="ep-chip">ROS2</span><span class="ep-chip">DDS</span><span class="ep-chip">Threading</span><span class="ep-chip">Fast-DDS</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/13-11-2025.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="13-11-2025.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep4 foxglove conflicts robotics clean state ros2 process management dds">
+          <td class="ep-num">EP 4</td>
+          <td class="ep-date-cell">Nov 14, 2025</td>
+          <td class="ep-title-cell">Foxglove Conflicts Demand Robotics Clean State</td>
+          <td><div class="ep-tags"><span class="ep-chip">Foxglove</span><span class="ep-chip">ROS2</span><span class="ep-chip">Process Mgmt</span><span class="ep-chip">DDS</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/Foxglove_Conflicts_Demand_Robotics_Clean_State.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="12-11-2025.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep3 robot reliability secrets ros2 qos docker debugging zombie nodes">
+          <td class="ep-num">EP 3</td>
+          <td class="ep-date-cell">Nov 12, 2025</td>
+          <td class="ep-title-cell">Robot Reliability Secrets</td>
+          <td><div class="ep-tags"><span class="ep-chip">ROS2</span><span class="ep-chip">QoS</span><span class="ep-chip">Docker</span><span class="ep-chip">Debugging</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/Robot_Reliability_Secrets__How_Engineers_Fixed_Zombie_Nodes,_Gh.m4a">▶ Listen</a></td>
+        </tr>
+        <tr data-search="ep2 inside robot engine atlas mcap architecture distributed">
+          <td class="ep-num">EP 2</td>
+          <td class="ep-date-cell">Nov 8, 2025</td>
+          <td class="ep-title-cell">Inside the Robot Engine</td>
+          <td><div class="ep-tags"><span class="ep-chip">Atlas</span><span class="ep-chip">MCAP</span><span class="ep-chip">Architecture</span><span class="ep-chip">Distributed</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/Inside_the_Robot_Engine__Atlas,_MCAP,_and_the_Architectures_Pow.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="07-11-2025.md">Blueprint →</a></td>
+        </tr>
+        <tr data-search="ep1 devcontainer abstraction kernel bedrock docker build systems">
+          <td class="ep-num">EP 1</td>
+          <td class="ep-date-cell">Nov 7, 2025</td>
+          <td class="ep-title-cell">From DevContainer Abstraction to Kernel Bedrock</td>
+          <td><div class="ep-tags"><span class="ep-chip">DevContainers</span><span class="ep-chip">Docker</span><span class="ep-chip">Kernel</span><span class="ep-chip">Build Systems</span></div></td>
+          <td class="ep-actions"><a class="ep-listen-btn" href="mp4/From_DevContainer_Abstraction_to_Kernel_Bedrock__Unpacking_the_.m4a">▶ Listen</a><a class="ep-blueprint-btn" href="06-11-2025.md">Blueprint →</a></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="pod-no-results" id="pod-no-results">No episodes match your search.</div>
   </div>
-  <div class="no-results" id="no-results">No pages match your search.</div>
+
 </main>
 
 <footer>
@@ -399,9 +752,7 @@
   const authBtn = document.getElementById('auth-btn');
   const authError = document.getElementById('auth-error');
 
-  if (sessionStorage.getItem('auth') === PASSWORD_HASH) {
-    overlay.remove();
-  }
+  if (sessionStorage.getItem('auth') === PASSWORD_HASH) overlay.remove();
 
   async function tryUnlock() {
     const hash = await sha256(authInput.value);
@@ -419,21 +770,46 @@
   authBtn.addEventListener('click', tryUnlock);
   authInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
 
-  // ── Search ──
-  const input = document.getElementById('search');
-  const links = document.querySelectorAll('.page-link');
+  // ── Tabs ──
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ── Pages search ──
+  const searchInput = document.getElementById('search');
+  const pageLinks = document.querySelectorAll('.page-link');
   const noResults = document.getElementById('no-results');
 
-  input.addEventListener('input', () => {
-    const q = input.value.trim().toLowerCase();
+  searchInput.addEventListener('input', () => {
+    const q = searchInput.value.trim().toLowerCase();
     let visible = 0;
-    links.forEach(link => {
-      const haystack = (link.dataset.search || '') + ' ' + link.textContent.toLowerCase();
-      const match = !q || haystack.includes(q);
+    pageLinks.forEach(link => {
+      const match = !q || ((link.dataset.search || '') + ' ' + link.textContent.toLowerCase()).includes(q);
       link.hidden = !match;
       if (match) visible++;
     });
     noResults.style.display = visible === 0 ? 'block' : 'none';
+  });
+
+  // ── Podcast search ──
+  const podSearch = document.getElementById('pod-search');
+  const podRows = document.querySelectorAll('#pod-tbody tr');
+  const podNoResults = document.getElementById('pod-no-results');
+
+  podSearch.addEventListener('input', () => {
+    const q = podSearch.value.trim().toLowerCase();
+    let visible = 0;
+    podRows.forEach(row => {
+      const match = !q || ((row.dataset.search || '') + ' ' + row.textContent.toLowerCase()).includes(q);
+      row.hidden = !match;
+      if (match) visible++;
+    });
+    podNoResults.style.display = visible === 0 ? 'block' : 'none';
   });
 </script>
 
