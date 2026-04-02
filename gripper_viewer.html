@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>E2 Gripper · Servo7</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0B0D12; overflow:hidden; font-family:'IBM Plex Mono',monospace; }
+  #canvas { display:block; cursor:grab; }
+  #canvas:active { cursor:grabbing; }
+  .hud { position:absolute; inset:0; pointer-events:none; }
+  .corner { position:absolute; width:22px; height:22px; border-color:#253040; border-style:solid; }
+  .c-tl{top:16px;left:16px;border-width:1px 0 0 1px}.c-tr{top:16px;right:16px;border-width:1px 1px 0 0}
+  .c-bl{bottom:16px;left:16px;border-width:0 0 1px 1px}.c-br{bottom:16px;right:16px;border-width:0 1px 1px 0}
+  .title-block { position:absolute; top:28px; left:28px; }
+  .brand { font-size:9px; letter-spacing:.35em; color:#344558; text-transform:uppercase; }
+  .model-name { font-size:22px; font-weight:500; color:#C8D2DC; letter-spacing:.05em; margin-top:4px; }
+  .model-sub { font-size:8.5px; letter-spacing:.22em; color:#253040; margin-top:5px; text-transform:uppercase; }
+  .axis-legend { position:absolute; top:28px; right:28px; display:flex; flex-direction:column; gap:5px; align-items:flex-end; }
+  .axis-row { display:flex; align-items:center; gap:7px; font-size:8px; letter-spacing:.2em; color:#2E3D50; }
+  .axis-dot { width:6px; height:6px; border-radius:50%; }
+  .joints-block { position:absolute; bottom:30px; left:28px; display:flex; flex-direction:column; gap:8px; }
+  .joint-row { display:flex; align-items:center; gap:9px; }
+  .j-label { font-size:8px; letter-spacing:.18em; color:#344558; width:92px; text-transform:uppercase; }
+  .j-track { width:78px; height:2px; background:#131820; position:relative; overflow:hidden; }
+  .j-fill { position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg,#1E5A96,#4DA0E8); width:0%; transition:width .06s; }
+  .j-val { font-size:8px; color:#3A5A78; width:54px; text-align:right; }
+  .ctrl-block { position:absolute; bottom:30px; right:28px; display:flex; flex-direction:column; gap:7px; align-items:flex-end; pointer-events:all; }
+  .ctrl-heading { font-size:8px; letter-spacing:.28em; color:#344558; text-transform:uppercase; }
+  .ctrl-row { display:flex; align-items:center; gap:9px; }
+  .ctrl-tick { font-size:8px; color:#1E2C3C; width:34px; }
+  .ctrl-tick.right { text-align:right; }
+  input[type=range]{-webkit-appearance:none;appearance:none;width:140px;height:2px;background:#131820;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:#4DA0E8;cursor:pointer;box-shadow:0 0 10px rgba(77,160,232,.55)}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:#4DA0E8;cursor:pointer;border:none}
+  .ctrl-val { font-size:9px; color:#4DA0E8; margin-top:2px; text-align:right; }
+  .status { position:absolute; bottom:9px; left:50%; transform:translateX(-50%); font-size:7px; color:#1A2432; letter-spacing:.22em; white-space:nowrap; }
+  .dl-btn { margin-top:6px; background:none; border:1px solid #253A52; color:#4DA0E8; font-family:'IBM Plex Mono',monospace; font-size:8px; letter-spacing:.22em; text-transform:uppercase; padding:6px 12px; cursor:pointer; transition:border-color .2s, color .2s; }
+  .dl-btn:hover { border-color:#4DA0E8; color:#7BBEF0; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div class="hud">
+  <div class="corner c-tl"></div><div class="corner c-tr"></div>
+  <div class="corner c-bl"></div><div class="corner c-br"></div>
+  <div class="title-block">
+    <div class="brand">Servo7 Robotics · YC W26</div>
+    <div class="model-name">E2 Gripper</div>
+    <div class="model-sub">VLA · MuJoCo Assembly · Vision Module</div>
+  </div>
+  <div class="axis-legend">
+    <div class="axis-row"><span>+X RIGHT</span><div class="axis-dot" style="background:#8B2C2C"></div></div>
+    <div class="axis-row"><span>+Y UP</span><div class="axis-dot" style="background:#2C8B2C"></div></div>
+    <div class="axis-row"><span>+Z FWD</span><div class="axis-dot" style="background:#2C5A8B"></div></div>
+  </div>
+  <div class="joints-block">
+    <div class="joint-row"><span class="j-label">tooth_left</span><div class="j-track"><div class="j-fill" id="bar-l"></div></div><span class="j-val" id="val-l">0.00 mm</span></div>
+    <div class="joint-row"><span class="j-label">tooth_right</span><div class="j-track"><div class="j-fill" id="bar-r"></div></div><span class="j-val" id="val-r">0.00 mm</span></div>
+  </div>
+  <div class="ctrl-block">
+    <div class="ctrl-heading">Gripper Extension</div>
+    <div class="ctrl-row">
+      <span class="ctrl-tick">0 mm</span>
+      <input type="range" id="slider" min="0" max="100" value="0">
+      <span class="ctrl-tick right">15 mm</span>
+    </div>
+    <div class="ctrl-val" id="ctrl-val">ctrl: 0.0000 m</div>
+    <button class="dl-btn" id="dl-btn">↓ Export STL</button>
+  </div>
+  <div class="status">DRAG TO ORBIT · SCROLL TO ZOOM · TOUCH SUPPORTED</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ================================================================
+// MuJoCo → Three.js:  mj(x,y,z) → tj(x, z, y)
+// BoxGeometry half-extents mj(hx,hy,hz) → THREE.BoxGeometry(2hx, 2hz, 2hy)
+// ================================================================
+
+const canvas   = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled   = true;
+renderer.shadowMap.type      = THREE.PCFSoftShadowMap;
+renderer.toneMapping         = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.5;
+renderer.localClippingEnabled = true;
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x0B0D12);
+
+const camera = new THREE.PerspectiveCamera(40, 1, 0.001, 20);
+
+function resize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Lighting ─────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0xC0D0E0, 0.75));
+
+const sun = new THREE.DirectionalLight(0xFFF5E8, 3.8);
+sun.position.set(0.6, 1.0, 0.8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.camera.left = sun.shadow.camera.bottom = -0.4;
+sun.shadow.camera.right = sun.shadow.camera.top   =  0.4;
+sun.shadow.camera.near  = 0.01;
+sun.shadow.camera.far   = 2.0;
+sun.shadow.bias = -0.001;
+scene.add(sun);
+
+const fillLight = new THREE.DirectionalLight(0x8AACCC, 1.4); fillLight.position.set(-0.8, 0.3, 0.4); scene.add(fillLight);
+const rimLight  = new THREE.DirectionalLight(0x5070BB, 0.9); rimLight.position.set(0.1, -0.4, -0.9);  scene.add(rimLight);
+const topLight  = new THREE.DirectionalLight(0xDDEEFF, 0.8); topLight.position.set(0, 1, 0);           scene.add(topLight);
+
+const camPt = new THREE.PointLight(0x1A3A88, 0.5, 0.12);
+camPt.position.set(0, -0.028, 0.016);
+scene.add(camPt);
+
+// ── Clipping plane — hides teeth above housing bottom ────────────
+// Housing bottom in TJ Y = -0.046
+// Plane normal (0,-1,0), constant 0.046 → clips where -y + 0.046 < 0 → y > 0.046... hmm
+// THREE.Plane(n,c): clips where n.dot(p)+c < 0
+// We want: hide everything where y > -0.046, i.e. y + 0.046 > 0
+// → show only where n.dot(p)+c >= 0 → flip: hide where y+0.046 > 0
+// Plane(0,-1,0, -0.046): dot = -y, const = -0.046 → clips where -y-0.046 < 0 → y > -0.046 ✓
+const CLIP_Y = -0.046;
+const toothClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), CLIP_Y);
+
+// ── Materials ────────────────────────────────────────────────────
+function mkMat(color, metalness, roughness, extra) {
+  return Object.assign(new THREE.MeshStandardMaterial({ color, metalness, roughness }), extra || {});
+}
+
+const MAT = {
+  flange:     mkMat(0xD2D9E1, 0.95, 0.08),
+  flangeDark: mkMat(0x161820, 0.85, 0.20),
+  neck:       mkMat(0xA0A8B2, 0.88, 0.15),
+  housing:    mkMat(0x6E7480, 0.72, 0.30),
+  frame:      mkMat(0x555C68, 0.65, 0.42),
+  camera:     mkMat(0x05070D, 0.10, 0.02),
+  camGlow:    mkMat(0x08142A, 0.10, 0.04, {
+                emissive: new THREE.Color(0x0A2040),
+                emissiveIntensity: 2.0,
+              }),
+  rimDetail:  mkMat(0x3A4050, 0.75, 0.38),
+  boltDark:   mkMat(0x18191E, 0.90, 0.16),
+  boltShank:  mkMat(0x8890A0, 0.94, 0.10),
+  tooth:      mkMat(0x78808E, 0.68, 0.38, {
+                clippingPlanes: [toothClip],
+                clipShadows: true,
+                side: THREE.DoubleSide,
+              }),
+};
+
+// ── Core mesh builder ─────────────────────────────────────────────
+// Adds a single solid mesh to parent. No overlapping geometry.
+function add(parent, geo, mat, x, y, z, rx, ry, rz) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  if (rx !== undefined) m.rotation.set(rx, ry||0, rz||0);
+  m.castShadow = m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+
+// Solid box at TJ position (px,py,pz), full dimensions w×h×d
+function solidBox(parent, mat, w, h, d, px, py, pz) {
+  return add(parent, new THREE.BoxGeometry(w, h, d), mat, px, py, pz);
+}
+
+// ── Hex bolt — single group, axis TJ-Y ───────────────────────────
+function hexBolt(parent, px, py, pz, rHead, hHead, rShank, hShank, euler) {
+  const g = new THREE.Group();
+  g.position.set(px, py, pz);
+  if (euler) g.rotation.copy(euler);
+
+  // Hex head (6-sided)
+  const head = new THREE.Mesh(new THREE.CylinderGeometry(rHead, rHead, hHead, 6), MAT.boltDark);
+  head.position.y = hShank + hHead * 0.5;
+  head.castShadow = true;
+  g.add(head);
+
+  // Allen socket recess (hex, inset from top)
+  const sock = new THREE.Mesh(new THREE.CylinderGeometry(rHead*0.38, rHead*0.38, hHead*0.6, 6), MAT.flangeDark);
+  sock.position.y = hShank + hHead * 0.85;
+  g.add(sock);
+
+  // Shank
+  const shank = new THREE.Mesh(new THREE.CylinderGeometry(rShank, rShank, hShank*2, 16), MAT.boltShank);
+  shank.castShadow = true;
+  g.add(shank);
+
+  parent.add(g);
+  return g;
+}
+
+// ── Tapered finger — single clean trapezoid prism ─────────────────
+// wTop/wBot = full X width at y=0/y=-h. Depth D along TJ-Z.
+// Per-face normals → crisp flat shading on each face.
+function taperFinger(wTop, wBot, h, d, mat) {
+  const hw0 = wTop/2, hw1 = wBot/2, hd = d/2;
+
+  const pos = [], nor = [];
+
+  function quad(v0, v1, v2, v3, n) {
+    // two triangles: (v0,v1,v2) and (v0,v2,v3)
+    for (const v of [v0,v1,v2, v0,v2,v3]) {
+      pos.push(...v);
+      nor.push(...n);
+    }
+  }
+
+  // Compute taper-face outward normal
+  // Left face verts go: top-left-front→top-left-back→bot-left-back→bot-left-front
+  // Edge along taper: (hw0-hw1, -h, 0) normalised cross (0,0,1) → (-h, -(hw0-hw1), 0) norm
+  const tapDx = hw0 - hw1;
+  const tl = Math.hypot(h, tapDx);
+  const nLeft  = [-h/tl, -tapDx/tl, 0];
+  const nRight = [ h/tl, -tapDx/tl, 0];
+
+  quad([-hw0,0,hd],  [-hw0,0,-hd],  [ hw0,0,-hd],  [ hw0,0,hd],   [0,1,0]);   // top
+  quad([-hw1,-h,hd], [ hw1,-h,hd],  [ hw1,-h,-hd], [-hw1,-h,-hd], [0,-1,0]);  // bottom
+  quad([-hw0,0,hd],  [ hw0,0,hd],   [ hw1,-h,hd],  [-hw1,-h,hd],  [0,0,1]);   // front
+  quad([ hw0,0,-hd], [-hw0,0,-hd],  [-hw1,-h,-hd], [ hw1,-h,-hd], [0,0,-1]);  // back
+  quad([-hw0,0,-hd], [-hw0,0,hd],   [-hw1,-h,hd],  [-hw1,-h,-hd], nLeft);     // left taper
+  quad([ hw0,0,hd],  [ hw0,0,-hd],  [ hw1,-h,-hd], [ hw1,-h,hd],  nRight);    // right taper
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal',   new THREE.Float32BufferAttribute(nor, 3));
+
+  const m = new THREE.Mesh(geo, mat);
+  m.castShadow = m.receiveShadow = true;
+  return m;
+}
+
+// ================================================================
+// GRIPPER ASSEMBLY
+// ================================================================
+const gripper = new THREE.Group();
+scene.add(gripper);
+
+// All TJ positions derived from MuJoCo via mj(x,y,z)→tj(x, z, y)
+// MuJoCo body "gripper" is at world pos (0, 0.388, 1.25) — we ignore that,
+// everything is in gripper-local space centred at origin.
+
+// ── Adapter neck ──────────────────────────────────────────────────
+// mj pos(0,-0.006,-0.028) size(hx=0.045,hy=0.006,hz=0.018)
+// tj pos(0,-0.028,-0.006) W=0.090 H=0.036 D=0.012
+solidBox(gripper, MAT.neck, 0.090, 0.036, 0.012,  0, -0.028, -0.006);
+
+// ── Flange disc (Ø80mm × 9mm) ────────────────────────────────────
+// mj pos(0,-0.0165,-0.028) → tj(0,-0.028,-0.0165), axis TJ-Z (mj euler 90 0 0)
+add(gripper, new THREE.CylinderGeometry(0.040, 0.040, 0.009, 64), MAT.flange,
+    0, -0.028, -0.0165,  Math.PI/2);
+// Dark central hub
+add(gripper, new THREE.CylinderGeometry(0.012, 0.012, 0.010, 48), MAT.flangeDark,
+    0, -0.028, -0.0165,  Math.PI/2);
+// Decorative chamfer rings on both faces
+for (const dz of [-0.0048, 0.0048]) {
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.033, 0.0008, 8, 64), MAT.flangeDark);
+  ring.position.set(0, -0.028, -0.0165 + dz);
+  ring.rotation.x = Math.PI/2;
+  gripper.add(ring);
+}
+
+// 4× M5 bolts on Ø50mm bolt circle — axis along -TJ-Z into flange
+const bEZ = new THREE.Euler(-Math.PI/2, 0, 0);
+for (const [mjx, mjy, mjz] of [
+  [ 0.025, -0.0165, -0.028], [-0.025, -0.0165, -0.028],
+  [ 0.000, -0.0165, -0.003], [ 0.000, -0.0165, -0.053],
+]) hexBolt(gripper, mjx, mjz+0.006, mjy,  0.0040, 0.0030, 0.0021, 0.003, bEZ);
+
+// ── Sensor housing (160×56×36 mm) ────────────────────────────────
+// mj pos(0,0.028,-0.028) size(0.080,0.028,0.018)
+// tj pos(0,-0.028,0.028)  W=0.160 H=0.036 D=0.056
+solidBox(gripper, MAT.housing, 0.160, 0.036, 0.056,  0, -0.028, 0.028);
+
+// Engraved panel recess on housing front face (+TJ-Z face)
+solidBox(gripper, mkMat(0x5E6472, 0.62, 0.50), 0.090, 0.016, 0.0004,
+         -0.020, -0.028+0.001, 0.028+0.028+0.0002);
+
+// 4× M2 screws on housing top face — no euler (axis TJ-Y = straight up/down)
+// Head sits proud of top face, shank goes down into housing body
+for (const [x,z] of [[-0.065,0.012],[0.065,0.012],[-0.065,0.044],[0.065,0.044]])
+  hexBolt(gripper, x, -0.016, z,  0.0024, 0.0018, 0.0011, 0.006);
+
+// ── Back wall (160×12×74 mm) ──────────────────────────────────────
+// mj pos(0,0.006,-0.083) size(0.080,0.006,0.037)
+// tj pos(0,-0.083,0.006)  W=0.160 H=0.074 D=0.012
+solidBox(gripper, MAT.frame, 0.160, 0.074, 0.012,  0, -0.083, 0.006);
+
+// Side-wall bolts — head proud of wall face, shank fully inside body
+// Back wall X half-width = 0.080. hShank=0.010 → group at ±(0.080-0.010)=±0.070
+// After rotation local+Y→world±X: head at ±(0.070+0.010+0.0013)=±0.0813 (just outside)
+const bEX_L = new THREE.Euler(0, 0,  Math.PI/2);  // local+Y → world -X (left side)
+const bEX_R = new THREE.Euler(0, 0, -Math.PI/2);  // local+Y → world +X (right side)
+for (const by of [-0.065, -0.100]) {
+  hexBolt(gripper, -0.070, by, 0.006,  0.0036, 0.0026, 0.0019, 0.010, bEX_L);
+  hexBolt(gripper,  0.070, by, 0.006,  0.0036, 0.0026, 0.0019, 0.010, bEX_R);
+}
+
+// ── Camera windows ────────────────────────────────────────────────
+// mj pos(±0.032,0.011,-0.083) → tj(±0.032,-0.083,0.011)
+for (const sx of [-0.032, 0.032]) {
+  // Machined surround frame
+  solidBox(gripper, MAT.rimDetail, 0.048, 0.029, 0.0018,  sx, -0.083, 0.012);
+  // Dark glass
+  solidBox(gripper, MAT.camera,    0.043, 0.025, 0.0016,  sx, -0.083, 0.0124);
+  // Emissive inner glow
+  solidBox(gripper, MAT.camGlow,   0.037, 0.020, 0.0008,  sx, -0.083, 0.0127);
+}
+
+// ── Lower jaw lip (160×30×5 mm) ───────────────────────────────────
+// mj pos(0,0.027,-0.118) size(0.080,0.015,0.0025)
+// tj pos(0,-0.118,0.027)  W=0.160 H=0.005 D=0.030
+solidBox(gripper, MAT.frame, 0.160, 0.005, 0.030,  0, -0.118, 0.027);
+
+// ── SLIDING TEETH ─────────────────────────────────────────────────
+//
+// Physics:
+//   Housing bottom face is at TJ y = -(0.028 - 0.018) = -0.010
+//   Wait — let's derive from MuJoCo coords:
+//   Housing mj pos.z = -0.028, half-height hz=0.018 → bottom mj-Z = -0.028-0.018 = -0.046
+//   In TJ: y = mj-Z = -0.046  ← that is CLIP_Y
+//
+//   Finger height = 0.030m (30mm), full slot depth.
+//   At 0mm extension: finger sits entirely above CLIP_Y (hidden inside housing)
+//   At 15mm extension: finger tip is 15mm below CLIP_Y
+//
+//   Strategy: tooth group y starts at CLIP_Y - fingerHeight = -0.046 - 0.030 = -0.076 (retracted)
+//   At full extension:  y = CLIP_Y - fingerHeight + 0.015 = -0.076 + 0.015 = -0.061 → 15mm visible ✓
+//
+// Actually simpler: keep finger LOCAL y=0 at finger TOP.
+//   Group y = CLIP_Y - 0 when retracted → all finger below CLIP_Y → clipped (hidden) ✓
+//   Wait, clip hides y > CLIP_Y. Finger top = group.y + 0. If group.y = CLIP_Y, top is AT clip → barely visible.
+//   For fully hidden: group.y + 0 < CLIP_Y, i.e. group.y < CLIP_Y.
+//   Finger top in world = group.y. Clip hides world y > CLIP_Y.
+//   For fully retracted: group.y must be <= CLIP_Y → set group.y = CLIP_Y (finger top flush with housing bottom, finger hangs below).
+//   But clipping: world y > CLIP_Y is clipped. If group.y = CLIP_Y, finger top is exactly at clip → nothing shown. ✓
+//   For full extension: finger should protrude 15mm → group.y = CLIP_Y + 0.015 → finger top 15mm above clip → those 15mm CLIPPED, remaining 15mm (30mm - 15mm) show below. Wait, finger hangs DOWN from group.y.
+//
+//   Let me re-think. Finger hangs DOWN: top of finger = group.y, tip = group.y - fingerH.
+//   Clip hides where world_y > CLIP_Y.
+//   For fully hidden (0mm): group.y <= CLIP_Y → entire finger is AT or BELOW clip → no clipping, finger shows?!
+//
+//   Ah wait. The clip plane is set so that it HIDES the area INSIDE the housing.
+//   Housing bottom face = CLIP_Y = -0.046.
+//   Above -0.046 = inside housing = hidden. Below -0.046 = outside = visible.
+//
+//   Plane: THREE.Plane(normal, constant). Clips (hides) fragments where: n·p + c < 0.
+//   We want: HIDE where y > -0.046, i.e. y + 0.046 > 0 → multiply by -1: -y - 0.046 < 0
+//   So: n=(0,-1,0), c=-0.046. Clips where: 0*x + (-1)*y + (-0.046) < 0 → -y < 0.046 → y > -0.046 ✓
+//
+//   Good. So anything with world_y > -0.046 is hidden (inside housing).
+//   Anything with world_y < -0.046 is visible (outside housing / hanging below).
+//
+//   Finger top in world = group.y + 0 (since finger top is at local y=0).
+//   Finger tip in world = group.y - fingerH.
+//
+//   0mm extension (fully retracted):
+//     Finger should be fully hidden → entire finger above -0.046
+//     → group.y > -0.046, and group.y - fingerH > -0.046 → group.y > -0.046 + fingerH
+//     fingerH = 0.030 → group.y > -0.016. Set group.y = -0.010 (just inside housing top).
+//
+//   15mm extension (fully extended):
+//     15mm of finger should be visible below -0.046.
+//     Visible portion: from -0.046 downward to finger tip.
+//     Finger tip = group.y - fingerH. Visible portion = -0.046 - (group.y - fingerH) = fingerH - 0.046 - group.y
+//     Set visible = 0.015 → group.y = fingerH - 0.046 - 0.015 = 0.030 - 0.061 = -0.031
+//     But -0.031 > -0.046 → finger top at -0.031 is above clip → only portion below -0.046 is visible.
+//     Visible length = -0.046 - (-0.031 - 0.030) = -0.046 - (-0.061) = 0.015 ✓
+//
+//   So: group.y goes from -0.010 (retracted) to -0.031 (extended 15mm).
+//   Travel = 0.021m downward.
+//
+//   Actually let me just parametrize cleanly:
+//   ext = extension in meters [0, 0.015]
+//   group.y = CLIP_Y + fingerH - ext - fingerH = CLIP_Y - ext
+//   At ext=0: group.y = -0.046 → finger top AT clip → finger fully hidden (just at boundary, invisible) ✓
+//   At ext=0.015: group.y = -0.046 - 0.015 = -0.061 → finger top at -0.061 < -0.046 → all above is clipped... wait.
+//
+//   Hmm. group.y = -0.061 means finger top (local y=0) is at world -0.061, BELOW CLIP_Y (-0.046).
+//   Clip hides y > -0.046. Finger spans from -0.061 (top) to -0.061-0.030=-0.091 (tip).
+//   All of finger is BELOW -0.046 → nothing clipped → entire finger visible → that's 30mm visible, not 15mm!
+//
+//   I need to think about this differently. The tooth STARTS inside the housing (above clip) and SLIDES DOWN.
+//   The top of the slot is at some point inside the housing. The clip plane cuts at the housing bottom.
+//
+//   Let fingerH = 0.040 (big enough so when retracted, top is well inside housing).
+//   At ext=0 (retracted):   group.y = -0.046 + 0.040 = -0.006  (finger top at -0.006, tip at -0.046)
+//     Finger spans: -0.006 (top) to -0.046 (tip). Clip hides y > -0.046 → entire finger is above or AT -0.046 → HIDDEN ✓
+//   At ext=0.015 (extended): group.y = -0.006 - 0.015 = -0.021 (moved down 15mm)
+//     Finger spans: -0.021 (top) to -0.021-0.040=-0.061 (tip).
+//     Clip hides y > -0.046. Finger portion y > -0.046 (from top -0.021 to -0.046, that's 0.025m) is hidden.
+//     Finger portion y < -0.046 (from -0.046 to -0.061, that's 0.015m) is visible ✓
+
+const FINGER_H =  0.040; // must be > max visible extension (0.015) to allow full retraction
+const RETRACTED_Y = CLIP_Y + FINGER_H; // group.y when fully retracted = -0.006
+
+function makeTooth(signX) {
+  const grp = new THREE.Group();
+  // TJ position: x=±0.045, y=RETRACTED_Y, z=0.038 (mj-Y 0.040 → TJ-Z)
+  grp.position.set(signX * 0.045, RETRACTED_Y, 0.052);
+
+  // Single tapered finger: 28mm wide top, 12mm wide tip, fingerH tall, 7mm deep
+  const finger = taperFinger(0.028, 0.012, FINGER_H, 0.007, MAT.tooth);
+  // Finger local: top at y=0, tip at y=-FINGER_H
+  grp.add(finger);
+
+  // M3 retention bolt visible on the front face of finger near top
+  const bh = new THREE.Mesh(new THREE.CylinderGeometry(0.0028, 0.0028, 0.0016, 6), MAT.boltDark);
+  bh.rotation.x = -Math.PI/2;
+  bh.position.set(0, -0.006, 0.0042);
+  const bs = new THREE.Mesh(new THREE.CylinderGeometry(0.0011, 0.0011, 0.0013, 6), MAT.flangeDark);
+  bs.rotation.x = -Math.PI/2;
+  bs.position.set(0, -0.006, 0.0052);
+  // These bolt meshes also need clipping
+  bh.material = new THREE.MeshStandardMaterial({ color:0x18191E, metalness:0.90, roughness:0.16, clippingPlanes:[toothClip], side:THREE.DoubleSide });
+  bs.material = new THREE.MeshStandardMaterial({ color:0x161820, metalness:0.85, roughness:0.20, clippingPlanes:[toothClip], side:THREE.DoubleSide });
+  grp.add(bh, bs);
+
+  return grp;
+}
+
+const toothL = makeTooth(-1);
+const toothR = makeTooth( 1);
+gripper.add(toothL, toothR);
+
+// ── Ground ────────────────────────────────────────────────────────
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(3, 3),
+  new THREE.MeshStandardMaterial({ color: 0x0C0F14, metalness: 0, roughness: 0.98 }));
+floor.rotation.x = -Math.PI/2;
+floor.position.y = -0.175;
+floor.receiveShadow = true;
+scene.add(floor);
+const grid = new THREE.GridHelper(1.4, 28, 0x111820, 0x0F1520);
+grid.position.y = -0.174;
+scene.add(grid);
+
+// ── Camera orbit ──────────────────────────────────────────────────
+const TARGET = new THREE.Vector3(0, -0.068, 0.020);
+let sph = { theta: -0.50, phi: 1.08, r: 0.34 };
+
+function updateCam() {
+  camera.position.set(
+    TARGET.x + sph.r * Math.sin(sph.phi) * Math.sin(sph.theta),
+    TARGET.y + sph.r * Math.cos(sph.phi),
+    TARGET.z + sph.r * Math.sin(sph.phi) * Math.cos(sph.theta)
+  );
+  camera.lookAt(TARGET);
+}
+updateCam();
+
+let drag = false, prev = {}, tc = [];
+canvas.addEventListener('mousedown', e => { drag=true; prev={x:e.clientX,y:e.clientY}; });
+window.addEventListener('mouseup',   () => drag=false);
+window.addEventListener('mousemove', e => {
+  if (!drag) return;
+  sph.theta -= (e.clientX - prev.x) * 0.007;
+  sph.phi    = Math.max(0.12, Math.min(Math.PI-0.12, sph.phi - (e.clientY - prev.y) * 0.007));
+  prev = {x:e.clientX, y:e.clientY};
+  updateCam();
+});
+canvas.addEventListener('wheel', e => {
+  sph.r = Math.max(0.08, Math.min(2.5, sph.r * (1 + e.deltaY*0.001)));
+  updateCam(); e.preventDefault();
+}, {passive:false});
+canvas.addEventListener('touchstart', e=>{ tc=[...e.touches]; e.preventDefault(); },{passive:false});
+canvas.addEventListener('touchmove', e=>{
+  if (e.touches.length===1 && tc.length>=1) {
+    sph.theta -= (e.touches[0].clientX - tc[0].clientX) * 0.007;
+    sph.phi = Math.max(0.12, Math.min(Math.PI-0.12, sph.phi - (e.touches[0].clientY - tc[0].clientY)*0.007));
+    updateCam();
+  } else if (e.touches.length===2 && tc.length>=2) {
+    const d0 = Math.hypot(tc[0].clientX-tc[1].clientX, tc[0].clientY-tc[1].clientY);
+    const d1 = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+    sph.r = Math.max(0.08, Math.min(2.5, sph.r * d0/d1));
+    updateCam();
+  }
+  tc=[...e.touches]; e.preventDefault();
+},{passive:false});
+
+// ── Slider ────────────────────────────────────────────────────────
+const slider  = document.getElementById('slider');
+const barL    = document.getElementById('bar-l');
+const barR    = document.getElementById('bar-r');
+const valL    = document.getElementById('val-l');
+const valR    = document.getElementById('val-r');
+const ctrlVal = document.getElementById('ctrl-val');
+
+slider.addEventListener('input', () => {
+  const ext = (slider.value / 100) * 0.015;          // 0 → 0.015m
+  const newY = RETRACTED_Y - ext;                     // slide DOWN
+  toothL.position.y = newY;
+  toothR.position.y = newY;
+
+  const pct = ext / 0.015 * 100;
+  barL.style.width = barR.style.width = pct + '%';
+  const mm = (ext * 1000).toFixed(2);
+  valL.textContent = valR.textContent = mm + ' mm';
+  ctrlVal.textContent = `ctrl: ${(-ext).toFixed(4)} m`;
+});
+
+// ── Render loop ───────────────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  if (!drag && tc.length===0) { sph.theta += 0.00022; updateCam(); }
+  renderer.render(scene, camera);
+}
+animate();
+
+// ── STL Export ────────────────────────────────────────────────────
+document.getElementById('dl-btn').addEventListener('click', () => {
+  // Force matrix update so tooth positions from slider are correct
+  gripper.updateMatrixWorld(true);
+
+  const v0 = new THREE.Vector3(), v1 = new THREE.Vector3(), v2 = new THREE.Vector3();
+  const edge1 = new THREE.Vector3(), edge2 = new THREE.Vector3(), norm = new THREE.Vector3();
+  const tris = [];
+
+  gripper.traverse(obj => {
+    if (!obj.isMesh || !obj.geometry) return;
+
+    const geo = obj.geometry.clone();
+    // Bake world transform into vertex positions
+    geo.applyMatrix4(obj.matrixWorld);
+
+    // Convert to non-indexed so we can iterate triangles simply
+    const nonIdx = geo.index ? geo.toNonIndexed() : geo;
+    const pos = nonIdx.attributes.position;
+    const triCount = Math.floor(pos.count / 3);
+
+    for (let i = 0; i < triCount; i++) {
+      v0.fromBufferAttribute(pos, i*3);
+      v1.fromBufferAttribute(pos, i*3+1);
+      v2.fromBufferAttribute(pos, i*3+2);
+
+      edge1.subVectors(v1, v0);
+      edge2.subVectors(v2, v0);
+      norm.crossVectors(edge1, edge2).normalize();
+
+      tris.push(
+        norm.x, norm.y, norm.z,
+        v0.x, v0.y, v0.z,
+        v1.x, v1.y, v1.z,
+        v2.x, v2.y, v2.z,
+        0  // attribute byte count (uint16, stored as extra float32-aligned slot)
+      );
+    }
+
+    if (geo !== nonIdx) nonIdx.dispose();
+    geo.dispose();
+  });
+
+  // Binary STL: 80-byte header + uint32 tri count + (triCount × 50 bytes)
+  // Each triangle: 3 floats normal + 9 floats verts + 1 uint16 attr = 50 bytes
+  const triCount = Math.floor(tris.length / 13);
+  const buf  = new ArrayBuffer(80 + 4 + triCount * 50);
+  const dv   = new DataView(buf);
+  const hdr  = 'E2 Gripper - Servo7 Robotics - YC W26';
+  for (let i = 0; i < 80; i++) dv.setUint8(i, i < hdr.length ? hdr.charCodeAt(i) : 0);
+  dv.setUint32(80, triCount, true);
+
+  let off = 84;
+  for (let i = 0; i < tris.length; i++) {
+    if (i % 13 === 12) {
+      // attribute byte count — uint16
+      dv.setUint16(off, 0, true); off += 2;
+    } else {
+      dv.setFloat32(off, tris[i], true); off += 4;
+    }
+  }
+
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
+  const dlA  = document.createElement('a');
+  dlA.href     = URL.createObjectURL(blob);
+  dlA.download = 'e2_gripper.stl';
+  dlA.click();
+  URL.revokeObjectURL(dlA.href);
+});
+</script>
+</body>
+</html>

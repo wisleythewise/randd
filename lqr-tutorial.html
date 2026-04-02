@@ -1,0 +1,1539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Quadratic Functions in Discrete-Time Control</title>
+    
+    <!-- KaTeX for beautiful math -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-primary: #050507;
+            --bg-secondary: #0a0a0f;
+            --bg-card: #0f0f16;
+            --bg-elevated: #16161f;
+            --text-primary: #d4d2cf;
+            --text-secondary: #8a8a8a;
+            --text-muted: #5a5a5a;
+            --accent: #ff6b4a;
+            --accent-soft: rgba(255, 107, 74, 0.12);
+            --math-color: #5eb8db;
+            --border: rgba(255, 255, 255, 0.06);
+            --border-strong: rgba(255, 255, 255, 0.1);
+            --serif: 'Playfair Display', Georgia, serif;
+            --sans: 'IBM Plex Sans', -apple-system, sans-serif;
+            --mono: 'IBM Plex Mono', monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.8;
+            font-size: 17px;
+            font-weight: 400;
+        }
+
+        /* Subtle noise texture */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        /* Sticky Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(10, 10, 12, 0.95);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+            padding: 0.75rem 2rem;
+            opacity: 0;
+            transform: translateY(-100%);
+            transition: all 0.3s ease;
+        }
+
+        nav.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        nav ul {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            list-style: none;
+            max-width: 1000px;
+            margin: 0 auto;
+            flex-wrap: wrap;
+        }
+
+        nav a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            transition: color 0.2s;
+        }
+
+        nav a:hover {
+            color: var(--accent);
+        }
+
+        /* Header */
+        header {
+            min-height: 70vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .subtitle {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            margin-bottom: 1.5rem;
+        }
+
+        header h1 {
+            font-family: var(--serif);
+            font-size: clamp(2.5rem, 6vw, 4rem);
+            font-weight: 700;
+            line-height: 1.15;
+            max-width: 800px;
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+        }
+
+        .tagline {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            line-height: 1.7;
+        }
+
+        /* Main Content */
+        main {
+            max-width: 780px;
+            margin: 0 auto;
+            padding: 5rem 2rem 8rem;
+        }
+
+        section {
+            margin-bottom: 5rem;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @media (prefers-reduced-motion: no-preference) {
+            section {
+                opacity: 0;
+                transform: translateY(20px);
+                transition: all 0.6s ease;
+            }
+
+            section.visible {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h2 {
+            font-family: var(--serif);
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--accent);
+            display: inline-block;
+        }
+
+        h3 {
+            font-family: var(--serif);
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-top: 2.5rem;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        p {
+            margin-bottom: 1.25rem;
+            color: var(--text-primary);
+        }
+
+        strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        em {
+            font-style: italic;
+            color: var(--accent);
+        }
+
+        /* Math Blocks */
+        .math-block {
+            background: var(--bg-card);
+            border: 1px solid var(--border-strong);
+            border-left: 3px solid var(--accent);
+            border-radius: 8px;
+            padding: 1.5rem 2rem;
+            margin: 1.75rem 0;
+            overflow-x: auto;
+            text-align: center;
+        }
+
+        .math-block .katex {
+            color: var(--math-color);
+            font-size: 1.15em;
+        }
+
+        /* Inline math */
+        .katex {
+            color: var(--math-color);
+        }
+
+        /* Key Concept Boxes */
+        .key-concept {
+            background: var(--accent-soft);
+            border: 1px solid rgba(255, 107, 74, 0.3);
+            border-radius: 10px;
+            padding: 1.5rem 2rem;
+            margin: 2rem 0;
+        }
+
+        .key-concept p {
+            margin-bottom: 0;
+            color: var(--text-primary);
+        }
+
+        /* Lists */
+        ul, ol {
+            margin: 1.25rem 0;
+            padding-left: 1.5rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        /* Visualization containers */
+        .visualization {
+            background: var(--bg-card);
+            border: 1px solid var(--border-strong);
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2.5rem 0;
+        }
+
+        .viz-title {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 1rem;
+        }
+
+        .viz-controls {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .control-group label {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .control-group input[type="range"] {
+            width: 150px;
+            accent-color: var(--accent);
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+        }
+
+        /* Figure Captions */
+        .caption {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            font-style: italic;
+            text-align: center;
+            margin-top: 1rem;
+            line-height: 1.6;
+        }
+
+        /* Summary Cards */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .summary-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-strong);
+            border-radius: 10px;
+            padding: 1.5rem;
+        }
+
+        .summary-card h4 {
+            font-family: var(--serif);
+            font-size: 1.1rem;
+            color: var(--accent);
+            margin-bottom: 0.75rem;
+        }
+
+        .summary-card p {
+            font-size: 0.95rem;
+            margin-bottom: 0;
+            color: var(--text-secondary);
+        }
+
+        /* References */
+        .references {
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            padding: 2rem;
+            margin-top: 3rem;
+        }
+
+        .references h3 {
+            margin-top: 0;
+            font-size: 1.2rem;
+        }
+
+        .references ol {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .references a {
+            color: var(--math-color);
+            text-decoration: none;
+        }
+
+        .references a:hover {
+            text-decoration: underline;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Responsive - Tablet */
+        @media (max-width: 768px) {
+            main {
+                padding: 3rem 1.5rem 6rem;
+            }
+
+            h2 {
+                font-size: 1.75rem;
+            }
+
+            h3 {
+                font-size: 1.25rem;
+            }
+        }
+
+        /* Responsive - iPhone / Mobile */
+        @media (max-width: 480px) {
+            body {
+                font-size: 16px;
+                line-height: 1.7;
+                -webkit-text-size-adjust: 100%;
+            }
+
+            header {
+                min-height: 60vh;
+                padding: 3rem 1.25rem;
+            }
+
+            header h1 {
+                font-size: 1.85rem;
+                line-height: 1.25;
+            }
+
+            .subtitle {
+                font-size: 0.7rem;
+                letter-spacing: 0.15em;
+            }
+
+            .tagline {
+                font-size: 1rem;
+                line-height: 1.6;
+            }
+
+            main {
+                padding: 2.5rem 1.25rem 5rem;
+            }
+
+            h2 {
+                font-size: 1.5rem;
+                display: block;
+                padding-bottom: 0.4rem;
+            }
+
+            h3 {
+                font-size: 1.15rem;
+                margin-top: 2rem;
+            }
+
+            p {
+                font-size: 16px;
+                margin-bottom: 1.1rem;
+            }
+
+            /* Math blocks - mobile optimized */
+            .math-block {
+                padding: 1rem 0.75rem;
+                margin: 1.25rem -0.5rem;
+                border-radius: 6px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .math-block .katex {
+                font-size: 0.95em;
+            }
+
+            /* Key concept boxes */
+            .key-concept {
+                padding: 1.25rem 1rem;
+                margin: 1.5rem 0;
+                border-radius: 8px;
+            }
+
+            .key-concept p {
+                font-size: 15px;
+            }
+
+            /* Navigation - mobile drawer style */
+            nav {
+                padding: 0.6rem 1rem;
+            }
+
+            nav ul {
+                gap: 0.5rem 1rem;
+                justify-content: flex-start;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 0.25rem;
+                flex-wrap: nowrap;
+            }
+
+            nav a {
+                font-size: 0.75rem;
+                white-space: nowrap;
+                padding: 0.25rem 0;
+            }
+
+            /* Visualizations - mobile optimized */
+            .visualization {
+                padding: 1.25rem 1rem;
+                margin: 2rem -0.5rem;
+                border-radius: 8px;
+            }
+
+            .viz-title {
+                font-size: 0.7rem;
+                margin-bottom: 0.75rem;
+            }
+
+            .viz-controls {
+                flex-direction: column;
+                gap: 1.25rem;
+            }
+
+            .control-group {
+                width: 100%;
+            }
+
+            .control-group label {
+                font-size: 0.8rem;
+                display: block;
+                margin-bottom: 0.5rem;
+            }
+
+            /* Larger touch-friendly sliders */
+            .control-group input[type="range"] {
+                width: 100%;
+                height: 44px;
+                -webkit-appearance: none;
+                background: transparent;
+                margin: 0;
+            }
+
+            .control-group input[type="range"]::-webkit-slider-runnable-track {
+                width: 100%;
+                height: 8px;
+                background: var(--bg-elevated);
+                border-radius: 4px;
+                border: 1px solid var(--border-strong);
+            }
+
+            .control-group input[type="range"]::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                width: 28px;
+                height: 28px;
+                background: var(--accent);
+                border-radius: 50%;
+                margin-top: -10px;
+                box-shadow: 0 2px 8px rgba(255, 107, 74, 0.4);
+            }
+
+            /* Canvas sizing for mobile */
+            canvas {
+                width: 100% !important;
+                height: auto !important;
+                max-height: 300px;
+                border-radius: 6px;
+            }
+
+            .caption {
+                font-size: 0.8rem;
+                line-height: 1.5;
+                margin-top: 0.75rem;
+            }
+
+            /* Lists */
+            ul, ol {
+                padding-left: 1.25rem;
+                margin: 1rem 0;
+            }
+
+            li {
+                font-size: 16px;
+                margin-bottom: 0.4rem;
+            }
+
+            /* Summary cards - stack on mobile */
+            .summary-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .summary-card {
+                padding: 1.25rem;
+            }
+
+            .summary-card h4 {
+                font-size: 1rem;
+            }
+
+            .summary-card p {
+                font-size: 0.9rem;
+            }
+
+            /* References */
+            .references {
+                padding: 1.25rem 1rem;
+                margin-top: 2rem;
+                border-radius: 8px;
+            }
+
+            .references h3 {
+                font-size: 1.1rem;
+            }
+
+            .references ol {
+                font-size: 0.8rem;
+                padding-left: 1.25rem;
+            }
+
+            .references li {
+                margin-bottom: 0.5rem;
+                word-break: break-word;
+            }
+
+            /* Footer */
+            footer {
+                padding: 2rem 1.25rem;
+                font-size: 0.8rem;
+            }
+        }
+
+        /* Extra small phones */
+        @media (max-width: 360px) {
+            header h1 {
+                font-size: 1.6rem;
+            }
+
+            main {
+                padding: 2rem 1rem 4rem;
+            }
+
+            .math-block {
+                padding: 0.75rem 0.5rem;
+            }
+
+            .math-block .katex {
+                font-size: 0.85em;
+            }
+        }
+
+        /* Safe area insets for iPhone X+ */
+        @supports (padding: env(safe-area-inset-bottom)) {
+            footer {
+                padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+            }
+
+            nav {
+                padding-left: calc(1rem + env(safe-area-inset-left));
+                padding-right: calc(1rem + env(safe-area-inset-right));
+            }
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        header > * {
+            animation: fadeInUp 0.8s ease forwards;
+        }
+
+        header .subtitle { animation-delay: 0.1s; }
+        header h1 { animation-delay: 0.2s; }
+        header .tagline { animation-delay: 0.3s; }
+    </style>
+    
+    <!-- Fallback for when JS is disabled or fails -->
+    <noscript>
+        <style>
+            section { opacity: 1 !important; transform: none !important; }
+        </style>
+    </noscript>
+</head>
+<body>
+    <nav id="navbar">
+        <ul>
+            <li><a href="#intro">Introduction</a></li>
+            <li><a href="#calculus">Calculus</a></li>
+            <li><a href="#linalg">Linear Algebra</a></li>
+            <li><a href="#dynamics">Dynamics</a></li>
+            <li><a href="#cost">Cost Functions</a></li>
+            <li><a href="#bellman">Bellman</a></li>
+            <li><a href="#value-quadratic">Value Function</a></li>
+            <li><a href="#interpretation">Interpretation</a></li>
+            <li><a href="#summary">Summary</a></li>
+        </ul>
+    </nav>
+
+    <header>
+        <div class="subtitle">A Conceptual Tutorial</div>
+        <h1>Quadratic Functions in Discrete-Time Control</h1>
+        <p class="tagline">Building intuition from calculus and linear algebra to optimal control — why LQR problems work so beautifully with quadratics.</p>
+    </header>
+
+    <main>
+        <!-- INTRODUCTION -->
+        <section id="intro">
+            <h2>Introduction</h2>
+            <p>In discrete-time control, especially in optimal control problems like the <strong>Linear Quadratic Regulator (LQR)</strong>, quadratic functions appear everywhere. Why quadratics?</p>
+            
+            <p>In short, quadratic expressions provide a convenient <em>"bowl-shaped"</em> cost landscape and lead to elegant linear feedback laws. This tutorial will build up the intuition from basic calculus and linear algebra all the way to linear dynamics and optimal control.</p>
+
+            <p>We'll refresh key math concepts (gradients, Hessians, vectors, matrices) and then see how linear dynamics ($x_{k+1} = A\,x_k + B\,u_k$) paired with quadratic costs produce structure: value functions of the form $V(x) = x^T P x$ and optimal controls that are linear in the state.</p>
+
+            <div class="key-concept">
+                <p><strong>Core Insight:</strong> Think of quadratic cost as a <em>bowl</em> and its level sets as <em>ellipsoids</em>. The goal is conceptual clarity on <em>why</em> LQR and related problems work so beautifully with quadratics, rather than just mechanical derivations.</p>
+            </div>
+        </section>
+
+        <!-- CALCULUS REFRESHER -->
+        <section id="calculus">
+            <h2>Calculus Refresher: Gradients, Minima, and Taylor Expansion</h2>
+            
+            <h3>Gradients and Local Minima</h3>
+            <p>In single-variable calculus, we know a function $f(x)$ has an extremum (min or max) where $f'(x)=0$. In multiple dimensions, the <strong>gradient</strong> $\nabla f(x)$ generalizes the derivative. The gradient is a vector of all partial derivatives.</p>
+            
+            <p>A point $x^*$ is <strong>critical</strong> (a candidate for extremum) if:</p>
+            
+            <div class="math-block">
+                $$\nabla f(x^*) = 0$$
+            </div>
+            
+            <p>This is the multi-dimensional "flat slope" condition. However, a zero gradient alone isn't enough to ensure a minimum — it could be a maximum or a saddle point. We need to check the second derivative information next.</p>
+
+            <h3>Hessian and Second-Order Test</h3>
+            <p>The <strong>Hessian matrix</strong> $H(x)$ is the matrix of second partial derivatives (essentially the multi-dimensional second derivative). If at a critical point $x^*$ the Hessian $H(x^*)$ is <strong>positive definite</strong>, it means the function curves upward in all directions around $x^*$. This guarantees $x^*$ is a <strong>local minimum</strong>.</p>
+
+            <div class="key-concept">
+                <p><strong>Geometric intuition:</strong> If $H(x^*)$ is positive definite, the surface "curves upwards in every direction — like the bottom of a bowl." Conversely, a negative definite Hessian implies a local maximum (an upside-down bowl), and an indefinite Hessian indicates a saddle point.</p>
+            </div>
+
+            <p>One way to see this is via the <strong>second-order Taylor expansion</strong>. For a function $f(x)$, around a critical point $x^*$ we have:</p>
+
+            <div class="math-block">
+                $$f(x^* + \delta) \approx f(x^*) + \frac{1}{2}\,\delta^T H(x^*)\,\delta$$
+            </div>
+            
+            <p>The linear term vanishes (gradient is zero). This quadratic approximation $\frac{1}{2}\delta^T H \delta$ tells us the local curvature. If $H$ is positive definite, then $\delta^T H \delta > 0$ for any small displacement $\delta \neq 0$, so $f(x^*+\delta) > f(x^*)$ — in other words $x^*$ is a strict local minimum. Thus <strong>positive definiteness of the Hessian is the mathematical condition for a bowl-shaped minimum</strong>.</p>
+
+            <h3>Gradients and Steepest Descent</h3>
+            <p>The gradient $\nabla f(x)$ itself points in the direction of greatest increase of $f$. For minimization, one often goes in the opposite direction (steepest descent) to go downhill on the function's surface.</p>
+            
+            <p>We mention this because it provides intuition later: for a quadratic cost $V(x)=x^T P x$, we have $\nabla V(x) = 2Px$ which is linear in $x$, and — if $P$ defines a bowl shape — $-Px$ points toward the bowl's bottom (the origin). This "downhill direction" insight will reappear when interpreting optimal feedback controls.</p>
+        </section>
+
+        <!-- LINEAR ALGEBRA FOUNDATIONS -->
+        <section id="linalg">
+            <h2>Linear Algebra Foundations</h2>
+            
+            <h3>Vectors and Dot Products</h3>
+            <p>We assume a basic familiarity with vectors and matrices. A quick refresher: a vector $\boldsymbol{x} \in \mathbb{R}^n$ can be viewed as an $n\times 1$ column of numbers. The dot product $x^T y = \sum_{i=1}^n x_i y_i$ between two vectors yields a scalar.</p>
+            
+            <p>Geometrically, the dot product relates to the angle between vectors and their lengths, but algebraically it's a sum-of-products. When a vector is dotted with itself, $x^T x = \sum_i x_i^2$, which is the square of its Euclidean norm (length).</p>
+
+            <h3>Matrices and Linear Maps</h3>
+            <p>A matrix $A$ is essentially a linear transformation. Multiplying $A$ by a vector $x$ (giving $Ax$) produces a new vector. If $A$ is $m\times n$, it maps $\mathbb{R}^n$ to $\mathbb{R}^m$. In control applications, matrices often describe system dynamics or quadratic cost weights.</p>
+            
+            <p>One special thing to recall: <strong>any symmetric matrix can be diagonalized by an orthonormal basis of eigenvectors</strong>. This means if $A=A^T$, we can find an orthogonal matrix $P$ and diagonal $\Lambda$ such that $A = P^T \Lambda P$. This fact is very useful for understanding quadratic forms.</p>
+
+            <h3>Quadratic Forms</h3>
+            <p>An expression like $x^T P x$ is called a <strong>quadratic form</strong> in $x$. It outputs a scalar. If $P$ is symmetric, $x^T P x$ can be seen as a generalized "squared length" of $x$ under the metric defined by $P$.</p>
+            
+            <p>For example, if $P = I$ (identity matrix), then $x^T P x = x^T x = |x|^2$ is just the usual square length. If $P$ is different, $x^T P x$ scales and rotates that bowl.</p>
+            
+            <p>By using the eigen-decomposition $P = P^T \Lambda P$, one can show $x^T P x = y^T \Lambda y$ where $y = P x$ is a rotated coordinate. This means $x^T P x$ is a sum of terms $\lambda_i y_i^2$ where $\lambda_i$ are eigenvalues of $P$. Each direction is stretched by $\lambda_i$.</p>
+
+            <h3>Positive Definite Matrices</h3>
+            <p>A symmetric matrix $P$ is <strong>positive definite (PD)</strong> if $x^T P x > 0$ for all $x \neq 0$. All eigenvalues of a PD matrix are positive. PD matrices are the ones that create convex quadratic forms (bowls).</p>
+            
+            <p>Importantly, if $P$ is PD, then $f(x)=x^T P x$ has a unique minimum at $x=0$ (since $f(x)>0$ for $x\neq 0$ and $f(0)=0$). We've essentially seen this already via Hessians: $P$ being PD is analogous to Hessian PD in an optimization context.</p>
+            
+            <p>The surface $z = x^T P x$ is an <strong>elliptic paraboloid</strong> (a multi-dimensional bowl). Because $P$ is symmetric and PD, we can think of $x^T P x$ as a weighted sum of squares in some rotated coordinate system.</p>
+
+            <h3>Geometric Picture — Ellipsoids</h3>
+            <p>The level sets of a positive definite quadratic form are <strong>ellipsoids</strong>. For example, the set $\{x: x^T P x = 1\}$ (all points giving value 1) is an ellipsoid centered at the origin.</p>
+            
+            <p>To visualize, consider $P$ in $\mathbb{R}^2$. If $P = I$, $\{x: x^T x = 1\}$ is the unit circle (a special case of an ellipse). If $P$ stretches space more in one direction than another, the unit-level set becomes an ellipse stretched accordingly.</p>
+            
+            <p>In general, $x^T P x = 1$ can be rewritten via diagonalization as $\sum_i (y_i^2/c_i^2) = 1$, which is recognized as the equation of an ellipsoid. Each $c_i$ relates to an eigenvalue of $P$ (specifically $c_i = 1/\sqrt{\lambda_i}$). This means along each principal axis (eigenvector direction) of $P$, the ellipsoid extends to radius $c_i$.</p>
+
+            <!-- Ellipsoid Visualization -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: Ellipsoidal Level Sets</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <label>λ₁ (eigenvalue 1): <span id="lambda1-val">1.0</span></label>
+                        <input type="range" id="lambda1" min="0.3" max="3" step="0.1" value="1">
+                    </div>
+                    <div class="control-group">
+                        <label>λ₂ (eigenvalue 2): <span id="lambda2-val">2.0</span></label>
+                        <input type="range" id="lambda2" min="0.3" max="3" step="0.1" value="2">
+                    </div>
+                </div>
+                <canvas id="ellipse-canvas" width="500" height="400"></canvas>
+                <p class="caption">Level sets $x^T P x = c$ form ellipses when $P$ is positive definite. Adjust the eigenvalues to see how the ellipse shape changes. Larger eigenvalue = tighter contours in that direction.</p>
+            </div>
+
+            <div class="key-concept">
+                <p><strong>Summary:</strong> A quadratic form $x^T P x$ with $P \succ 0$ defines a bowl-shaped function (convex and minimal at 0). Its Hessian is $2P$, which is positive definite. The geometry is an elliptic paraboloid; any cross-section at a given height is an ellipsoid. Keep this picture in mind: <em>a quadratic cost is like a bowl, and the farther you are from the origin (in a weighted sense), the higher the cost.</em></p>
+            </div>
+        </section>
+
+        <!-- LINEAR DYNAMICS -->
+        <section id="dynamics">
+            <h2>Linear Dynamics in Discrete Time</h2>
+            
+            <p>Now, let's shift to <strong>dynamics</strong>. In discrete-time control, a linear system is often written as:</p>
+            
+            <div class="math-block">
+                $$x_{k+1} = A\,x_k + B\,u_k$$
+            </div>
+            
+            <p>where $x_k \in \mathbb{R}^n$ is the state at time-step $k$, and $u_k \in \mathbb{R}^m$ is the control input (action). The matrices $A$ and $B$ determine how the state evolves: $A$ maps the current state to the next (if $u=0$), and $B$ maps the control input's influence on the next state.</p>
+            
+            <p>This equation is a <strong>linear difference equation</strong>. If we start from some initial state $x_0$, then:</p>
+            <ul>
+                <li>After one step: $x_1 = A x_0 + B u_0$</li>
+                <li>After two steps: $x_2 = A x_1 + B u_1 = A^2 x_0 + A B u_0 + B u_1$</li>
+                <li>And so on...</li>
+            </ul>
+            
+            <p>Without control ($u_k \equiv 0$), the state evolves as $x_k = A^k x_0$. Depending on $A$, the state might decay to 0 (if $A$ is stable, eigenvalues less than 1 in magnitude), or might blow up or oscillate. The control inputs $u_k$ are our way to influence the trajectory — ideally to drive the state to some desired condition (often the origin in regulation problems like LQR).</p>
+            
+            <p><strong>Linearity is crucial</strong> because it preserves quadratic forms in a nice way. For any vectors $x, u$, the next state $Ax + Bu$ is a linear combination. If we plug a linear combination into a quadratic form, we will still get a quadratic expression (with cross terms). This will become important when we discuss how costs accumulate and how we optimize the control.</p>
+
+            <!-- Trajectory Visualization -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: State Trajectories</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <label>A₁₁: <span id="a11-val">0.9</span></label>
+                        <input type="range" id="a11" min="-1.2" max="1.2" step="0.05" value="0.9">
+                    </div>
+                    <div class="control-group">
+                        <label>A₂₂: <span id="a22-val">0.8</span></label>
+                        <input type="range" id="a22" min="-1.2" max="1.2" step="0.05" value="0.8">
+                    </div>
+                    <div class="control-group">
+                        <label>A₁₂ (coupling): <span id="a12-val">0.1</span></label>
+                        <input type="range" id="a12" min="-0.5" max="0.5" step="0.05" value="0.1">
+                    </div>
+                </div>
+                <canvas id="trajectory-canvas" width="500" height="400"></canvas>
+                <p class="caption">Trajectories of $x_{k+1} = Ax_k$ (no control). Stable systems (|eigenvalues| < 1) spiral inward; unstable ones diverge. Each colored path starts from a different initial condition.</p>
+            </div>
+        </section>
+
+        <!-- QUADRATIC COST FUNCTIONS -->
+        <section id="cost">
+            <h2>Quadratic Cost Functions in Control</h2>
+            
+            <p>In control design, we often define a <strong>cost function</strong> to measure performance. A common choice (especially in LQR problems) is a quadratic cost. For example, one might define a stage cost at time $k$ as:</p>
+            
+            <div class="math-block">
+                $$\text{Cost}_k = x_k^T Q\, x_k + u_k^T R\, u_k$$
+            </div>
+            
+            <p>where $Q$ and $R$ are symmetric weight matrices (with $Q \succeq 0$ and $R \succ 0$ so that the cost is nonnegative and convex). The scalar $x^T Q x$ penalizes state deviations (e.g., how far $x$ is from the origin or desired state) and $u^T R u$ penalizes control effort (to keep inputs reasonable). These terms are quadratic forms, hence nonnegative and bowl-shaped in their respective variables.</p>
+            
+            <p>By summing such stage costs over time (perhaps indefinitely with a discount factor or an infinite horizon sum), we get an accumulated cost. For instance, an infinite-horizon undiscounted LQR cost from time 0 onward could be:</p>
+            
+            <div class="math-block">
+                $$J = \sum_{k=0}^{\infty} \Big(x_k^T Q\,x_k + u_k^T R\,u_k\Big)$$
+            </div>
+            
+            <p>assuming the sum converges (which it will if the system is stabilizable under some controller). The objective is to choose a sequence of controls $\{u_0, u_1, ...\}$ that minimizes this total cost, starting from a given initial state $x_0$. This is the classic <strong>LQR problem: linear dynamics, quadratic cost</strong>.</p>
+            
+            <div class="key-concept">
+                <p><strong>Why quadratic costs?</strong> Conceptually, a quadratic cost penalizes large deviations much more than small ones (since cost grows with the square of the error), and it provides a single, smooth bowl-shaped landscape with one minimum. Quadratic costs are also convex, which guarantees no local minima trap — any minimum is global. Moreover, they yield beautiful analytical solutions when paired with linear dynamics.</p>
+            </div>
+        </section>
+
+        <!-- BELLMAN'S PRINCIPLE -->
+        <section id="bellman">
+            <h2>The Value Function and Bellman's Principle</h2>
+            
+            <p>To solve an optimal control problem, it's helpful to define the <strong>value function</strong> (also called the cost-to-go function). For state $x$ at time $k$, the value function $V_k(x)$ is the minimal remaining cost from $k$ onward if we start in state $x$ and act optimally.</p>
+            
+            <p>The famous <strong>Bellman principle of optimality</strong> says that $V_k(x)$ should satisfy a recursive relationship (the Bellman equation):</p>
+            
+            <div class="math-block">
+                $$V_k(x) = \min_{u} \Big[ x^T Q x + u^T R u \;+\; V_{k+1}(x_{k+1}) \Big]$$
+            </div>
+            
+            <p>where $x_{k+1} = A x + B u$ is the next state. This equation says: the optimal cost from $x$ is the immediate cost (state and control at $k$) plus the optimal future cost from the next state, minimized over the control choice $u$ at time $k$.</p>
+            
+            <p>If we consider the infinite-horizon time-invariant case (steady-state behavior as $k\to\infty$), the value function becomes time-independent. $V(x)$ satisfies the Bellman operator equation:</p>
+            
+            <div class="math-block">
+                $$V(x) = \min_{u} \Big[ x^T Q x + u^T R u + V\big(Ax + Bu\big) \Big]$$
+            </div>
+            
+            <p>This is a functional equation: $V(x)$ must equal the minimum over $u$ of that quadratic expression. The remarkable fact for LQR is that we can guess the form of $V(x)$ and verify it.</p>
+            
+            <p>We anticipate (or can derive) that the optimal value function will be <strong>quadratic in $x$</strong>. In particular, one can assume:</p>
+            
+            <div class="math-block">
+                $$V(x) = x^T P x$$
+            </div>
+            
+            <p>for some symmetric positive semidefinite matrix $P$ that we need to determine. This is a logical guess because if all stage costs are quadratic and dynamics are linear, it would be consistent for the accumulated cost-to-go to also form a quadratic. Indeed, it is "well known that for this problem the optimal cost-to-go function is quadratic."</p>
+        </section>
+
+        <!-- WHY VALUE FUNCTION IS QUADRATIC -->
+        <section id="value-quadratic">
+            <h2>Why the Value Function Becomes Quadratic (Bellman Backup)</h2>
+            
+            <p>Assume $V(x) = x^T P x$ for some matrix $P$ (we'll find $P$ by solving Bellman's equation). Now plug this form into the Bellman equation:</p>
+            
+            <div class="math-block">
+                $$\begin{aligned} V(x) &= \min_{u}\; \Big[\, x^T Q x + u^T R u \;+\; (Ax + Bu)^T P\, (Ax + Bu)\,\Big] \\ &= \min_{u}\; \Big[\, x^T Q x + u^T R u \;+\; x^T A^T P A\, x \;+\; 2\,x^T A^T P B\, u \;+\; u^T B^T P B\, u \,\Big] \end{aligned}$$
+            </div>
+            
+            <p>where we expanded $(Ax+Bu)^T P (Ax+Bu)$ into quadratic form. Notice: this is a <strong>quadratic expression in the control $u$</strong> (for a fixed state $x$). Let's write it as:</p>
+            
+            <div class="math-block">
+                $$\min_{u}\; \Big[ u^T (R + B^T P B)\, u \;+\; 2\,x^T (A^T P B)\, u \;+\; \text{(terms not involving $u$)} \Big]$$
+            </div>
+            
+            <p>Here $(R + B^T P B)$ is an $m \times m$ matrix and $2A^T P B\,x$ is an $n\times 1$ vector that is the linear term in $u$. Minimizing a quadratic function of $u$ is a textbook exercise: since $R$ is positive definite, and $P$ will turn out positive definite as well, $(R + B^T P B)$ is positive definite — so the quadratic in $u$ is convex.</p>
+            
+            <p>We can find the minimizing $u$ by setting the gradient (with respect to $u$) to zero. The gradient of the cost w.r.t. $u$ is:</p>
+            
+            <div class="math-block">
+                $$2\,(R + B^T P B)\,u + 2\,B^T P A\,x$$
+            </div>
+            
+            <p>and setting this equal to zero yields the <strong>optimal control law</strong>:</p>
+            
+            <div class="math-block">
+                $$u^* = -(R + B^T P B)^{-1} B^T P A\, x$$
+            </div>
+            
+            <p>This is a <strong>linear state-feedback law</strong>, of the form $u^* = -K x$ where $K = (R + B^T P B)^{-1} B^T P A$. We see explicitly that the minimization over $u$ produced a control that is an affine function of $x$ — in fact linear, since it goes through the origin (no constant term). This confirms the intuition that in an LQR, <em>the optimal policy is linear in the state</em>.</p>
+            
+            <p>Now, having found $u^*(x)$ in terms of $P$, we can plug $u^*$ back into the cost expression to determine $P$ itself. When we substitute $u^*$, the cross-terms cancel out and we end up with a purely quadratic form in $x$:</p>
+            
+            <div class="math-block">
+                $$V(x) = x^T \Big( Q + A^T P A - A^T P B\,(R + B^T P B)^{-1} B^T P A \Big) x$$
+            </div>
+            
+            <p>Because this must equal $x^T P x$ for all $x$, we can identify the new $P$ inside the big parentheses. That is, $P$ should satisfy the <strong>discrete-time algebraic Riccati equation (DARE)</strong>:</p>
+            
+            <div class="math-block">
+                $$P = Q + A^T P A - A^T P B (R + B^T P B)^{-1} B^T P A$$
+            </div>
+            
+            <p>This Riccati equation is essentially the outcome of requiring consistency in our quadratic value function assumption. Under controllability/stabilizability conditions, there is a unique positive definite solution $P$ that yields a $K$ which stabilizes the closed-loop system.</p>
+            
+            <div class="key-concept">
+                <p><strong>Key Insight:</strong> Assuming a quadratic $V(x)$ was consistent, and it led to a self-consistent matrix equation for $P$. This demonstrates the <em>closure under the Bellman operator</em> — plugging in a quadratic ansatz yields a quadratic outcome. The Bellman backup for LQR maps a quadratic value function to another quadratic value function.</p>
+            </div>
+        </section>
+
+        <!-- INTERPRETATION -->
+        <section id="interpretation">
+            <h2>Interpretation: Cost Bowls and Ellipsoidal Contours</h2>
+            
+            <p>Let's step back and put the pieces together with some intuition. We have a value function $V(x) = x^T P x$. You can imagine $V(x)$ as a <strong>cost landscape</strong> over the state space. It's a bowl (paraboloid) shaped by $P$.</p>
+            
+            <p>The contours $V(x) = \text{constant}$ are ellipsoids as we discussed. If you are at state $x$, $V(x)$ tells you how much cost you'll accumulate in the future if you act optimally (it's the "optimal future cost" from $x$). Lower $V(x)$ means you're in a better region (closer to the goal, e.g. the origin), higher $V(x)$ means you're further "up the bowl" in terms of cost. The minimum is at $x=0$ (assuming we want to stabilize to zero), where $V(0)=0$ — no cost from the origin if you're already there and stay there.</p>
+            
+            <p>Now, the optimal control law we found, $u^* = -K x$, can be viewed in this landscape perspective: <strong>it is the controller that tries to drive the state downhill on the cost bowl as fast as possible</strong>.</p>
+            
+            <p>Since $\nabla V(x) = 2 P x$, a steepest descent direction in state space would be $-\nabla V(x) = -2Px$ (pointing toward lower $V$). The optimal controller's action $-Kx$ is essentially designed to push the state in that general direction.</p>
+            
+            <p>In fact, in the special case where $B$ can command all directions equally and $R$ is identity, the formula simplifies and $K$ aligns with $P$ such that $-Kx = -R^{-1}B^T P x = -B^T P x$ (when $R=I$ and if $B$ is square invertible, $K = B^T P$). Then $u^* = -B^T P x$ literally uses $B^T P x$, which is proportional to $Px$, as the direction to push — effectively the projection of the steepest descent direction $-Px$ onto the control inputs.</p>
+
+            <!-- 3D Bowl Visualization -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: 3D Cost Bowl</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <label>P₁₁: <span id="p11-val">1.0</span></label>
+                        <input type="range" id="p11" min="0.5" max="3" step="0.1" value="1">
+                    </div>
+                    <div class="control-group">
+                        <label>P₂₂: <span id="p22-val">1.5</span></label>
+                        <input type="range" id="p22" min="0.5" max="3" step="0.1" value="1.5">
+                    </div>
+                </div>
+                <canvas id="bowl-canvas" width="500" height="400"></canvas>
+                <p class="caption">A quadratic cost bowl $z = x^T P x$ in 3D. The bottom of the bowl is at the origin, which is the minimal cost state. Drag to rotate. The curvature in different directions is determined by $P$.</p>
+            </div>
+            
+            <p>This geometric viewpoint is powerful. The matrix $P$ in $V(x)=x^T P x$ can be interpreted as defining "cost contours" — an ellipsoid $x^T P x = c$ is like a confidence ellipsoid of equivalent cost. The optimal control law $u=-Kx$ will always try to move the state to lower ellipsoids (closer to the center).</p>
+            
+            <p>In LQR, these ellipsoids also often represent something like <strong>Lyapunov level sets</strong> for the closed-loop system: $V(x)$ can serve as a Lyapunov function proving stability of $x_{k+1}=(A-BK)x_k$. Indeed, solving the Riccati equation for $P$ is fundamentally related to finding a Lyapunov function $V(x)=x^T P x$ that satisfies the optimal cost decrease along trajectories.</p>
+        </section>
+
+        <!-- CLOSING THOUGHTS / SUMMARY -->
+        <section id="summary">
+            <h2>Closing Thoughts</h2>
+            
+            <p>We started from basic calculus and linear algebra, and we've arrived at the core structure of the discrete-time LQR: quadratic costs produce quadratic value functions and linear optimal feedback laws. Let's recap the conceptual insights:</p>
+            
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <h4>Quadratic = Convex Bowl</h4>
+                    <p>A positive definite quadratic function $x^T P x$ provides a single-basin "bowl" shaped cost landscape with a unique minimum. This convexity is crucial for optimization and stability.</p>
+                </div>
+                <div class="summary-card">
+                    <h4>Level Sets = Ellipsoids</h4>
+                    <p>The contours of equal quadratic cost are ellipsoids in state space. These capture the idea of "distance" according to $P$. In control, they often correspond to how "expensive" it is to be at certain states.</p>
+                </div>
+                <div class="summary-card">
+                    <h4>Linear Dynamics Preserve Form</h4>
+                    <p>If $V(x)$ is quadratic, then $V(Ax+Bu)$ is also quadratic in $(x,u)$. This closure property is why we could guess a quadratic value function and have it be self-consistent through Bellman's equation.</p>
+                </div>
+                <div class="summary-card">
+                    <h4>Bellman = Quadratic Minimization</h4>
+                    <p>The Bellman optimality step turned into a minimization of a convex quadratic function in $u$. The solution was found by setting gradient to zero, yielding a linear optimal policy $u^* = -Kx$.</p>
+                </div>
+                <div class="summary-card">
+                    <h4>Value Function Remains Quadratic</h4>
+                    <p>Our quadratic ansatz for $V(x)$ was validated; the Bellman operator mapped it to a new quadratic with an updated matrix $P$. This leads to the Riccati equation for $P$.</p>
+                </div>
+                <div class="summary-card">
+                    <h4>Geometric Optimal Control</h4>
+                    <p>The optimal feedback $u=-Kx$ can be interpreted as pushing the state toward lower cost ellipsoids (downhill on the value function bowl). It's the best downhill direction given control authority and cost trade-offs.</p>
+                </div>
+            </div>
+            
+            <div class="key-concept" style="margin-top: 2rem;">
+                <p><strong>In conclusion:</strong> Quadratic functions play a starring role in discrete-time control because they marry well with linear dynamics both algebraically and geometrically. They ensure convex optimization problems, yield tractable linear feedback solutions, and come with rich interpretations. This is why LQR is so elegant and powerful in control theory.</p>
+            </div>
+
+            <!-- References -->
+            <div class="references">
+                <h3>References</h3>
+                <ol>
+                    <li>Rice University - Unconstrained Optimization Refresher</li>
+                    <li>Cadence - All About the Hessian Matrix, Convexity, and Optimization</li>
+                    <li>Hasanah, A. - Mathematics of the Hessian Matrix (Medium)</li>
+                    <li>Bento, C. - Stochastic Gradient Descent explained (Medium)</li>
+                    <li>StatLect - Positive Definite Matrix</li>
+                    <li>Mathematics Stack Exchange - Positive Definite Matrix and Ellipsoid Representation</li>
+                    <li>Wikipedia - Quadratic Form</li>
+                    <li>Princeton - Geometric Exploration for Online Control</li>
+                    <li>MIT Underactuated Robotics - Linear Quadratic Regulators (Ch. 8)</li>
+                </ol>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Quadratic Functions in Discrete-Time Control — A Conceptual Tutorial</p>
+    </footer>
+
+    <script>
+        // Initialize KaTeX auto-render
+        document.addEventListener("DOMContentLoaded", function() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false}
+                ],
+                throwOnError: false
+            });
+            
+            initVisualizations();
+            initScrollAnimations();
+        });
+
+        // Scroll animations
+        function initScrollAnimations() {
+            const nav = document.getElementById('navbar');
+            const sections = document.querySelectorAll('section');
+            
+            // Fallback: make all sections visible after a short delay
+            setTimeout(() => {
+                sections.forEach(section => section.classList.add('visible'));
+            }, 100);
+            
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -10% 0px'
+            };
+            
+            if ('IntersectionObserver' in window) {
+                const sectionObserver = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            entry.target.classList.add('visible');
+                        }
+                    });
+                }, observerOptions);
+                
+                sections.forEach(section => sectionObserver.observe(section));
+            } else {
+                sections.forEach(section => section.classList.add('visible'));
+            }
+            
+            // Navbar visibility
+            window.addEventListener('scroll', () => {
+                const currentScroll = window.pageYOffset;
+                if (currentScroll > 400) {
+                    nav.classList.add('visible');
+                } else {
+                    nav.classList.remove('visible');
+                }
+            });
+        }
+
+        // Visualizations
+        function initVisualizations() {
+            // Handle responsive canvas sizing
+            function resizeCanvas(canvas, baseWidth, baseHeight) {
+                const container = canvas.parentElement;
+                const containerWidth = container.clientWidth - 32; // Account for padding
+                const maxWidth = Math.min(containerWidth, baseWidth);
+                const scale = maxWidth / baseWidth;
+                
+                canvas.style.width = maxWidth + 'px';
+                canvas.style.height = (baseHeight * scale) + 'px';
+                
+                // Set actual canvas resolution (for retina displays)
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = maxWidth * dpr;
+                canvas.height = baseHeight * scale * dpr;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.scale(dpr, dpr);
+                
+                return { width: maxWidth, height: baseHeight * scale, scale };
+            }
+
+            initEllipseViz();
+            initTrajectoryViz();
+            initBowlViz();
+
+            // Redraw on resize
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    initEllipseViz();
+                    initTrajectoryViz();
+                    initBowlViz();
+                }, 250);
+            });
+        }
+
+        // Ellipse visualization
+        function initEllipseViz() {
+            const canvas = document.getElementById('ellipse-canvas');
+            const ctx = canvas.getContext('2d');
+            const lambda1Slider = document.getElementById('lambda1');
+            const lambda2Slider = document.getElementById('lambda2');
+            const lambda1Val = document.getElementById('lambda1-val');
+            const lambda2Val = document.getElementById('lambda2-val');
+
+            // Responsive sizing
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 400;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            function drawEllipses() {
+                const l1 = parseFloat(lambda1Slider.value);
+                const l2 = parseFloat(lambda2Slider.value);
+                lambda1Val.textContent = l1.toFixed(1);
+                lambda2Val.textContent = l2.toFixed(1);
+
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+
+                const cx = displayWidth / 2;
+                const cy = displayHeight / 2;
+                const scale = Math.min(displayWidth, displayHeight) / 5;
+
+                // Draw grid
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                ctx.lineWidth = 1;
+                for (let i = -3; i <= 3; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(cx + i * scale, 0);
+                    ctx.lineTo(cx + i * scale, displayHeight);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, cy + i * scale);
+                    ctx.lineTo(displayWidth, cy + i * scale);
+                    ctx.stroke();
+                }
+
+                // Draw axes
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(0, cy);
+                ctx.lineTo(displayWidth, cy);
+                ctx.moveTo(cx, 0);
+                ctx.lineTo(cx, displayHeight);
+                ctx.stroke();
+
+                // Draw ellipses for different c values
+                const colors = ['#ff6b4a', '#7dd3fc', '#a78bfa', '#34d399'];
+                const cValues = [1, 2, 4, 8];
+                
+                cValues.forEach((c, idx) => {
+                    const a = Math.sqrt(c / l1) * scale;
+                    const b = Math.sqrt(c / l2) * scale;
+                    
+                    ctx.strokeStyle = colors[idx];
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.ellipse(cx, cy, a, b, 0, 0, 2 * Math.PI);
+                    ctx.stroke();
+                    
+                    // Label
+                    ctx.fillStyle = colors[idx];
+                    ctx.font = `${Math.max(10, displayWidth / 45)}px IBM Plex Mono`;
+                    ctx.fillText(`c=${c}`, cx + a + 5, cy - 5);
+                });
+
+                // Axis labels
+                ctx.fillStyle = '#9a9a9a';
+                ctx.font = `${Math.max(12, displayWidth / 40)}px IBM Plex Sans`;
+                ctx.fillText('x₁', displayWidth - 25, cy - 10);
+                ctx.fillText('x₂', cx + 10, 20);
+            }
+
+            lambda1Slider.addEventListener('input', drawEllipses);
+            lambda2Slider.addEventListener('input', drawEllipses);
+            drawEllipses();
+        }
+
+        // Trajectory visualization
+        function initTrajectoryViz() {
+            const canvas = document.getElementById('trajectory-canvas');
+            const ctx = canvas.getContext('2d');
+            const a11Slider = document.getElementById('a11');
+            const a22Slider = document.getElementById('a22');
+            const a12Slider = document.getElementById('a12');
+
+            // Responsive sizing
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 400;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            function drawTrajectories() {
+                const a11 = parseFloat(a11Slider.value);
+                const a22 = parseFloat(a22Slider.value);
+                const a12 = parseFloat(a12Slider.value);
+                
+                document.getElementById('a11-val').textContent = a11.toFixed(2);
+                document.getElementById('a22-val').textContent = a22.toFixed(2);
+                document.getElementById('a12-val').textContent = a12.toFixed(2);
+
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+
+                const cx = displayWidth / 2;
+                const cy = displayHeight / 2;
+                const scale = Math.min(displayWidth, displayHeight) / 6.5;
+
+                // Draw grid
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                ctx.lineWidth = 1;
+                for (let i = -4; i <= 4; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(cx + i * scale, 0);
+                    ctx.lineTo(cx + i * scale, displayHeight);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, cy + i * scale);
+                    ctx.lineTo(displayWidth, cy + i * scale);
+                    ctx.stroke();
+                }
+
+                // Draw axes
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(0, cy);
+                ctx.lineTo(displayWidth, cy);
+                ctx.moveTo(cx, 0);
+                ctx.lineTo(cx, displayHeight);
+                ctx.stroke();
+
+                // Initial conditions
+                const initials = [
+                    [2, 2], [2, -2], [-2, 2], [-2, -2],
+                    [3, 0], [-3, 0], [0, 3], [0, -3]
+                ];
+                const colors = ['#ff6b4a', '#7dd3fc', '#a78bfa', '#34d399', '#fbbf24', '#f472b6', '#22d3ee', '#a3e635'];
+
+                initials.forEach((init, idx) => {
+                    let x = init[0];
+                    let y = init[1];
+                    
+                    ctx.strokeStyle = colors[idx];
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(cx + x * scale, cy - y * scale);
+                    
+                    for (let k = 0; k < 50; k++) {
+                        const newX = a11 * x + a12 * y;
+                        const newY = a12 * x + a22 * y;
+                        x = newX;
+                        y = newY;
+                        
+                        if (Math.abs(x) > 10 || Math.abs(y) > 10) break;
+                        
+                        ctx.lineTo(cx + x * scale, cy - y * scale);
+                    }
+                    ctx.stroke();
+                    
+                    // Draw starting point
+                    ctx.fillStyle = colors[idx];
+                    ctx.beginPath();
+                    ctx.arc(cx + init[0] * scale, cy - init[1] * scale, Math.max(4, displayWidth / 100), 0, 2 * Math.PI);
+                    ctx.fill();
+                });
+
+                // Origin marker
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(cx, cy, Math.max(3, displayWidth / 125), 0, 2 * Math.PI);
+                ctx.fill();
+            }
+
+            a11Slider.addEventListener('input', drawTrajectories);
+            a22Slider.addEventListener('input', drawTrajectories);
+            a12Slider.addEventListener('input', drawTrajectories);
+            drawTrajectories();
+        }
+
+        // 3D Bowl visualization
+        function initBowlViz() {
+            const canvas = document.getElementById('bowl-canvas');
+            const ctx = canvas.getContext('2d');
+            const p11Slider = document.getElementById('p11');
+            const p22Slider = document.getElementById('p22');
+
+            // Responsive sizing
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 400;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            let rotationX = 0.4;
+            let rotationY = 0.5;
+            let isDragging = false;
+            let lastX, lastY;
+
+            function project(x, y, z) {
+                const cosX = Math.cos(rotationX), sinX = Math.sin(rotationX);
+                const cosY = Math.cos(rotationY), sinY = Math.sin(rotationY);
+                
+                const y1 = y * cosX - z * sinX;
+                const z1 = y * sinX + z * cosX;
+                const x1 = x * cosY + z1 * sinY;
+                
+                const scale = displayWidth * 0.24;
+                const cx = displayWidth / 2;
+                const cy = displayHeight / 2 + displayHeight * 0.1;
+                
+                return {
+                    x: cx + x1 * scale,
+                    y: cy - y1 * scale,
+                    z: z1
+                };
+            }
+
+            function drawBowl() {
+                const p11 = parseFloat(p11Slider.value);
+                const p22 = parseFloat(p22Slider.value);
+                
+                document.getElementById('p11-val').textContent = p11.toFixed(1);
+                document.getElementById('p22-val').textContent = p22.toFixed(1);
+
+                // Clear with scaled context
+                ctx.save();
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.scale(dpr, dpr);
+                
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+
+                const resolution = window.innerWidth < 480 ? 18 : 25;
+                const range = 1.5;
+
+                // Draw wireframe
+                ctx.strokeStyle = 'rgba(94, 184, 219, 0.4)';
+                ctx.lineWidth = 1;
+
+                // Draw grid lines
+                for (let i = 0; i <= resolution; i++) {
+                    ctx.beginPath();
+                    for (let j = 0; j <= resolution; j++) {
+                        const x = (i / resolution - 0.5) * 2 * range;
+                        const y = (j / resolution - 0.5) * 2 * range;
+                        const z = (p11 * x * x + p22 * y * y) * 0.5;
+                        const p = project(x, y, z);
+                        if (j === 0) ctx.moveTo(p.x, p.y);
+                        else ctx.lineTo(p.x, p.y);
+                    }
+                    ctx.stroke();
+                }
+
+                for (let j = 0; j <= resolution; j++) {
+                    ctx.beginPath();
+                    for (let i = 0; i <= resolution; i++) {
+                        const x = (i / resolution - 0.5) * 2 * range;
+                        const y = (j / resolution - 0.5) * 2 * range;
+                        const z = (p11 * x * x + p22 * y * y) * 0.5;
+                        const p = project(x, y, z);
+                        if (i === 0) ctx.moveTo(p.x, p.y);
+                        else ctx.lineTo(p.x, p.y);
+                    }
+                    ctx.stroke();
+                }
+
+                // Draw contour lines at different heights
+                const contourHeights = [0.5, 1, 1.5, 2];
+                ctx.lineWidth = 2;
+                
+                contourHeights.forEach((h, idx) => {
+                    ctx.strokeStyle = `rgba(255, 107, 74, ${0.3 + idx * 0.15})`;
+                    ctx.beginPath();
+                    for (let t = 0; t <= 100; t++) {
+                        const angle = (t / 100) * 2 * Math.PI;
+                        const r1 = Math.sqrt(h / p11);
+                        const r2 = Math.sqrt(h / p22);
+                        const x = r1 * Math.cos(angle);
+                        const y = r2 * Math.sin(angle);
+                        const z = h * 0.5;
+                        const p = project(x, y, z);
+                        if (t === 0) ctx.moveTo(p.x, p.y);
+                        else ctx.lineTo(p.x, p.y);
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+                });
+
+                // Draw origin marker
+                const origin = project(0, 0, 0);
+                ctx.fillStyle = '#ff6b4a';
+                ctx.beginPath();
+                ctx.arc(origin.x, origin.y, Math.max(4, displayWidth / 100), 0, 2 * Math.PI);
+                ctx.fill();
+                
+                ctx.restore();
+            }
+
+            p11Slider.addEventListener('input', drawBowl);
+            p22Slider.addEventListener('input', drawBowl);
+
+            // Mouse drag for rotation
+            canvas.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                lastX = e.clientX;
+                lastY = e.clientY;
+            });
+
+            canvas.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    const deltaX = e.clientX - lastX;
+                    const deltaY = e.clientY - lastY;
+                    rotationY += deltaX * 0.01;
+                    rotationX += deltaY * 0.01;
+                    rotationX = Math.max(-1, Math.min(1, rotationX));
+                    lastX = e.clientX;
+                    lastY = e.clientY;
+                    drawBowl();
+                }
+            });
+
+            canvas.addEventListener('mouseup', () => isDragging = false);
+            canvas.addEventListener('mouseleave', () => isDragging = false);
+
+            // Touch support for mobile
+            canvas.addEventListener('touchstart', (e) => {
+                isDragging = true;
+                lastX = e.touches[0].clientX;
+                lastY = e.touches[0].clientY;
+                e.preventDefault();
+            }, { passive: false });
+
+            canvas.addEventListener('touchmove', (e) => {
+                if (isDragging) {
+                    e.preventDefault();
+                    const deltaX = e.touches[0].clientX - lastX;
+                    const deltaY = e.touches[0].clientY - lastY;
+                    rotationY += deltaX * 0.01;
+                    rotationX += deltaY * 0.01;
+                    rotationX = Math.max(-1, Math.min(1, rotationX));
+                    lastX = e.touches[0].clientX;
+                    lastY = e.touches[0].clientY;
+                    drawBowl();
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('touchend', () => isDragging = false);
+
+            drawBowl();
+
+            // Slow auto-rotate (pause on mobile to save battery)
+            if (window.innerWidth > 480) {
+                setInterval(() => {
+                    if (!isDragging) {
+                        rotationY += 0.003;
+                        drawBowl();
+                    }
+                }, 50);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>x86-64 Kernel Internals: From Memory to Context Switches</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Source+Sans+3:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-primary: #161616;
+            --bg-secondary: #1c1c1c;
+            --bg-card: #1f1f1f;
+            --bg-code: #0d0d0d;
+            --text-primary: #cdc8be;
+            --text-body: #a8a49c;
+            --text-muted: #7a766e;
+            --accent: #d97b5d;
+            --accent-soft: #c9a090;
+            --accent-blue: #7eb8c9;
+            --accent-green: #8cb88c;
+            --accent-yellow: #d4c07a;
+            --border: rgba(205, 200, 190, 0.1);
+            --serif: 'Cormorant Garamond', Georgia, serif;
+            --sans: 'Source Sans 3', -apple-system, sans-serif;
+            --mono: 'JetBrains Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg-primary);
+            color: var(--text-body);
+            line-height: 1.85;
+            font-size: 17px;
+            font-weight: 400;
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(22, 22, 22, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
+            z-index: 1000;
+            padding: 0.75rem 2rem;
+        }
+
+        nav ul {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            list-style: none;
+            flex-wrap: wrap;
+        }
+
+        nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            transition: color 0.2s;
+        }
+
+        nav a:hover { color: var(--accent); }
+
+        header {
+            padding: 8rem 2rem 4rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+        }
+
+        header .subtitle {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--accent);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+
+        header h1 {
+            font-family: var(--serif);
+            font-size: clamp(2.2rem, 5vw, 3.5rem);
+            font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.2;
+            margin-bottom: 1.5rem;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        header .tagline {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            max-width: 700px;
+            margin: 0 auto;
+            font-style: italic;
+        }
+
+        main {
+            max-width: 850px;
+            margin: 0 auto;
+            padding: 4rem 2rem 8rem;
+        }
+
+        section { margin-bottom: 5rem; }
+
+        h2 {
+            font-family: var(--serif);
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        h3 {
+            font-family: var(--serif);
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--accent-soft);
+            margin-top: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        h4 {
+            font-family: var(--sans);
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-top: 2rem;
+            margin-bottom: 0.75rem;
+        }
+
+        p { margin-bottom: 1.25rem; }
+        strong { color: var(--text-primary); font-weight: 600; }
+        em { font-style: italic; color: var(--accent-soft); }
+
+        .definition {
+            background: var(--bg-card);
+            border-left: 3px solid var(--accent);
+            padding: 1.25rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .definition-term {
+            font-family: var(--serif);
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .definition p { margin-bottom: 0; }
+
+        pre {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem 1.5rem;
+            overflow-x: auto;
+            margin: 1.5rem 0;
+            font-family: var(--mono);
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        code {
+            font-family: var(--mono);
+            font-size: 0.9em;
+            color: var(--accent-blue);
+            background: rgba(126, 184, 201, 0.1);
+            padding: 0.15em 0.4em;
+            border-radius: 4px;
+        }
+
+        pre code { background: none; padding: 0; color: var(--text-body); }
+
+        .diagram {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            font-family: var(--mono);
+            font-size: 0.85rem;
+            line-height: 1.4;
+            overflow-x: auto;
+            white-space: pre;
+            color: var(--text-primary);
+        }
+
+        .diagram .comment { color: var(--text-muted); }
+        .diagram .highlight { color: var(--accent); }
+        .diagram .register { color: var(--accent-blue); }
+        .diagram .address { color: var(--accent-green); }
+        .diagram .value { color: var(--accent-yellow); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            font-size: 0.95rem;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        tr:hover { background: rgba(255, 255, 255, 0.02); }
+
+        .sanity-check {
+            background: linear-gradient(135deg, rgba(217, 123, 93, 0.1) 0%, rgba(201, 160, 144, 0.05) 100%);
+            border: 1px solid rgba(217, 123, 93, 0.3);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .sanity-check h4 {
+            font-family: var(--serif);
+            color: var(--accent);
+            margin-top: 0;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .sanity-check h4::before { content: "✓"; font-size: 1.2rem; }
+        .sanity-check ol { margin-left: 1.25rem; margin-bottom: 0; }
+        .sanity-check li { margin-bottom: 0.5rem; color: var(--text-body); }
+
+        .misconception {
+            background: rgba(126, 184, 201, 0.08);
+            border: 1px solid rgba(126, 184, 201, 0.2);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .misconception h4 {
+            font-family: var(--serif);
+            color: var(--accent-blue);
+            margin-top: 0;
+            margin-bottom: 1rem;
+        }
+
+        .misconception .wrong { color: #c97a7a; margin-bottom: 0.75rem; }
+        .misconception .right { color: var(--accent-green); }
+
+        .example {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .example h4 {
+            font-family: var(--serif);
+            color: var(--accent-yellow);
+            margin-top: 0;
+            margin-bottom: 1rem;
+        }
+
+        ul, ol { margin-left: 1.25rem; margin-bottom: 1.25rem; }
+        li { margin-bottom: 0.5rem; }
+
+        hr { border: none; border-top: 1px solid var(--border); margin: 3rem 0; }
+
+        .important {
+            background: rgba(212, 192, 122, 0.1);
+            border-left: 3px solid var(--accent-yellow);
+            padding: 1.25rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .important h4 { color: var(--accent-yellow); margin-top: 0; }
+
+        .checklist {
+            background: var(--bg-card);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+
+        .checklist h3 {
+            color: var(--accent);
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .checklist ol {
+            list-style: none;
+            margin-left: 0;
+            counter-reset: checklist;
+        }
+
+        .checklist li {
+            counter-increment: checklist;
+            padding-left: 2.5rem;
+            position: relative;
+            margin-bottom: 1rem;
+        }
+
+        .checklist li::before {
+            content: counter(checklist);
+            position: absolute;
+            left: 0;
+            width: 1.75rem;
+            height: 1.75rem;
+            background: var(--accent);
+            color: var(--bg-primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 640px) {
+            main { padding: 3rem 1.25rem 6rem; }
+            nav ul { gap: 0.75rem; font-size: 0.75rem; }
+            .diagram { font-size: 0.75rem; padding: 1rem; }
+        }
+
+        section { animation: fadeIn 0.5s ease forwards; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .reg { font-family: var(--mono); color: var(--accent-blue); font-size: 0.95em; }
+        .addr { font-family: var(--mono); color: var(--accent-green); font-size: 0.95em; }
+        .val { font-family: var(--mono); color: var(--accent-yellow); font-size: 0.95em; }
+    </style>
+</head>
+<body>
+    <nav>
+        <ul>
+            <li><a href="#memory">Memory</a></li>
+            <li><a href="#execution">Execution</a></li>
+            <li><a href="#stack">Stack</a></li>
+            <li><a href="#frames">Frames</a></li>
+            <li><a href="#calling">Calling</a></li>
+            <li><a href="#interrupts">Interrupts</a></li>
+            <li><a href="#switching">Switching</a></li>
+            <li><a href="#context">Context</a></li>
+            <li><a href="#rust">Rust</a></li>
+        </ul>
+    </nav>
+
+    <header>
+        <div class="subtitle">A Complete Tutorial for Kernel Developers</div>
+        <h1>x86-64 Kernel Internals: Stacks, Interrupts, and Context Switches</h1>
+        <p class="tagline">Building a complete mental model from memory fundamentals to thread scheduling — everything you need to write a kernel in Rust.</p>
+    </header>
+
+    <main>
+        <section id="memory">
+            <h2>1. Memory &amp; Pointers Fundamentals</h2>
+            
+            <p>Before we can understand stacks or interrupts, we need a rock-solid model of what memory actually <em>is</em> at the hardware level. Everything else builds on this.</p>
+
+            <h3>Memory as an Array of Bytes</h3>
+            
+            <p>Physical memory (RAM) is conceptually a giant array of bytes. Each byte has an <strong>address</strong> — a number that identifies its position in this array. On x86-64, addresses are 64-bit numbers, though typically only the lower 48 bits are used.</p>
+
+            <div class="diagram"><span class="comment">Memory as a linear array:</span>
+
+Address (hex)    Contents (1 byte each)
+──────────────────────────────────────────
+<span class="address">0x0000</span>           <span class="value">[0x00]</span>
+<span class="address">0x0001</span>           <span class="value">[0x00]</span>
+<span class="address">0x0002</span>           <span class="value">[0x4B]</span>
+<span class="address">0x0003</span>           <span class="value">[0xFF]</span>
+   ...              ...
+<span class="address">0x1000</span>           <span class="value">[0x48]</span>  ← Some byte at address 0x1000
+<span class="address">0x1001</span>           <span class="value">[0x89]</span>
+   ...              ...</div>
+
+            <div class="definition">
+                <div class="definition-term">Address</div>
+                <p>A number (typically written in hexadecimal) that identifies a specific byte location in memory. On x86-64, addresses are 64 bits wide.</p>
+            </div>
+
+            <div class="definition">
+                <div class="definition-term">Pointer</div>
+                <p>A value that <em>holds</em> an address. When we say "a pointer to X," we mean a value that contains the address where X is stored. The pointer itself is just a number.</p>
+            </div>
+
+            <h3>Bytes vs Bits, and Multi-Byte Values</h3>
+
+            <p>A <strong>byte</strong> is 8 <strong>bits</strong>. One byte can represent values 0–255 (unsigned) or -128 to +127 (signed). But most useful values need more than one byte:</p>
+
+            <table>
+                <tr><th>Name</th><th>Size</th><th>Range (unsigned)</th></tr>
+                <tr><td>Byte</td><td>8 bits (1 byte)</td><td>0 to 255</td></tr>
+                <tr><td>Word</td><td>16 bits (2 bytes)</td><td>0 to 65,535</td></tr>
+                <tr><td>Double word (dword)</td><td>32 bits (4 bytes)</td><td>0 to ~4 billion</td></tr>
+                <tr><td>Quad word (qword)</td><td>64 bits (8 bytes)</td><td>0 to ~18 quintillion</td></tr>
+            </table>
+
+            <h3>Little-Endian Byte Order</h3>
+
+            <p>x86-64 is <strong>little-endian</strong>: the <em>least significant byte</em> is stored at the <em>lowest address</em>.</p>
+
+            <div class="example">
+                <h4>Worked Example: Storing a 64-bit Value</h4>
+                <p>Let's store the value <span class="val">0x123456789ABCDEF0</span> at address <span class="addr">0x1000</span>:</p>
+                <div class="diagram"><span class="comment">In little-endian, least significant byte goes to lowest address:</span>
+
+Address     Byte (hex)    Which part of the value
+─────────────────────────────────────────────────
+<span class="address">0x1000</span>      <span class="value">0xF0</span>          ← Least significant byte
+<span class="address">0x1001</span>      <span class="value">0xDE</span>
+<span class="address">0x1002</span>      <span class="value">0xBC</span>
+<span class="address">0x1003</span>      <span class="value">0x9A</span>
+<span class="address">0x1004</span>      <span class="value">0x78</span>
+<span class="address">0x1005</span>      <span class="value">0x56</span>
+<span class="address">0x1006</span>      <span class="value">0x34</span>
+<span class="address">0x1007</span>      <span class="value">0x12</span>          ← Most significant byte</div>
+            </div>
+
+            <h3>Registers vs Memory</h3>
+
+            <p><strong>Registers</strong> are tiny storage locations <em>inside the CPU itself</em>. They are not part of RAM. The CPU can access registers in a single clock cycle — hundreds of times faster than RAM.</p>
+
+            <div class="diagram"><span class="comment">x86-64 General Purpose Registers (64-bit):</span>
+
+<span class="register">RAX</span>  ─  Accumulator, often holds return values
+<span class="register">RBX</span>  ─  Base register (callee-saved)
+<span class="register">RCX</span>  ─  Counter, 4th argument
+<span class="register">RDX</span>  ─  Data, 3rd argument
+<span class="register">RSI</span>  ─  Source Index, 2nd argument
+<span class="register">RDI</span>  ─  Destination Index, 1st argument
+<span class="register">RBP</span>  ─  Base Pointer (frame pointer)
+<span class="register">RSP</span>  ─  Stack Pointer ← <span class="highlight">Critical for this tutorial!</span>
+<span class="register">R8</span>–<span class="register">R15</span> ─  Additional GP registers
+
+<span class="comment">Special registers:</span>
+<span class="register">RIP</span>  ─  Instruction Pointer (program counter)
+<span class="register">RFLAGS</span> ─ Status flags (zero, carry, overflow, etc.)</div>
+
+            <div class="misconception">
+                <h4>Common Misconceptions</h4>
+                <p class="wrong">❌ "Registers are like variables in memory with special names."</p>
+                <p class="right">✓ Registers are physically separate from RAM. They're built into the CPU silicon and have dedicated circuitry.</p>
+                <p class="wrong" style="margin-top: 1rem;">❌ "Little-endian means the bytes are stored backwards."</p>
+                <p class="right">✓ It means the least significant byte is at the lowest address. The value <em>itself</em> isn't "backwards."</p>
+            </div>
+
+            <div class="sanity-check">
+                <h4>Sanity Check</h4>
+                <ol>
+                    <li>If I have a 32-bit value <code>0xDEADBEEF</code> stored at address <code>0x2000</code> in little-endian, what byte is at address <code>0x2000</code>? At <code>0x2003</code>?</li>
+                    <li>Can the CPU add two values stored in RAM directly, or must they first be loaded into registers?</li>
+                    <li>What's the difference between "address <code>0x1000</code>" and "the value <code>0x1000</code> stored somewhere in memory"?</li>
+                </ol>
+            </div>
+        </section>
+
+        <section id="execution">
+            <h2>2. Code Execution Model</h2>
+
+            <p>Now that we understand memory and registers, let's see how the CPU actually <em>executes</em> your code.</p>
+
+            <h3>Where Machine Code Lives: The Text Segment</h3>
+
+            <div class="diagram"><span class="comment">Typical memory layout of a process:</span>
+
+High addresses
+┌─────────────────────┐
+│       Stack         │  ← Grows downward
+│         ↓           │
+├─────────────────────┤
+│    (unmapped)       │
+├─────────────────────┤
+│         ↑           │
+│       Heap          │  ← Grows upward
+├─────────────────────┤
+│   BSS (zero-init)   │
+├─────────────────────┤
+│   Data (globals)    │
+├─────────────────────┤
+│   <span class="highlight">Text (code)</span>        │  ← Your machine instructions live here
+└─────────────────────┘
+Low addresses</div>
+
+            <h3>The Instruction Pointer: RIP</h3>
+
+            <div class="definition">
+                <div class="definition-term">RIP (Instruction Pointer)</div>
+                <p>A 64-bit register containing the memory address of the next instruction the CPU will fetch and execute. You cannot directly write to RIP with <code>mov</code> — you change it with jump/call/return instructions.</p>
+            </div>
+
+            <h3>The Fetch-Decode-Execute Cycle</h3>
+
+            <ol>
+                <li><strong>Fetch:</strong> Read the bytes at address <span class="reg">RIP</span> from memory.</li>
+                <li><strong>Decode:</strong> Figure out what instruction this is and what operands it uses.</li>
+                <li><strong>Execute:</strong> Perform the operation.</li>
+                <li><strong>Advance RIP:</strong> Move <span class="reg">RIP</span> forward by the instruction's length.</li>
+                <li>Repeat.</li>
+            </ol>
+
+            <h3>CALL vs JMP: What CALL Does Extra</h3>
+
+            <table>
+                <tr><th>Instruction</th><th>What it does</th></tr>
+                <tr><td><code>jmp target</code></td><td><span class="reg">RIP</span> ← target address. That's it.</td></tr>
+                <tr><td><code>call target</code></td><td>1. Push the return address onto the stack<br>2. <span class="reg">RIP</span> ← target address</td></tr>
+                <tr><td><code>ret</code></td><td>Pop a value from the stack into <span class="reg">RIP</span></td></tr>
+            </table>
+
+            <div class="example">
+                <h4>Worked Example: CALL and RET Mechanics</h4>
+                <div class="diagram"><span class="comment">Before CALL:</span>
+<span class="register">RIP</span> = <span class="address">0x401000</span>    (about to execute: call 0x402000)
+<span class="register">RSP</span> = <span class="address">0x7FFF0100</span>   (stack pointer)
+
+<span class="comment">CALL instruction is 5 bytes long, so return address = 0x401005</span>
+
+<span class="comment">CALL executes:</span>
+1. <span class="register">RSP</span> ← <span class="register">RSP</span> - 8 = <span class="address">0x7FFF00F8</span>
+2. Memory[<span class="address">0x7FFF00F8</span>] ← <span class="value">0x401005</span>  (push return address)
+3. <span class="register">RIP</span> ← <span class="address">0x402000</span>
+
+<span class="comment">Later, RET executes:</span>
+1. <span class="register">RIP</span> ← Memory[<span class="register">RSP</span>] = <span class="value">0x401005</span>
+2. <span class="register">RSP</span> ← <span class="register">RSP</span> + 8 = <span class="address">0x7FFF0100</span>
+
+<span class="comment">Execution continues at 0x401005 — right after the CALL!</span></div>
+            </div>
+
+            <div class="sanity-check">
+                <h4>Sanity Check</h4>
+                <ol>
+                    <li>If <span class="reg">RIP</span> is <code>0x500000</code> and the current instruction is 4 bytes long (with no jumps), what will <span class="reg">RIP</span> be after?</li>
+                    <li>What's the key difference between <code>jmp</code> and <code>call</code>?</li>
+                    <li>After <code>call foo</code> executes, where is the return address stored?</li>
+                </ol>
+            </div>
+        </section>
+
+        <section id="stack">
+            <h2>3. Stack Basics</h2>
+
+            <p>The <strong>stack</strong> is just a region of memory. There's nothing magical about it — it's bytes like everything else. What makes it special is <em>how we use it</em>.</p>
+
+            <h3>RSP: The Stack Pointer</h3>
+
+            <div class="definition">
+                <div class="definition-term">Stack Pointer (RSP)</div>
+                <p>A register containing the address of the most recently pushed value on the stack. On x86-64, <span class="reg">RSP</span> points to the <em>current</em> top of stack (the last item pushed), not the next free slot.</p>
+            </div>
+
+            <h3>Why the Stack "Grows Down"</h3>
+
+            <p>On x86-64, the stack grows toward <em>lower</em> addresses. When you push, <span class="reg">RSP</span> <em>decreases</em>. When you pop, <span class="reg">RSP</span> <em>increases</em>.</p>
+
+            <div class="diagram"><span class="comment">Stack growing downward:</span>
+
+High addresses
+       │
+       │  ┌──────────────┐
+       │  │  Old data    │
+       │  ├──────────────┤
+       │  │  Prev value  │
+       │  ├──────────────┤
+<span class="register">RSP</span> →│  │  <span class="highlight">Top of stack</span> │  ← Current "top" (most recent push)
+       │  ├──────────────┤
+       ▼  │  (unused)    │  ← Next push goes here
+           └──────────────┘
+Low addresses</div>
+
+            <h3>PUSH and POP: The Exact Operations</h3>
+
+            <div class="diagram"><span class="highlight">push rax</span> is equivalent to:
+    sub rsp, 8           ; RSP ← RSP - 8 (make room)
+    mov [rsp], rax       ; Store RAX at address RSP
+
+<span class="highlight">pop rbx</span> is equivalent to:
+    mov rbx, [rsp]       ; Load value at RSP into RBX
+    add rsp, 8           ; RSP ← RSP + 8 (reclaim space)</div>
+
+            <div class="example">
+                <h4>Worked Example: Push and Pop with Concrete Addresses</h4>
+                <div class="diagram"><span class="comment">Initial state:</span>
+<span class="register">RSP</span> = <span class="address">0x7FFF0100</span>
+<span class="register">RAX</span> = <span class="value">0xDEADBEEFCAFEBABE</span>
+
+<span class="comment">Execute: push rax</span>
+Step 1: <span class="register">RSP</span> ← <span class="register">RSP</span> - 8 = <span class="address">0x7FFF00F8</span>
+Step 2: Memory[<span class="address">0x7FFF00F8</span>] ← <span class="value">0xDEADBEEFCAFEBABE</span>
+
+<span class="comment">Execute: pop rbx</span>
+Step 1: <span class="register">RBX</span> ← Memory[<span class="address">0x7FFF00F8</span>] = <span class="value">0xDEADBEEFCAFEBABE</span>
+Step 2: <span class="register">RSP</span> ← <span class="register">RSP</span> + 8 = <span class="address">0x7FFF0100</span>
+
+<span class="comment">Note: The data at 0x7FFF00F8 is STILL THERE! Not erased!</span></div>
+            </div>
+
+            <div class="important">
+                <h4>Key Insight</h4>
+                <p>"Freeing" stack memory means moving <span class="reg">RSP</span> past it. The bytes remain in RAM with their old values until something else overwrites them.</p>
+            </div>
+
+            <div class="misconception">
+                <h4>Common Misconceptions</h4>
+                <p class="wrong">❌ "The stack is a separate hardware structure."</p>
+                <p class="right">✓ The stack is just a region of regular memory. <span class="reg">RSP</span> is just a register.</p>
+                <p class="wrong" style="margin-top: 1rem;">❌ "Pop erases data from memory."</p>
+                <p class="right">✓ Pop copies the value and adjusts <span class="reg">RSP</span>. The memory still contains the old value.</p>
+            </div>
+
+            <div class="sanity-check">
+                <h4>Sanity Check</h4>
+                <ol>
+                    <li>If <span class="reg">RSP</span> is <code>0x1000</code> and you execute <code>push rax</code>, what is <span class="reg">RSP</span> afterward?</li>
+                    <li>After popping a value, could you theoretically read it back from memory if you knew the address?</li>
+                    <li>Why does the stack grow downward on x86-64?</li>
+                </ol>
+            </div>
+        </section>
+
+        <section id="frames">
+            <h2>4. Stack Frames</h2>
+
+            <div class="definition">
+                <div class="definition-term">Stack Frame</div>
+                <p>The contiguous region of stack memory allocated for one function call. It typically includes: the return address (pushed by <code>call</code>), saved base pointer, saved callee-saved registers, and local variables.</p>
+            </div>
+
+            <h3>Function Prologue and Epilogue</h3>
+
+            <div class="diagram"><span class="highlight">Prologue</span> (function entry):
+    push rbp          ; Save caller's base pointer
+    mov  rbp, rsp     ; Set up our own base pointer
+    sub  rsp, N       ; Allocate N bytes for local variables
+
+<span class="highlight">Epilogue</span> (function exit):
+    mov  rsp, rbp     ; Deallocate locals (RSP = RBP)
+    pop  rbp          ; Restore caller's base pointer
+    ret               ; Return (pop return address into RIP)</div>
+
+            <h3>System V AMD64 ABI: Argument Passing</h3>
+
+            <table>
+                <tr><th>Argument #</th><th>Register</th></tr>
+                <tr><td>1st integer/pointer</td><td><span class="reg">RDI</span></td></tr>
+                <tr><td>2nd</td><td><span class="reg">RSI</span></td></tr>
+                <tr><td>3rd</td><td><span class="reg">RDX</span></td></tr>
+                <tr><td>4th</td><td><span class="reg">RCX</span></td></tr>
+                <tr><td>5th</td><td><span class="reg">R8</span></td></tr>
+                <tr><td>6th</td><td><span class="reg">R9</span></td></tr>
+                <tr><td>7th+</td><td>Pushed on stack</td></tr>
+            </table>
+
+            <p>Return values go in <span class="reg">RAX</span>.</p>
+
+            <h3>Stack Frame Layout Diagram</h3>
+
+            <div class="diagram"><span class="comment">Complete stack frame layout (System V AMD64):</span>
+
+High addresses
+┌───────────────────────────────┐
+│ 8th+ argument (if any)        │  [rbp + 24]
+├───────────────────────────────┤
+│ 7th argument (if any)         │  [rbp + 16]
+├───────────────────────────────┤
+│ Return Address                │  [rbp + 8]  ← Pushed by CALL
+├───────────────────────────────┤
+│ Saved RBP (caller's)          │  [rbp + 0]  ← <span class="register">RBP</span> points here
+├───────────────────────────────┤
+│ Saved callee-saved registers  │  [rbp - 8], [rbp - 16], ...
+├───────────────────────────────┤
+│ Local variables               │  [rbp - N]
+├───────────────────────────────┤
+│ (alignment padding if needed) │  ← <span class="register">RSP</span>
+└───────────────────────────────┘
+Low addresses</div>
+
+            <div class="sanity-check">
+                <h4>Sanity Check</h4>
+                <ol>
+                    <li>After <code>push rbp; mov rbp, rsp</code>, what is the relationship between <span class="reg">RBP</span> and the return address?</li>
+                    <li>If a function has 3 local 64-bit variables, how many bytes does <code>sub rsp, N</code> subtract?</li>
+                    <li>In System V ABI, if I call <code>foo(10, 20, 30)</code>, which registers hold 10, 20, and 30?</li>
+                </ol>
+            </div>
+        </section>
+
+        <section id="calling">
+            <h2>5. Calling Conventions &amp; Register Saving</h2>
+
+            <h3>Caller-Saved vs Callee-Saved Registers</h3>
+
+            <div class="diagram"><span class="highlight">Callee-saved</span> (callee must preserve these):
+<span class="register">RBX</span>, <span class="register">RBP</span>, <span class="register">R12</span>, <span class="register">R13</span>, <span class="register">R14</span>, <span class="register">R15</span>
+
+If a function wants to use these, it must save them first (push)
+and restore them before returning (pop).
+
+<span class="highlight">Caller-saved</span> (callee may freely clobber):
+<span class="register">RAX</span>, <span class="register">RCX</span>, <span class="register">RDX</span>, <span class="register">RSI</span>, <span class="register">RDI</span>, <span class="register">R8</span>, <span class="register">R9</span>, <span class="register">R10</span>, <span class="register">R11</span>
+
+If a caller has important data in these, it must save them
+before the call (if it needs them after).</div>
+
+            <h3>Stack Alignment: The 16-Byte Rule</h3>
+
+            <p>The System V ABI requires <span class="reg">RSP</span> to be <strong>16-byte aligned</strong> at the point of a <code>call</code> instruction.</p>
+
+            <div class="important">
+                <h4>Why Alignment Matters</h4>
+                <p>SSE/AVX instructions require 16-byte aligned memory operands. If the stack is misaligned, instructions like <code>movaps</code> will fault with a <code>#GP</code> (General Protection) exception.</p>
+            </div>
+
+            <div class="sanity-check">
+                <h4>Sanity Check</h4>
+                <ol>
+                    <li>If a function uses <span class="reg">R12</span>, what must it do before returning?</li>
+                    <li>Why is <span class="reg">RDI</span> caller-saved rather than callee-saved?</li>
+                    <li>If <span class="reg">RSP</span> = <code>0x7FFF0108</code> before a <code>call</code>, is this properly aligned?</li>
+                </ol>
+            </div>
+        </section>
+
+        <section id="interrupts">
+            <h2>6. Interrupts &amp; CPU Exceptions</h2>
+
+            <div class="definition">
+                <div class="definition-term">Interrupt</div>
+                <p>An asynchronous event from hardware (keyboard, disk, timer) that signals the CPU to stop what it's doing and run a handler.</p>
+            </div>
+
+            <div class="definition">
+                <div class="definition-term">Exception</div>
+                <p>A synchronous event caused by the currently executing instruction: division by zero, page fault, invalid opcode, etc.</p>
+            </div>
+
+            <h3>The Interrupt Descriptor Table (IDT)</h3>
+
+            <div class="diagram"><span class="comment">IDT Structure (simplified):</span>
+
+Vector   Exception/Interrupt
+───────────────────────────────────
+0        Divide Error (#DE)
+1        Debug (#DB)
+2        NMI (Non-Maskable Interrupt)
+3        Breakpoint (#BP)
+6        Invalid Opcode (#UD)
+8        Double Fault (#DF)
+13       General Protection (#GP)
+14       Page Fault (#PF)
+32-255   User-defined (hardware interrupts, syscalls, etc.)</div>
+
+            <h3>What the CPU Pushes on Entry</h3>
+
+            <div class="diagram"><span class="comment">Stack after interrupt/exception entry:</span>
+
+             ├──────────────────────┤
+             │   SS (padded to 64b) │  ← Only if privilege change
+             ├──────────────────────┤
+             │   RSP                │  ← Only if privilege change
+             ├──────────────────────┤
+             │   RFLAGS             │
+             ├──────────────────────┤
+             │   CS (padded to 64b) │
+             ├──────────────────────┤
+<span class="register">RSP</span> →       │   RIP                │  ← Return address
+             ├──────────────────────┤
+             │   Error Code         │  ← Only for some exceptions
+             └──────────────────────┘</div>
+
+            <div class="important">
+                <h4>Critical Kernel Rule</h4>
+                <p>The CPU does NOT save general-purpose registers. Your interrupt handler must save any registers it uses before modifying them, and restore them before returning.</p>
+            </div>
+
+            <h3>IRETQ vs RET</h3>
+
+            <div class="diagram"><span class="comment">IRETQ operation:</span>
+
+1. Pop RIP
+2. Pop CS  
+3. Pop RFLAGS
+4. Pop RSP (if returning to different privilege)
+5. Pop SS  (if returning to different privilege)
+
+<span class="comment">It reverses exactly what the CPU pushed on entry.</span></div>
+
+            <div class="misconception">
+                <h4>Common Misconceptions</h4>
+                <p class="wrong">❌ "The CPU saves all registers on interrupt."</p>
+                <p class="right">✓ The CPU only saves RIP, CS, RFLAGS, and (on privilege change) RSP/SS. General-purpose registers are the handler's responsibility.</p>
+                <p class="wrong" style="margin-top: 1rem;">❌ "I can return from an interrupt handler with RET."</p>
+                <p class="right">✓ You must use IRETQ. RET only pops RIP, leaving CS, RFLAGS, etc. on the stack.</p>
+            </div>
+
+            <div class="sanity-check">
+                <h4>Sanity Check</h4>
+                <ol>
+                    <li>What's the difference between an interrupt and an exception?</li>
+                    <li>If a page fault handler modifies <span class="reg">RAX</span> without saving it first, what happens when the handler returns?</li>
+                    <li>Does the CPU push an error code for all exceptions?</li>
+                </ol>
+            </div>
+        </section>
+
+        <section id="switching">
+            <h2>7. Stack Switching on Interrupts</h2>
+
+            <h3>Privilege Rings: Ring 3 vs Ring 0</h3>
+
+            <table>
+                <tr><th>Ring</th><th>Name</th><th>Who runs here</th></tr>
+                <tr><td>Ring 0</td><td>Kernel mode</td><td>OS kernel, drivers</td></tr>
+                <tr><td>Ring 3</td><td>User mode</td><td>Applications</td></tr>
+            </table>
+
+            <h3>The TSS: Task State Segment</h3>
+
+            <div class="definition">
+                <div class="definition-term">TSS (Task State Segment)</div>
+                <p>A CPU structure containing stack pointers for privilege level transitions. The key field is <code>RSP0</code> — the stack pointer to use when entering ring 0.</p>
+            </div>
+
+            <h3>IST: Interrupt Stack Table</h3>
+
+            <p>The IST provides up to 7 dedicated stacks for critical exceptions. Each IDT entry can specify an IST index (1-7). If non-zero, the CPU loads <span class="reg">RSP</span> from that IST entry, <em>regardless of current privilege level</em>.</p>
+
+            <div class="important">
+                <h4>Double Fault and IST</h4>
+                <p>If an exception occurs while trying to invoke an exception handler, a <strong>Double Fault</strong> (#DF) fires. If the double fault handler also fails, the CPU triple-faults and resets. Always put your double fault handler on a dedicated IST stack!</p>
+            </div>
+
+            <div class="sanity-check">
+                <h4>Sanity Check</h4>
+                <ol>
+                    <li>Why can't the kernel use the user's stack for interrupt handling?</li>
+                    <li>What field in the TSS provides the kernel stack pointer?</li>
+                    <li>Why does double fault need an IST entry?</li>
+                </ol>
+            </div>
+        </section>
+
+        <section id="context">
+            <h2>8. Context Switches</h2>
+
+            <div class="definition">
+                <div class="definition-term">Execution Context</div>
+                <p>All the state required to resume a thread's execution: GPRs, RSP, RIP, RFLAGS, and (for processes) the address space (page tables).</p>
+            </div>
+
+            <h3>Thread Switch vs Process Switch</h3>
+
+            <table>
+                <tr><th>Thread Switch</th><th>Process Switch</th></tr>
+                <tr><td>Same address space</td><td>Different address space</td></tr>
+                <tr><td>Save/restore registers + RSP</td><td>All that + switch <span class="reg">CR3</span></td></tr>
+                <tr><td>Relatively fast</td><td>Slow (TLB flush)</td></tr>
+            </table>
+
+            <h3>CR3 and Page Tables</h3>
+
+            <div class="definition">
+                <div class="definition-term">CR3</div>
+                <p>A control register containing the physical address of the top-level page table (PML4 on x86-64). Changing CR3 switches the entire address space mapping and flushes the TLB.</p>
+            </div>
+
+            <h3>Why Context Switches Are "Slow"</h3>
+
+            <ul>
+                <li><strong>TLB flush</strong>: After switching <span class="reg">CR3</span>, all cached address translations are invalid.</li>
+                <li><strong>Cache pollution</strong>: The new thread's working set isn't in L1/L2/L3 cache.</li>
+                <li><strong>Branch predictor pollution</strong>: The CPU's branch predictor has learned the old thread's patterns.</li>
+            </ul>
+
+            <div class="misconception">
+                <h4>Common Misconceptions</h4>
+                <p class="wrong">❌ "Context switches are slow because saving registers is slow."</p>
+                <p class="right">✓ Saving ~15 registers is fast. The slowdown is TLB flush, cache misses, and branch predictor retraining.</p>
+                <p class="wrong" style="margin-top: 1rem;">❌ "Threads in the same process share everything."</p>
+                <p class="right">✓ They share address space (code, heap) but each has its own stack and register state.</p>
+            </div>
+
+            <div class="sanity-check">
+                <h4>Sanity Check</h4>
+                <ol>
+                    <li>What register holds the page table base address?</li>
+                    <li>Why is a process switch slower than a thread switch?</li>
+                    <li>What is the TLB and why does flushing it hurt performance?</li>
+                </ol>
+            </div>
+        </section>
+
+        <section id="rust">
+            <h2>9. Kernel-in-Rust Practical Guidance</h2>
+
+            <h3>The x86-interrupt Calling Convention</h3>
+
+            <p>Rust's <code>extern "x86-interrupt"</code> is special. Unlike <code>extern "C"</code>, it:</p>
+
+            <ul>
+                <li>Expects the interrupt stack frame to already be on the stack</li>
+                <li>Automatically saves/restores all scratch registers</li>
+                <li>Uses <code>iretq</code> to return, not <code>ret</code></li>
+                <li>Handles the error code for you (if present)</li>
+            </ul>
+
+            <pre><code>use x86_64::structures::idt::InterruptStackFrame;
+
+extern "x86-interrupt" fn page_fault_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    // Handle page fault...
+    // Compiler generates iretq, not ret
+}</code></pre>
+
+            <h3>Common Pitfalls</h3>
+
+            <div class="important">
+                <h4>Pitfall 1: Misaligned Stack</h4>
+                <p>If <span class="reg">RSP</span> isn't 16-byte aligned when you call a function, SSE instructions will fault.</p>
+            </div>
+
+            <div class="important">
+                <h4>Pitfall 2: Forgetting to Save Registers</h4>
+                <p>If you write a handler in pure assembly or use <code>extern "C"</code>, you must save/restore all registers yourself.</p>
+            </div>
+
+            <div class="important">
+                <h4>Pitfall 3: Wrong IDT Entry Type</h4>
+                <p>Interrupt gates automatically clear IF (interrupt flag). Trap gates don't. Use interrupt gates for most handlers.</p>
+            </div>
+
+            <div class="important">
+                <h4>Pitfall 4: No IST for Double Fault</h4>
+                <p>If your double fault handler uses the regular kernel stack, a kernel stack overflow causes triple fault → reboot.</p>
+            </div>
+
+            <h3>Setting Up TSS and IST in Rust</h3>
+
+            <pre><code>use x86_64::structures::tss::TaskStateSegment;
+use x86_64::VirtAddr;
+
+pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
+
+lazy_static! {
+    static ref TSS: TaskStateSegment = {
+        let mut tss = TaskStateSegment::new();
+        
+        tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
+            const STACK_SIZE: usize = 4096 * 5;
+            static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+            let stack_start = VirtAddr::from_ptr(unsafe { &STACK });
+            stack_start + STACK_SIZE  // Stack end (grows down!)
+        };
+        
+        tss
+    };
+}</code></pre>
+
+            <div class="sanity-check">
+                <h4>Sanity Check</h4>
+                <ol>
+                    <li>What does <code>extern "x86-interrupt"</code> do differently from <code>extern "C"</code>?</li>
+                    <li>Why might a kernel use assembly stubs instead of pure <code>extern "x86-interrupt"</code>?</li>
+                    <li>What happens if your double fault handler doesn't use an IST entry and the kernel stack overflows?</li>
+                </ol>
+            </div>
+        </section>
+
+        <hr>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <div class="checklist">
+                <h3>If you can explain these 10 bullets, you understand the whole picture</h3>
+                <ol>
+                    <li><strong>Memory is an array of bytes</strong>, each with an address. Registers are separate, fast storage inside the CPU. Little-endian means least significant byte at lowest address.</li>
+                    <li><strong>RIP holds the address of the next instruction</strong>. The fetch-decode-execute loop runs continuously. <code>call</code> differs from <code>jmp</code> by pushing a return address.</li>
+                    <li><strong>The stack is regular memory</strong> used in a LIFO pattern. <span class="reg">RSP</span> points to the top. <code>push</code> = decrement <span class="reg">RSP</span>, store. <code>pop</code> = load, increment <span class="reg">RSP</span>.</li>
+                    <li><strong>A stack frame</strong> contains return address, saved <span class="reg">RBP</span>, saved callee-saved registers, and local variables.</li>
+                    <li><strong>Calling conventions (ABI)</strong> specify argument registers, return register, and which registers must be preserved. 16-byte stack alignment at <code>call</code>.</li>
+                    <li><strong>Interrupts and exceptions</strong> invoke handlers via the IDT. The CPU pushes RIP, CS, RFLAGS. Handlers must save GPRs themselves.</li>
+                    <li><strong>The TSS provides RSP0</strong> for kernel stack on privilege transitions. The IST provides dedicated stacks for critical exceptions.</li>
+                    <li><strong>IRETQ returns from interrupts</strong>, popping everything the CPU pushed. Using <code>ret</code> instead would crash.</li>
+                    <li><strong>Context switches save/restore entire execution state</strong>. Process switches also change <span class="reg">CR3</span>, flushing the TLB.</li>
+                    <li><strong>In Rust kernels</strong>, <code>extern "x86-interrupt"</code> handles the weird calling convention. Use IST for double fault. Ensure stack alignment.</li>
+                </ol>
+            </div>
+
+            <p style="text-align: center; margin-top: 3rem; color: var(--text-muted); font-style: italic;">You now have a complete mental model. Go write that kernel! 🦀</p>
+        </section>
+    </main>
+
+    <footer>
+        <p>Tutorial crafted for kernel developers learning x86-64 from first principles.</p>
+    </footer>
+</body>
+</html>

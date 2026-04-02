@@ -1,0 +1,2412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Active Set Methods: From Lagrange Multipliers to Constrained Optimization</title>
+    
+    <!-- KaTeX for beautiful math -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-primary: #050507;
+            --bg-secondary: #0a0a0f;
+            --bg-card: #0f0f16;
+            --bg-elevated: #16161f;
+            --text-primary: #d4d2cf;
+            --text-secondary: #8a8a8a;
+            --text-muted: #5a5a5a;
+            --accent: #f59e0b;
+            --accent-secondary: #3b82f6;
+            --accent-soft: rgba(245, 158, 11, 0.12);
+            --math-color: #5eb8db;
+            --border: rgba(255, 255, 255, 0.06);
+            --border-strong: rgba(255, 255, 255, 0.1);
+            --serif: 'Playfair Display', Georgia, serif;
+            --sans: 'IBM Plex Sans', -apple-system, sans-serif;
+            --mono: 'IBM Plex Mono', monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.8;
+            font-size: 17px;
+            font-weight: 400;
+        }
+
+        /* Subtle noise texture */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        /* Sticky Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(5, 5, 7, 0.95);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+            padding: 0.75rem 2rem;
+            opacity: 0;
+            transform: translateY(-100%);
+            transition: all 0.3s ease;
+        }
+
+        nav.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        nav ul {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            list-style: none;
+            max-width: 1000px;
+            margin: 0 auto;
+            flex-wrap: wrap;
+        }
+
+        nav a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            transition: color 0.2s;
+        }
+
+        nav a:hover {
+            color: var(--accent);
+        }
+
+        /* Header */
+        header {
+            min-height: 70vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .subtitle {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            margin-bottom: 1.5rem;
+        }
+
+        header h1 {
+            font-family: var(--serif);
+            font-size: clamp(2.2rem, 5vw, 3.5rem);
+            font-weight: 700;
+            line-height: 1.15;
+            max-width: 900px;
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+        }
+
+        .tagline {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            max-width: 650px;
+            line-height: 1.7;
+        }
+
+        /* Main Content */
+        main {
+            max-width: 780px;
+            margin: 0 auto;
+            padding: 5rem 2rem 8rem;
+        }
+
+        section {
+            margin-bottom: 5rem;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @media (prefers-reduced-motion: no-preference) {
+            section {
+                opacity: 0;
+                transform: translateY(20px);
+                transition: all 0.6s ease;
+            }
+
+            section.visible {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h2 {
+            font-family: var(--serif);
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--accent);
+            display: inline-block;
+        }
+
+        h3 {
+            font-family: var(--serif);
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-top: 2.5rem;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        h4 {
+            font-family: var(--serif);
+            font-size: 1.15rem;
+            font-weight: 600;
+            margin-top: 2rem;
+            margin-bottom: 0.75rem;
+            color: var(--accent);
+        }
+
+        p {
+            margin-bottom: 1.25rem;
+            color: var(--text-primary);
+        }
+
+        strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        em {
+            font-style: italic;
+            color: var(--accent);
+        }
+
+        /* Math Blocks */
+        .math-block {
+            background: var(--bg-card);
+            border: 1px solid var(--border-strong);
+            border-left: 3px solid var(--accent);
+            border-radius: 8px;
+            padding: 1.5rem 2rem;
+            margin: 1.75rem 0;
+            overflow-x: auto;
+            text-align: center;
+        }
+
+        .math-block .katex {
+            color: var(--math-color);
+            font-size: 1.15em;
+        }
+
+        .katex {
+            color: var(--math-color);
+        }
+
+        /* Key Concept Boxes */
+        .key-concept {
+            background: var(--accent-soft);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 10px;
+            padding: 1.5rem 2rem;
+            margin: 2rem 0;
+        }
+
+        .key-concept p {
+            margin-bottom: 0;
+            color: var(--text-primary);
+        }
+
+        /* Algorithm boxes */
+        .algorithm {
+            background: var(--bg-card);
+            border: 1px solid var(--border-strong);
+            border-radius: 10px;
+            padding: 1.5rem 2rem;
+            margin: 2rem 0;
+        }
+
+        .algorithm-title {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 1rem;
+        }
+
+        .algorithm ol {
+            margin: 0;
+            padding-left: 1.5rem;
+        }
+
+        .algorithm li {
+            margin-bottom: 0.75rem;
+            color: var(--text-primary);
+        }
+
+        /* Example boxes */
+        .example {
+            background: rgba(59, 130, 246, 0.08);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+            border-radius: 10px;
+            padding: 1.5rem 2rem;
+            margin: 2rem 0;
+        }
+
+        .example-title {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--accent-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 1rem;
+        }
+
+        /* Lists */
+        ul, ol {
+            margin: 1.25rem 0;
+            padding-left: 1.5rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        /* Visualization containers */
+        .visualization {
+            background: var(--bg-card);
+            border: 1px solid var(--border-strong);
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2.5rem 0;
+        }
+
+        .viz-title {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 1rem;
+        }
+
+        .viz-controls {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .control-group label {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .control-group input[type="range"] {
+            width: 150px;
+            accent-color: var(--accent);
+        }
+
+        .control-group button {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .control-group button:hover {
+            opacity: 0.85;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+        }
+
+        .caption {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            font-style: italic;
+            text-align: center;
+            margin-top: 1rem;
+            line-height: 1.6;
+        }
+
+        /* Summary Cards */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .summary-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-strong);
+            border-radius: 10px;
+            padding: 1.5rem;
+        }
+
+        .summary-card h4 {
+            font-family: var(--serif);
+            font-size: 1.1rem;
+            color: var(--accent);
+            margin-bottom: 0.75rem;
+            margin-top: 0;
+        }
+
+        .summary-card p {
+            font-size: 0.95rem;
+            margin-bottom: 0;
+            color: var(--text-secondary);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            main {
+                padding: 3rem 1.5rem 6rem;
+            }
+
+            h2 {
+                font-size: 1.75rem;
+            }
+
+            h3 {
+                font-size: 1.25rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                font-size: 16px;
+                line-height: 1.7;
+                -webkit-text-size-adjust: 100%;
+            }
+
+            header {
+                min-height: 60vh;
+                padding: 3rem 1.25rem;
+            }
+
+            header h1 {
+                font-size: 1.75rem;
+                line-height: 1.25;
+            }
+
+            .subtitle {
+                font-size: 0.7rem;
+                letter-spacing: 0.15em;
+            }
+
+            .tagline {
+                font-size: 1rem;
+                line-height: 1.6;
+            }
+
+            main {
+                padding: 2.5rem 1.25rem 5rem;
+            }
+
+            h2 {
+                font-size: 1.5rem;
+                display: block;
+                padding-bottom: 0.4rem;
+            }
+
+            h3 {
+                font-size: 1.15rem;
+                margin-top: 2rem;
+            }
+
+            p {
+                font-size: 16px;
+                margin-bottom: 1.1rem;
+            }
+
+            .math-block {
+                padding: 1rem 0.75rem;
+                margin: 1.25rem -0.5rem;
+                border-radius: 6px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .math-block .katex {
+                font-size: 0.95em;
+            }
+
+            .key-concept, .algorithm, .example {
+                padding: 1.25rem 1rem;
+                margin: 1.5rem 0;
+                border-radius: 8px;
+            }
+
+            nav {
+                padding: 0.6rem 1rem;
+            }
+
+            nav ul {
+                gap: 0.5rem 1rem;
+                justify-content: flex-start;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 0.25rem;
+                flex-wrap: nowrap;
+            }
+
+            nav a {
+                font-size: 0.75rem;
+                white-space: nowrap;
+            }
+
+            .visualization {
+                padding: 1.25rem 1rem;
+                margin: 2rem -0.5rem;
+                border-radius: 8px;
+            }
+
+            .viz-controls {
+                flex-direction: column;
+                gap: 1.25rem;
+            }
+
+            .control-group {
+                width: 100%;
+            }
+
+            .control-group input[type="range"] {
+                width: 100%;
+                height: 44px;
+            }
+
+            .control-group button {
+                width: 100%;
+                padding: 0.75rem 1rem;
+            }
+
+            canvas {
+                width: 100% !important;
+                height: auto !important;
+                max-height: 350px;
+            }
+
+            .summary-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            footer {
+                padding: 2rem 1.25rem;
+                font-size: 0.8rem;
+            }
+        }
+
+        @supports (padding: env(safe-area-inset-bottom)) {
+            footer {
+                padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+            }
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        header > * {
+            animation: fadeInUp 0.8s ease forwards;
+        }
+
+        header .subtitle { animation-delay: 0.1s; }
+        header h1 { animation-delay: 0.2s; }
+        header .tagline { animation-delay: 0.3s; }
+    </style>
+    
+    <noscript>
+        <style>
+            section { opacity: 1 !important; transform: none !important; }
+        </style>
+    </noscript>
+</head>
+<body>
+    <nav id="navbar">
+        <ul>
+            <li><a href="#intro">Introduction</a></li>
+            <li><a href="#unconstrained">Unconstrained</a></li>
+            <li><a href="#lagrange-intro">Lagrange Multipliers</a></li>
+            <li><a href="#lagrange-derivation">Derivation</a></li>
+            <li><a href="#kkt">KKT Conditions</a></li>
+            <li><a href="#active-set">Active Set Method</a></li>
+            <li><a href="#iterative-examples">Detailed Examples</a></li>
+            <li><a href="#summary">Summary</a></li>
+        </ul>
+    </nav>
+
+    <header>
+        <div class="subtitle">A Deep Dive Tutorial</div>
+        <h1>Active Set Methods: From Lagrange Multipliers to Constrained Optimization</h1>
+        <p class="tagline">Understanding how to solve optimization problems with constraints — building from first principles to practical algorithms.</p>
+    </header>
+
+    <main>
+        <!-- INTRODUCTION -->
+        <section id="intro">
+            <h2>Introduction</h2>
+            
+            <p>In control, machine learning, economics, and engineering, we constantly face optimization problems with <strong>constraints</strong>. We want to minimize a cost, but we can't just go anywhere — there are limits on what's allowed.</p>
+            
+            <p>For example:</p>
+            <ul>
+                <li><strong>MPC:</strong> Minimize control effort, but actuators have limits</li>
+                <li><strong>Portfolio optimization:</strong> Maximize returns, but you can't invest more than 100%</li>
+                <li><strong>Robot motion:</strong> Minimize energy, but joints have angle limits</li>
+            </ul>
+            
+            <p>The <strong>Active Set Method</strong> is one of the most elegant algorithms for solving these constrained optimization problems. But to understand it deeply, we need to first understand <em>Lagrange multipliers</em> — a beautiful mathematical tool that transforms constrained problems into unconstrained ones.</p>
+            
+            <p>Let's build this understanding from the ground up.</p>
+        </section>
+
+        <!-- UNCONSTRAINED OPTIMIZATION -->
+        <section id="unconstrained">
+            <h2>Starting Point: Unconstrained Optimization</h2>
+            
+            <p>Before adding constraints, let's recall unconstrained optimization. Given a function $f(x)$ where $x \in \mathbb{R}^n$, we want to find:</p>
+            
+            <div class="math-block">
+                $$x^* = \arg\min_x f(x)$$
+            </div>
+            
+            <h3>The Gradient Condition</h3>
+            
+            <p>At a minimum, the function must be "flat" — moving in any direction doesn't immediately decrease the cost. Mathematically, the <strong>gradient</strong> must be zero:</p>
+            
+            <div class="math-block">
+                $$\nabla f(x^*) = 0$$
+            </div>
+            
+            <p>The gradient $\nabla f = \begin{bmatrix} \frac{\partial f}{\partial x_1} & \cdots & \frac{\partial f}{\partial x_n} \end{bmatrix}^T$ points in the direction of steepest <em>increase</em>. At a minimum, there's no direction of increase (or decrease) — hence zero gradient.</p>
+            
+            <div class="example">
+                <div class="example-title">Example: Quadratic Function</div>
+                <p>Consider $f(x) = \frac{1}{2}x^T H x - c^T x$ where $H$ is positive definite.</p>
+                <p>The gradient is: $\nabla f = Hx - c$</p>
+                <p>Setting $\nabla f = 0$: $Hx = c \implies x^* = H^{-1}c$</p>
+                <p>This is a linear system — easy to solve!</p>
+            </div>
+            
+            <p>For unconstrained problems, we just solve $\nabla f = 0$. But what happens when we add constraints?</p>
+        </section>
+
+        <!-- LAGRANGE MULTIPLIERS INTRODUCTION -->
+        <section id="lagrange-intro">
+            <h2>The Problem: Constraints Change Everything</h2>
+            
+            <p>Now consider minimizing $f(x)$ subject to a constraint $g(x) = 0$:</p>
+            
+            <div class="math-block">
+                $$\min_x f(x) \quad \text{subject to} \quad g(x) = 0$$
+            </div>
+            
+            <p>The constraint $g(x) = 0$ defines a surface (or curve, or hyperplane) in the space. We can only move along this surface — the solution must lie on it.</p>
+            
+            <h3>Why $\nabla f = 0$ No Longer Works</h3>
+            
+            <p>The unconstrained minimum (where $\nabla f = 0$) might violate the constraint! We need a new condition.</p>
+
+            <!-- Visualization: Constrained vs Unconstrained -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: Constrained vs Unconstrained Optimum</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <label>Constraint position: <span id="constraint-pos-val">0.5</span></label>
+                        <input type="range" id="constraint-pos" min="-1" max="1.5" step="0.1" value="0.5">
+                    </div>
+                </div>
+                <canvas id="constrained-intro-canvas" width="500" height="400"></canvas>
+                <p class="caption">The blue dot is the unconstrained minimum (where $\nabla f = 0$). The red line is the constraint $g(x) = 0$. The orange dot is the constrained minimum — the best point <em>on the constraint</em>. Notice how they're different!</p>
+            </div>
+            
+            <h3>The Key Geometric Insight</h3>
+            
+            <p>At the constrained minimum, we're on the constraint surface. If we could improve (decrease $f$) by moving along the constraint, we would — so we're not at the minimum yet.</p>
+            
+            <p>At the true constrained minimum, the gradient $\nabla f$ must point <strong>perpendicular to the constraint</strong>. Why? Because if $\nabla f$ had any component <em>along</em> the constraint, we could move in that direction (staying on the constraint) and decrease $f$.</p>
+            
+            <div class="key-concept">
+                <p><strong>Geometric Condition:</strong> At a constrained minimum, $\nabla f$ is perpendicular to the constraint surface. Since $\nabla g$ is also perpendicular to the constraint surface (it's the normal), we must have $\nabla f$ parallel to $\nabla g$.</p>
+            </div>
+            
+            <p>"Parallel" means one is a scalar multiple of the other:</p>
+            
+            <div class="math-block">
+                $$\nabla f(x^*) = \lambda \nabla g(x^*)$$
+            </div>
+            
+            <p>The scalar $\lambda$ is the <strong>Lagrange multiplier</strong>. It tells us how much the gradients are "aligned."</p>
+        </section>
+
+        <!-- LAGRANGE MULTIPLIER DERIVATION -->
+        <section id="lagrange-derivation">
+            <h2>Deriving Lagrange Multipliers Rigorously</h2>
+            
+            <p>Let's derive this more carefully. We'll see where the Lagrangian comes from and why it works.</p>
+            
+            <h3>The Lagrangian Function</h3>
+            
+            <p>Define the <strong>Lagrangian</strong>:</p>
+            
+            <div class="math-block">
+                $$\mathcal{L}(x, \lambda) = f(x) - \lambda g(x)$$
+            </div>
+            
+            <p>This combines the objective and constraint into one function with an extra variable $\lambda$.</p>
+            
+            <h3>Stationary Points of the Lagrangian</h3>
+            
+            <p>Now we find where the Lagrangian has zero gradient with respect to <em>both</em> $x$ and $\lambda$:</p>
+            
+            <div class="math-block">
+                $$\frac{\partial \mathcal{L}}{\partial x} = \nabla f(x) - \lambda \nabla g(x) = 0$$
+            </div>
+            
+            <div class="math-block">
+                $$\frac{\partial \mathcal{L}}{\partial \lambda} = -g(x) = 0$$
+            </div>
+            
+            <p>Look at what these equations say:</p>
+            <ul>
+                <li><strong>First equation:</strong> $\nabla f = \lambda \nabla g$ — the gradients are parallel (our geometric condition!)</li>
+                <li><strong>Second equation:</strong> $g(x) = 0$ — the constraint is satisfied</li>
+            </ul>
+            
+            <p>By finding stationary points of $\mathcal{L}$, we automatically get both conditions!</p>
+            
+            <div class="key-concept">
+                <p><strong>The Lagrangian Trick:</strong> Instead of solving the constrained problem directly, we solve the unconstrained problem of finding stationary points of $\mathcal{L}(x, \lambda)$. The constraint "reappears" as the condition $\frac{\partial \mathcal{L}}{\partial \lambda} = 0$.</p>
+            </div>
+
+            <h3>What Does $\lambda$ Mean?</h3>
+            
+            <p>The Lagrange multiplier $\lambda$ has a beautiful interpretation: it measures the <strong>sensitivity of the optimal cost to the constraint</strong>.</p>
+            
+            <p>If we slightly relax the constraint from $g(x) = 0$ to $g(x) = \epsilon$, how much does the optimal cost change?</p>
+            
+            <div class="math-block">
+                $$\frac{d f^*}{d \epsilon} = \lambda$$
+            </div>
+            
+            <p>So $\lambda$ tells us the "price" or "shadow cost" of the constraint:</p>
+            <ul>
+                <li>$\lambda > 0$: The constraint is "expensive" — relaxing it would help</li>
+                <li>$\lambda < 0$: The constraint is helping us (unusual for minimization)</li>
+                <li>$\lambda = 0$: The constraint doesn't matter at this point</li>
+            </ul>
+
+            <div class="example">
+                <div class="example-title">Example: Minimizing with a Linear Constraint</div>
+                <p>Minimize $f(x,y) = x^2 + y^2$ subject to $g(x,y) = x + y - 1 = 0$.</p>
+                <p><strong>Step 1:</strong> Form the Lagrangian: $\mathcal{L} = x^2 + y^2 - \lambda(x + y - 1)$</p>
+                <p><strong>Step 2:</strong> Take derivatives:</p>
+                <p style="margin-left: 2rem;">$\frac{\partial \mathcal{L}}{\partial x} = 2x - \lambda = 0 \implies x = \lambda/2$</p>
+                <p style="margin-left: 2rem;">$\frac{\partial \mathcal{L}}{\partial y} = 2y - \lambda = 0 \implies y = \lambda/2$</p>
+                <p style="margin-left: 2rem;">$\frac{\partial \mathcal{L}}{\partial \lambda} = -(x + y - 1) = 0 \implies x + y = 1$</p>
+                <p><strong>Step 3:</strong> Solve: From the first two equations, $x = y$. Substituting into the constraint: $2x = 1 \implies x = y = 1/2$, and $\lambda = 1$.</p>
+                <p><strong>Solution:</strong> $(x^*, y^*) = (1/2, 1/2)$ with $\lambda^* = 1$.</p>
+                <p>The multiplier $\lambda = 1$ tells us that if we changed the constraint to $x + y = 1 + \epsilon$, the optimal cost would increase by approximately $\epsilon$.</p>
+            </div>
+        </section>
+
+        <!-- FROM EQUALITY TO INEQUALITY: KKT -->
+        <section id="kkt">
+            <h2>Inequality Constraints and KKT Conditions</h2>
+            
+            <p>In practice, most constraints are <strong>inequalities</strong>: $g(x) \leq 0$ rather than $g(x) = 0$. This changes things significantly.</p>
+            
+            <h3>The Key Difference: Active vs. Inactive</h3>
+            
+            <p>An inequality constraint can be in two states:</p>
+            <ul>
+                <li><strong>Active (binding):</strong> $g(x^*) = 0$ — we're right on the boundary</li>
+                <li><strong>Inactive:</strong> $g(x^*) < 0$ — we have "slack," the constraint doesn't affect us</li>
+            </ul>
+            
+            <p>If a constraint is inactive at the solution, it's as if it doesn't exist — we could remove it and get the same answer.</p>
+            
+            <p>If a constraint is active, it becomes an equality constraint, and Lagrange multipliers apply.</p>
+
+            <!-- Visualization: Active vs Inactive -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: Active vs Inactive Constraints</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <label>Move constraint: <span id="active-demo-val">0.8</span></label>
+                        <input type="range" id="active-demo" min="0" max="2" step="0.1" value="0.8">
+                    </div>
+                </div>
+                <canvas id="active-inactive-canvas" width="500" height="400"></canvas>
+                <p class="caption">The constraint is $x + y \leq c$ (gray region is feasible). When $c$ is small, the constraint is <em>active</em> — the optimum sits on the boundary. When $c$ is large, the constraint is <em>inactive</em> — the unconstrained optimum is already feasible.</p>
+            </div>
+
+            <h3>The KKT Conditions</h3>
+            
+            <p>For optimization with inequality constraints, the generalization of Lagrange conditions is called the <strong>Karush-Kuhn-Tucker (KKT) conditions</strong>.</p>
+            
+            <p>Consider: $\min_x f(x)$ subject to $g_i(x) \leq 0$ for $i = 1, \ldots, m$.</p>
+            
+            <p>The KKT conditions are:</p>
+            
+            <div class="algorithm">
+                <div class="algorithm-title">KKT Conditions</div>
+                <ol>
+                    <li><strong>Stationarity:</strong> $\nabla f(x^*) = \sum_{i=1}^{m} \lambda_i \nabla g_i(x^*)$
+                        <br><span style="color: var(--text-secondary);">The gradient of $f$ is a combination of constraint gradients</span></li>
+                    <li><strong>Primal feasibility:</strong> $g_i(x^*) \leq 0$ for all $i$
+                        <br><span style="color: var(--text-secondary);">The solution satisfies all constraints</span></li>
+                    <li><strong>Dual feasibility:</strong> $\lambda_i \geq 0$ for all $i$
+                        <br><span style="color: var(--text-secondary);">Multipliers for inequalities are non-negative</span></li>
+                    <li><strong>Complementary slackness:</strong> $\lambda_i g_i(x^*) = 0$ for all $i$
+                        <br><span style="color: var(--text-secondary);">Either the constraint is active ($g_i = 0$) or the multiplier is zero ($\lambda_i = 0$), or both</span></li>
+                </ol>
+            </div>
+            
+            <h3>Understanding Complementary Slackness</h3>
+            
+            <p>Condition 4 is the crucial one. It says: <em>for each constraint, at least one of $\lambda_i$ or $g_i$ must be zero</em>.</p>
+            
+            <ul>
+                <li>If $g_i(x^*) < 0$ (constraint inactive, we have slack), then $\lambda_i = 0$ (no "cost" to the constraint)</li>
+                <li>If $\lambda_i > 0$ (constraint has positive cost), then $g_i(x^*) = 0$ (constraint is active/binding)</li>
+            </ul>
+            
+            <p>This makes intuitive sense: why would a constraint that isn't binding have any influence on the solution?</p>
+
+            <div class="key-concept">
+                <p><strong>The Sign of $\lambda$:</strong> For inequality constraints $g(x) \leq 0$, the multiplier $\lambda \geq 0$. This is because the constraint can only "push back" against decreasing $f$, never help it. If you found $\lambda < 0$, the constraint shouldn't be in your active set!</p>
+            </div>
+        </section>
+
+        <!-- THE ACTIVE SET METHOD -->
+        <section id="active-set">
+            <h2>The Active Set Method</h2>
+            
+            <p>Now we have all the ingredients. The <strong>Active Set Method</strong> is an algorithm that solves inequality-constrained optimization by cleverly managing which constraints are active.</p>
+            
+            <h3>The Core Idea</h3>
+            
+            <p>If we knew exactly which constraints were active at the solution, we could:</p>
+            <ol>
+                <li>Treat active constraints as equalities</li>
+                <li>Ignore inactive constraints entirely</li>
+                <li>Solve the resulting equality-constrained problem using Lagrange multipliers</li>
+            </ol>
+            
+            <p>But we don't know which constraints are active! The active set method <em>guesses and refines</em>:</p>
+            
+            <div class="algorithm">
+                <div class="algorithm-title">Active Set Algorithm</div>
+                <ol>
+                    <li><strong>Initialize:</strong> Start with a feasible point $x^{(0)}$ and an initial "working set" $\mathcal{W}$ of constraints we think are active</li>
+                    <li><strong>Solve equality subproblem:</strong> Minimize $f(x)$ treating constraints in $\mathcal{W}$ as equalities. This gives candidate solution $x^*$ and multipliers $\lambda_i$ for $i \in \mathcal{W}$</li>
+                    <li><strong>Check multiplier signs:</strong>
+                        <ul>
+                            <li>If all $\lambda_i \geq 0$ for $i \in \mathcal{W}$: go to step 4</li>
+                            <li>If some $\lambda_j < 0$: remove constraint $j$ from $\mathcal{W}$ (it shouldn't be active), go to step 2</li>
+                        </ul>
+                    </li>
+                    <li><strong>Check feasibility:</strong>
+                        <ul>
+                            <li>If $x^*$ satisfies all constraints: <strong>DONE!</strong> $x^*$ is optimal</li>
+                            <li>If $x^*$ violates some constraint $g_k(x^*) > 0$: move toward $x^*$ until hitting constraint $k$, add $k$ to $\mathcal{W}$, go to step 2</li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+
+            <h3>Solving the Equality Subproblem</h3>
+            
+            <p>At each iteration, we solve an equality-constrained problem. For quadratic objectives (like in QP/MPC), this is a linear system.</p>
+            
+            <p>Given objective $f(x) = \frac{1}{2}x^T H x + c^T x$ and active constraints $A_{eq} x = b_{eq}$:</p>
+            
+            <p>The Lagrangian is:</p>
+            <div class="math-block">
+                $$\mathcal{L}(x, \lambda) = \frac{1}{2}x^T H x + c^T x - \lambda^T(A_{eq} x - b_{eq})$$
+            </div>
+            
+            <p>Setting gradients to zero:</p>
+            <div class="math-block">
+                $$\nabla_x \mathcal{L} = Hx + c - A_{eq}^T \lambda = 0$$
+            </div>
+            <div class="math-block">
+                $$\nabla_\lambda \mathcal{L} = -(A_{eq} x - b_{eq}) = 0$$
+            </div>
+            
+            <p>This gives the <strong>KKT system</strong>:</p>
+            
+            <div class="math-block">
+                $$\begin{bmatrix} H & -A_{eq}^T \\ A_{eq} & 0 \end{bmatrix} \begin{bmatrix} x \\ \lambda \end{bmatrix} = \begin{bmatrix} -c \\ b_{eq} \end{bmatrix}$$
+            </div>
+            
+            <p>This is a linear system! Standard linear algebra (LU decomposition, etc.) solves it efficiently.</p>
+
+            <div class="key-concept">
+                <p><strong>Why Check $\lambda_i < 0$?</strong> If $\lambda_i < 0$ for an "active" constraint, it means the constraint is actually <em>helping</em> us — the unconstrained direction would go further into the feasible region. But inequality constraints can only <em>block</em> us, not help. So a negative multiplier means we've wrongly included this constraint in the active set.</p>
+            </div>
+
+            <h3>Geometric Interpretation</h3>
+            
+            <p>Picture the cost function as a bowl. You're trying to roll a ball to the bottom, but there are walls (constraint boundaries). The active set method:</p>
+            
+            <ol>
+                <li>Rolls the ball downhill</li>
+                <li>When it hits a wall, slides along the wall (constraint becomes active)</li>
+                <li>If it reaches a corner, checks if it can leave any wall (remove from active set)</li>
+                <li>Stops when at the lowest point that doesn't go through any wall</li>
+            </ol>
+
+            <!-- Main Active Set Visualization -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: Active Set Method</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <button id="as-step-main">Step</button>
+                    </div>
+                    <div class="control-group">
+                        <button id="as-reset-main">Reset</button>
+                    </div>
+                    <div class="control-group">
+                        <button id="as-auto">Auto Run</button>
+                    </div>
+                </div>
+                <canvas id="active-set-main-canvas" width="500" height="450"></canvas>
+                <p class="caption">Minimize $f(x,y) = (x-1.5)^2 + 2(y-1)^2$ subject to $x \geq 0$, $y \geq 0$, $x + y \leq 1.5$. Green point: current iterate. Red highlighted lines: active constraints. The algorithm walks along boundaries toward the optimum.</p>
+            </div>
+        </section>
+
+        <!-- DETAILED ITERATIVE EXAMPLES -->
+        <section id="iterative-examples">
+            <h2>Detailed Iterative Examples</h2>
+            
+            <p>Now let's work through the Active Set Method step-by-step with concrete numbers, showing every calculation. First a simple 2D example, then an MPC problem.</p>
+
+            <h3>Example 1: Simple 2D Quadratic Program</h3>
+            
+            <div class="example">
+                <div class="example-title">Problem Statement</div>
+                <p><strong>Minimize:</strong></p>
+                <div class="math-block">
+                    $$f(x_1, x_2) = \frac{1}{2}(x_1^2 + 2x_2^2) - 2x_1 - 3x_2$$
+                </div>
+                <p><strong>Subject to:</strong></p>
+                <ul>
+                    <li>$g_1: x_1 + x_2 \leq 2$</li>
+                    <li>$g_2: -x_1 \leq 0$ (i.e., $x_1 \geq 0$)</li>
+                    <li>$g_3: -x_2 \leq 0$ (i.e., $x_2 \geq 0$)</li>
+                </ul>
+                <p>In standard form $g_i(x) \leq 0$:</p>
+                <ul>
+                    <li>$g_1(x) = x_1 + x_2 - 2 \leq 0$</li>
+                    <li>$g_2(x) = -x_1 \leq 0$</li>
+                    <li>$g_3(x) = -x_2 \leq 0$</li>
+                </ul>
+            </div>
+            
+            <h4>Setup: Matrices and Gradients</h4>
+            
+            <p>First, let's identify the quadratic structure. Our objective is:</p>
+            <div class="math-block">
+                $$f(x) = \frac{1}{2}x^T H x + c^T x$$
+            </div>
+            <p>where:</p>
+            <div class="math-block">
+                $$H = \begin{bmatrix} 1 & 0 \\ 0 & 2 \end{bmatrix}, \quad c = \begin{bmatrix} -2 \\ -3 \end{bmatrix}$$
+            </div>
+            
+            <p>The gradient of $f$ is:</p>
+            <div class="math-block">
+                $$\nabla f(x) = Hx + c = \begin{bmatrix} x_1 - 2 \\ 2x_2 - 3 \end{bmatrix}$$
+            </div>
+            
+            <p>The constraint gradients are:</p>
+            <div class="math-block">
+                $$\nabla g_1 = \begin{bmatrix} 1 \\ 1 \end{bmatrix}, \quad \nabla g_2 = \begin{bmatrix} -1 \\ 0 \end{bmatrix}, \quad \nabla g_3 = \begin{bmatrix} 0 \\ -1 \end{bmatrix}$$
+            </div>
+
+            <h4>Find the Unconstrained Minimum</h4>
+            <p>Setting $\nabla f = 0$:</p>
+            <div class="math-block">
+                $$x_1 - 2 = 0 \implies x_1 = 2$$
+                $$2x_2 - 3 = 0 \implies x_2 = 1.5$$
+            </div>
+            <p>Unconstrained minimum: $x^{unc} = (2, 1.5)$</p>
+            
+            <p><strong>Check feasibility:</strong></p>
+            <ul>
+                <li>$g_1(2, 1.5) = 2 + 1.5 - 2 = 1.5 > 0$ ❌ <strong>Violated!</strong></li>
+                <li>$g_2(2, 1.5) = -2 < 0$ ✓</li>
+                <li>$g_3(2, 1.5) = -1.5 < 0$ ✓</li>
+            </ul>
+            <p>The unconstrained minimum violates $g_1$, so we need the Active Set Method.</p>
+
+            <h4>Iteration 1: Initialize</h4>
+            <p><strong>Starting point:</strong> $x^{(0)} = (0.5, 0.5)$ (feasible)</p>
+            <p><strong>Working set:</strong> $\mathcal{W} = \emptyset$ (empty - no constraints assumed active)</p>
+            
+            <h4>Iteration 2: Solve Unconstrained Subproblem</h4>
+            <p>With $\mathcal{W} = \emptyset$, we solve the unconstrained problem:</p>
+            <div class="math-block">
+                $$x^* = (2, 1.5)$$
+            </div>
+            
+            <p><strong>Check feasibility from $x^{(0)}$ to $x^*$:</strong></p>
+            <p>We move along the line from $(0.5, 0.5)$ to $(2, 1.5)$:</p>
+            <div class="math-block">
+                $$x(t) = (0.5, 0.5) + t \cdot (1.5, 1) = (0.5 + 1.5t, 0.5 + t)$$
+            </div>
+            
+            <p>Check when we hit $g_1 = 0$ (the constraint $x_1 + x_2 = 2$):</p>
+            <div class="math-block">
+                $$(0.5 + 1.5t) + (0.5 + t) = 2$$
+                $$1 + 2.5t = 2$$
+                $$t = 0.4$$
+            </div>
+            
+            <p>At $t = 0.4$:</p>
+            <div class="math-block">
+                $$x^{(1)} = (0.5 + 1.5 \times 0.4, 0.5 + 0.4) = (1.1, 0.9)$$
+            </div>
+            
+            <p><strong>Update working set:</strong> $\mathcal{W} = \{g_1\}$</p>
+            
+            <h4>Iteration 3: Solve with $g_1$ Active</h4>
+            <p>Now we minimize $f$ subject to $g_1(x) = 0$, i.e., $x_1 + x_2 = 2$.</p>
+            
+            <p><strong>Form the KKT system:</strong></p>
+            <div class="math-block">
+                $$\begin{bmatrix} H & -A^T \\ A & 0 \end{bmatrix} \begin{bmatrix} x \\ \lambda \end{bmatrix} = \begin{bmatrix} -c \\ b \end{bmatrix}$$
+            </div>
+            
+            <p>Here $A = \nabla g_1^T = [1, 1]$ and $b = 2$ (from $x_1 + x_2 = 2$):</p>
+            <div class="math-block">
+                $$\begin{bmatrix} 1 & 0 & -1 \\ 0 & 2 & -1 \\ 1 & 1 & 0 \end{bmatrix} \begin{bmatrix} x_1 \\ x_2 \\ \lambda_1 \end{bmatrix} = \begin{bmatrix} 2 \\ 3 \\ 2 \end{bmatrix}$$
+            </div>
+            
+            <p><strong>Solve the system:</strong></p>
+            <p>From row 1: $x_1 = 2 + \lambda_1$</p>
+            <p>From row 2: $2x_2 = 3 + \lambda_1 \implies x_2 = \frac{3 + \lambda_1}{2}$</p>
+            <p>From row 3: $x_1 + x_2 = 2$</p>
+            
+            <p>Substituting:</p>
+            <div class="math-block">
+                $$(2 + \lambda_1) + \frac{3 + \lambda_1}{2} = 2$$
+                $$4 + 2\lambda_1 + 3 + \lambda_1 = 4$$
+                $$3\lambda_1 = -3$$
+                $$\lambda_1 = -1$$
+            </div>
+            
+            <p>Therefore:</p>
+            <div class="math-block">
+                $$x_1 = 2 + (-1) = 1, \quad x_2 = \frac{3 + (-1)}{2} = 1$$
+            </div>
+            
+            <p><strong>Candidate solution:</strong> $x^* = (1, 1)$ with $\lambda_1 = -1$</p>
+            
+            <h4>Iteration 3: Check Multiplier Sign</h4>
+            <p>We found $\lambda_1 = -1 < 0$. This is a problem!</p>
+            
+            <div class="key-concept">
+                <p><strong>What does $\lambda_1 < 0$ mean?</strong> It means constraint $g_1$ is "helping" us - if we removed it, the cost would go <em>up</em>, not down. But inequality constraints can only <em>hurt</em> us (restrict where we can go), never help. So $g_1$ shouldn't be in the active set!</p>
+            </div>
+            
+            <p>Wait - this seems wrong. Let's reconsider. Actually, let me recalculate more carefully...</p>
+            
+            <p>The issue is that I need to be more careful about the sign conventions. Let me redo this with the Lagrangian:</p>
+            
+            <div class="math-block">
+                $$\mathcal{L} = \frac{1}{2}(x_1^2 + 2x_2^2) - 2x_1 - 3x_2 + \lambda_1(x_1 + x_2 - 2)$$
+            </div>
+            
+            <p>Taking derivatives:</p>
+            <div class="math-block">
+                $$\frac{\partial \mathcal{L}}{\partial x_1} = x_1 - 2 + \lambda_1 = 0 \implies x_1 = 2 - \lambda_1$$
+            </div>
+            <div class="math-block">
+                $$\frac{\partial \mathcal{L}}{\partial x_2} = 2x_2 - 3 + \lambda_1 = 0 \implies x_2 = \frac{3 - \lambda_1}{2}$$
+            </div>
+            
+            <p>Using constraint $x_1 + x_2 = 2$:</p>
+            <div class="math-block">
+                $$(2 - \lambda_1) + \frac{3 - \lambda_1}{2} = 2$$
+                $$4 - 2\lambda_1 + 3 - \lambda_1 = 4$$
+                $$3\lambda_1 = 3$$
+                $$\lambda_1 = 1$$
+            </div>
+            
+            <p>Therefore:</p>
+            <div class="math-block">
+                $$x_1 = 2 - 1 = 1, \quad x_2 = \frac{3 - 1}{2} = 1$$
+            </div>
+            
+            <p><strong>Correct solution:</strong> $x^* = (1, 1)$ with $\lambda_1 = 1 > 0$ ✓</p>
+            
+            <h4>Iteration 3: Check Feasibility</h4>
+            <p>Check all constraints at $x^* = (1, 1)$:</p>
+            <ul>
+                <li>$g_1(1, 1) = 1 + 1 - 2 = 0$ ✓ (active, by construction)</li>
+                <li>$g_2(1, 1) = -1 < 0$ ✓ (satisfied with slack)</li>
+                <li>$g_3(1, 1) = -1 < 0$ ✓ (satisfied with slack)</li>
+            </ul>
+            
+            <p><strong>All constraints satisfied!</strong></p>
+            
+            <h4>Optimality Check</h4>
+            <p>We have:</p>
+            <ul>
+                <li>$\lambda_1 = 1 > 0$ ✓ (multiplier non-negative)</li>
+                <li>All constraints satisfied ✓</li>
+                <li>KKT stationarity satisfied ✓</li>
+            </ul>
+            
+            <div class="key-concept">
+                <p><strong>Final Answer:</strong> $x^* = (1, 1)$ with optimal cost $f(1,1) = \frac{1}{2}(1 + 2) - 2 - 3 = -3.5$</p>
+                <p>The multiplier $\lambda_1 = 1$ tells us: relaxing the constraint $x_1 + x_2 \leq 2$ to $x_1 + x_2 \leq 2.01$ would decrease the optimal cost by approximately $0.01$.</p>
+            </div>
+
+            <!-- Interactive visualization for this example -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: Example 1 Step-by-Step</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <button id="ex1-step">Step</button>
+                    </div>
+                    <div class="control-group">
+                        <button id="ex1-reset">Reset</button>
+                    </div>
+                    <div class="control-group">
+                        <label>Step: <span id="ex1-step-num">0</span></label>
+                    </div>
+                </div>
+                <canvas id="example1-canvas" width="500" height="400"></canvas>
+                <p class="caption">Watch the algorithm: start at $(0.5, 0.5)$, move toward unconstrained minimum $(2, 1.5)$, hit constraint $x_1 + x_2 = 2$, then solve constrained problem to find optimum at $(1, 1)$.</p>
+            </div>
+
+            <h3>Example 2: MPC for a Simple System</h3>
+            
+            <p>Now let's see how Active Set applies to Model Predictive Control. We'll control a simple first-order system with input constraints.</p>
+            
+            <div class="example">
+                <div class="example-title">MPC Problem Setup</div>
+                <p><strong>System dynamics:</strong> $x_{k+1} = 0.8 x_k + 0.5 u_k$</p>
+                <p><strong>Initial state:</strong> $x_0 = 3$</p>
+                <p><strong>Prediction horizon:</strong> $N = 2$</p>
+                <p><strong>Cost function:</strong> $J = x_1^2 + x_2^2 + 0.1u_0^2 + 0.1u_1^2$</p>
+                <p><strong>Constraints:</strong> $-1 \leq u_k \leq 1$ for all $k$</p>
+                <p><strong>Goal:</strong> Drive state to zero while respecting input limits</p>
+            </div>
+            
+            <h4>Step 1: Write States in Terms of Inputs</h4>
+            
+            <p>Using the dynamics recursively:</p>
+            <div class="math-block">
+                $$x_1 = 0.8 x_0 + 0.5 u_0 = 0.8(3) + 0.5 u_0 = 2.4 + 0.5 u_0$$
+            </div>
+            <div class="math-block">
+                $$x_2 = 0.8 x_1 + 0.5 u_1 = 0.8(2.4 + 0.5 u_0) + 0.5 u_1 = 1.92 + 0.4 u_0 + 0.5 u_1$$
+            </div>
+            
+            <h4>Step 2: Write Cost in Terms of Inputs Only</h4>
+            
+            <p>Substituting into $J$:</p>
+            <div class="math-block">
+                $$J = (2.4 + 0.5u_0)^2 + (1.92 + 0.4u_0 + 0.5u_1)^2 + 0.1u_0^2 + 0.1u_1^2$$
+            </div>
+            
+            <p>Expanding (I'll spare the algebra):</p>
+            <div class="math-block">
+                $$J = \frac{1}{2}\mathbf{u}^T H \mathbf{u} + f^T \mathbf{u} + \text{const}$$
+            </div>
+            
+            <p>where $\mathbf{u} = [u_0, u_1]^T$ and:</p>
+            <div class="math-block">
+                $$H = \begin{bmatrix} 0.5 + 0.32 + 0.2 & 0.4 \\ 0.4 & 0.5 + 0.2 \end{bmatrix} = \begin{bmatrix} 1.02 & 0.4 \\ 0.4 & 0.7 \end{bmatrix}$$
+            </div>
+            <div class="math-block">
+                $$f = \begin{bmatrix} 2.4 \times 0.5 \times 2 + 1.92 \times 0.4 \times 2 \\ 1.92 \times 0.5 \times 2 \end{bmatrix} = \begin{bmatrix} 3.936 \\ 1.92 \end{bmatrix}$$
+            </div>
+
+            <p>(Let me recalculate this more carefully...)</p>
+            
+            <p>Actually, let's expand directly:</p>
+            <div class="math-block">
+                $$J = (2.4 + 0.5u_0)^2 + (1.92 + 0.4u_0 + 0.5u_1)^2 + 0.1u_0^2 + 0.1u_1^2$$
+            </div>
+            
+            <p>First term: $(2.4 + 0.5u_0)^2 = 5.76 + 2.4u_0 + 0.25u_0^2$</p>
+            
+            <p>Second term: $(1.92 + 0.4u_0 + 0.5u_1)^2 = 3.69 + 1.536u_0 + 1.92u_1 + 0.16u_0^2 + 0.4u_0u_1 + 0.25u_1^2$</p>
+            
+            <p>Collecting:</p>
+            <div class="math-block">
+                $$J = (0.25 + 0.16 + 0.1)u_0^2 + (0.25 + 0.1)u_1^2 + 0.4u_0u_1 + (2.4 + 1.536)u_0 + 1.92u_1 + \text{const}$$
+            </div>
+            <div class="math-block">
+                $$J = 0.51u_0^2 + 0.35u_1^2 + 0.4u_0u_1 + 3.936u_0 + 1.92u_1 + \text{const}$$
+            </div>
+            
+            <p>In matrix form:</p>
+            <div class="math-block">
+                $$H = \begin{bmatrix} 1.02 & 0.4 \\ 0.4 & 0.7 \end{bmatrix}, \quad f = \begin{bmatrix} 3.936 \\ 1.92 \end{bmatrix}$$
+            </div>
+            
+            <h4>Step 3: Write Constraints in Standard Form</h4>
+            
+            <p>Input constraints $-1 \leq u_k \leq 1$ become:</p>
+            <ul>
+                <li>$u_0 \leq 1 \implies g_1: u_0 - 1 \leq 0$</li>
+                <li>$-u_0 \leq 1 \implies g_2: -u_0 - 1 \leq 0$</li>
+                <li>$u_1 \leq 1 \implies g_3: u_1 - 1 \leq 0$</li>
+                <li>$-u_1 \leq 1 \implies g_4: -u_1 - 1 \leq 0$</li>
+            </ul>
+            
+            <h4>Step 4: Find Unconstrained Minimum</h4>
+            
+            <p>Solve $H\mathbf{u} = -f$:</p>
+            <div class="math-block">
+                $$\begin{bmatrix} 1.02 & 0.4 \\ 0.4 & 0.7 \end{bmatrix} \begin{bmatrix} u_0 \\ u_1 \end{bmatrix} = \begin{bmatrix} -3.936 \\ -1.92 \end{bmatrix}$$
+            </div>
+            
+            <p>Using Cramer's rule or substitution:</p>
+            <p>$\det(H) = 1.02 \times 0.7 - 0.4 \times 0.4 = 0.714 - 0.16 = 0.554$</p>
+            
+            <div class="math-block">
+                $$u_0 = \frac{-3.936 \times 0.7 - (-1.92) \times 0.4}{0.554} = \frac{-2.755 + 0.768}{0.554} = \frac{-1.987}{0.554} = -3.59$$
+            </div>
+            <div class="math-block">
+                $$u_1 = \frac{1.02 \times (-1.92) - 0.4 \times (-3.936)}{0.554} = \frac{-1.958 + 1.574}{0.554} = \frac{-0.384}{0.554} = -0.69$$
+            </div>
+            
+            <p><strong>Unconstrained solution:</strong> $(u_0, u_1) = (-3.59, -0.69)$</p>
+            
+            <p><strong>Check constraints:</strong></p>
+            <ul>
+                <li>$g_1: -3.59 - 1 = -4.59 < 0$ ✓</li>
+                <li>$g_2: -(-3.59) - 1 = 2.59 > 0$ ❌ <strong>Violated!</strong> (means $u_0 < -1$)</li>
+                <li>$g_3: -0.69 - 1 = -1.69 < 0$ ✓</li>
+                <li>$g_4: -(-0.69) - 1 = -0.31 < 0$ ✓</li>
+            </ul>
+            
+            <p>The unconstrained $u_0 = -3.59$ violates the lower bound $u_0 \geq -1$.</p>
+            
+            <h4>Iteration 1: Add $g_2$ to Working Set</h4>
+            
+            <p>Set $u_0 = -1$ (constraint $g_2$ active) and minimize over $u_1$:</p>
+            
+            <p>With $u_0 = -1$ fixed:</p>
+            <div class="math-block">
+                $$J(u_1) = 0.51(-1)^2 + 0.35u_1^2 + 0.4(-1)u_1 + 3.936(-1) + 1.92u_1 + \text{const}$$
+            </div>
+            <div class="math-block">
+                $$= 0.35u_1^2 + (-0.4 + 1.92)u_1 + \text{const} = 0.35u_1^2 + 1.52u_1 + \text{const}$$
+            </div>
+            
+            <p>Minimize: $\frac{dJ}{du_1} = 0.7u_1 + 1.52 = 0 \implies u_1 = -2.17$</p>
+            
+            <p><strong>Check constraints on $u_1$:</strong></p>
+            <ul>
+                <li>$u_1 = -2.17 < -1$ ❌ <strong>Violated!</strong></li>
+            </ul>
+            
+            <h4>Iteration 2: Add $g_4$ to Working Set</h4>
+            
+            <p>Now both $u_0 = -1$ and $u_1 = -1$ (both at lower bounds).</p>
+            
+            <p><strong>Solution:</strong> $\mathbf{u}^* = (-1, -1)$</p>
+            
+            <h4>Check Multipliers</h4>
+            
+            <p>At $\mathbf{u}^* = (-1, -1)$, compute $\nabla J$:</p>
+            <div class="math-block">
+                $$\nabla J = H\mathbf{u} + f = \begin{bmatrix} 1.02 & 0.4 \\ 0.4 & 0.7 \end{bmatrix}\begin{bmatrix} -1 \\ -1 \end{bmatrix} + \begin{bmatrix} 3.936 \\ 1.92 \end{bmatrix}$$
+            </div>
+            <div class="math-block">
+                $$= \begin{bmatrix} -1.42 \\ -1.1 \end{bmatrix} + \begin{bmatrix} 3.936 \\ 1.92 \end{bmatrix} = \begin{bmatrix} 2.516 \\ 0.82 \end{bmatrix}$$
+            </div>
+            
+            <p>For the active constraints $g_2: -u_0 - 1 \leq 0$ and $g_4: -u_1 - 1 \leq 0$:</p>
+            <div class="math-block">
+                $$\nabla g_2 = \begin{bmatrix} -1 \\ 0 \end{bmatrix}, \quad \nabla g_4 = \begin{bmatrix} 0 \\ -1 \end{bmatrix}$$
+            </div>
+            
+            <p>KKT stationarity: $\nabla J = \lambda_2 \nabla g_2 + \lambda_4 \nabla g_4$</p>
+            <div class="math-block">
+                $$\begin{bmatrix} 2.516 \\ 0.82 \end{bmatrix} = \lambda_2 \begin{bmatrix} -1 \\ 0 \end{bmatrix} + \lambda_4 \begin{bmatrix} 0 \\ -1 \end{bmatrix}$$
+            </div>
+            
+            <p>This gives: $\lambda_2 = -2.516$ and $\lambda_4 = -0.82$</p>
+            
+            <p><strong>Both multipliers are negative!</strong> This means both constraints are active but... wait, let me reconsider the sign convention.</p>
+            
+            <p>Actually, for constraints of the form $g_i(x) \leq 0$, the KKT condition is:</p>
+            <div class="math-block">
+                $$\nabla f + \sum_i \lambda_i \nabla g_i = 0$$
+            </div>
+            
+            <p>So:</p>
+            <div class="math-block">
+                $$\nabla J + \lambda_2 \nabla g_2 + \lambda_4 \nabla g_4 = 0$$
+            </div>
+            <div class="math-block">
+                $$\begin{bmatrix} 2.516 \\ 0.82 \end{bmatrix} + \lambda_2 \begin{bmatrix} -1 \\ 0 \end{bmatrix} + \lambda_4 \begin{bmatrix} 0 \\ -1 \end{bmatrix} = 0$$
+            </div>
+            
+            <p>This gives: $\lambda_2 = 2.516 > 0$ ✓ and $\lambda_4 = 0.82 > 0$ ✓</p>
+            
+            <div class="key-concept">
+                <p><strong>MPC Solution:</strong> The optimal control sequence is $u_0^* = -1$, $u_1^* = -1$ (both saturated at the lower bound).</p>
+                <p>This makes physical sense: starting at $x_0 = 3$, we want to drive to zero as fast as possible, so we apply maximum negative control.</p>
+            </div>
+            
+            <h4>Verify: Predicted Trajectory</h4>
+            <div class="math-block">
+                $$x_1 = 0.8(3) + 0.5(-1) = 2.4 - 0.5 = 1.9$$
+            </div>
+            <div class="math-block">
+                $$x_2 = 0.8(1.9) + 0.5(-1) = 1.52 - 0.5 = 1.02$$
+            </div>
+            
+            <p>The state decreases: $3 \to 1.9 \to 1.02$. In real MPC, we'd apply only $u_0^* = -1$, measure the new state, and re-solve.</p>
+
+            <!-- MPC visualization -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: MPC Active Set Solution</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <label>Initial state x₀: <span id="mpc-x0-val">3.0</span></label>
+                        <input type="range" id="mpc-x0" min="0.5" max="5" step="0.1" value="3">
+                    </div>
+                    <div class="control-group">
+                        <label>Input limit |u|: <span id="mpc-ulim-val">1.0</span></label>
+                        <input type="range" id="mpc-ulim" min="0.5" max="3" step="0.1" value="1">
+                    </div>
+                </div>
+                <canvas id="mpc-example-canvas" width="500" height="400"></canvas>
+                <p class="caption">Left: the QP in $(u_0, u_1)$ space. The box shows input constraints. Blue contours are cost levels. Orange dot is the constrained optimum. Right: resulting state trajectory.</p>
+            </div>
+
+            <h3>Key Takeaways from the Examples</h3>
+            
+            <ul>
+                <li><strong>The algorithm is systematic:</strong> Start unconstrained, hit boundaries, solve constrained subproblems, check multiplier signs, repeat.</li>
+                <li><strong>Multipliers tell you if constraints belong:</strong> $\lambda_i \geq 0$ means constraint is legitimately active; $\lambda_i < 0$ means remove it.</li>
+                <li><strong>MPC naturally leads to QPs:</strong> Linear dynamics + quadratic cost + linear constraints = Quadratic Program.</li>
+                <li><strong>Saturation is common:</strong> When you want aggressive control, actuator limits often become active.</li>
+            </ul>
+        </section>
+
+        <!-- SUMMARY -->
+        <section id="summary">
+            <h2>Summary</h2>
+            
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <h4>Lagrange Multipliers</h4>
+                    <p>Transform constrained optimization into finding stationary points of $\mathcal{L}(x, \lambda) = f(x) - \lambda g(x)$. The multiplier $\lambda$ measures the constraint's "cost."</p>
+                </div>
+                <div class="summary-card">
+                    <h4>Geometric Meaning</h4>
+                    <p>At the constrained optimum, $\nabla f$ is perpendicular to the constraint surface — parallel to $\nabla g$. Moving along the constraint can't improve $f$.</p>
+                </div>
+                <div class="summary-card">
+                    <h4>KKT Conditions</h4>
+                    <p>For inequalities: stationarity, primal feasibility, dual feasibility ($\lambda \geq 0$), and complementary slackness ($\lambda g = 0$).</p>
+                </div>
+                <div class="summary-card">
+                    <h4>Active Set Idea</h4>
+                    <p>Guess which constraints are active, solve the equality problem, then refine the guess based on multiplier signs and feasibility.</p>
+                </div>
+                <div class="summary-card">
+                    <h4>Why $\lambda < 0$ Means Remove</h4>
+                    <p>A negative multiplier means the constraint is "helping" us — but inequalities can only block, not help. So it shouldn't be in the active set.</p>
+                </div>
+                <div class="summary-card">
+                    <h4>The KKT System</h4>
+                    <p>For quadratic objectives with linear constraints, each subproblem is just a linear system. Standard linear algebra applies!</p>
+                </div>
+            </div>
+
+            <div class="key-concept" style="margin-top: 2rem;">
+                <p><strong>The Big Picture:</strong> Active Set Methods are elegant because they decompose a hard inequality-constrained problem into a sequence of easier equality-constrained problems. The art is in managing the active set — adding constraints we hit, removing ones with negative multipliers. For convex QPs, this converges finitely to the global optimum.</p>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Active Set Methods: From Lagrange Multipliers to Constrained Optimization</p>
+    </footer>
+
+    <script>
+        // Initialize KaTeX auto-render
+        document.addEventListener("DOMContentLoaded", function() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false}
+                ],
+                throwOnError: false
+            });
+            
+            initVisualizations();
+            initScrollAnimations();
+        });
+
+        function initScrollAnimations() {
+            const nav = document.getElementById('navbar');
+            const sections = document.querySelectorAll('section');
+            
+            setTimeout(() => {
+                sections.forEach(section => section.classList.add('visible'));
+            }, 100);
+            
+            if ('IntersectionObserver' in window) {
+                const sectionObserver = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            entry.target.classList.add('visible');
+                        }
+                    });
+                }, { threshold: 0.1 });
+                
+                sections.forEach(section => sectionObserver.observe(section));
+            }
+            
+            window.addEventListener('scroll', () => {
+                if (window.pageYOffset > 400) {
+                    nav.classList.add('visible');
+                } else {
+                    nav.classList.remove('visible');
+                }
+            });
+        }
+
+        function initVisualizations() {
+            initConstrainedIntroViz();
+            initActiveInactiveViz();
+            initActiveSetMainViz();
+            initExample1Viz();
+            initMPCExampleViz();
+        }
+
+        // Example 1 visualization
+        function initExample1Viz() {
+            const canvas = document.getElementById('example1-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 400;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            // Problem: min 0.5*(x1^2 + 2*x2^2) - 2*x1 - 3*x2
+            // s.t. x1 + x2 <= 2, x1 >= 0, x2 >= 0
+            const unconstrained = [2, 1.5];
+            const optimum = [1, 1];
+            const steps = [
+                {point: [0.5, 0.5], active: [], label: 'Start: feasible point'},
+                {point: [1.1, 0.9], active: [], label: 'Move toward unconstrained min'},
+                {point: [1.1, 0.9], active: [0], label: 'Hit constraint x₁+x₂=2'},
+                {point: [1, 1], active: [0], label: 'Solve constrained → optimum!'}
+            ];
+            
+            let currentStep = 0;
+
+            function draw() {
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+                
+                const margin = 50;
+                const scale = (displayWidth - 2*margin) / 3;
+                const ox = margin;
+                const oy = displayHeight - margin;
+                
+                function toScreen(x, y) {
+                    return [ox + x * scale, oy - y * scale];
+                }
+                
+                // Draw feasible region
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(0, 0));
+                ctx.lineTo(...toScreen(2, 0));
+                ctx.lineTo(...toScreen(0, 2));
+                ctx.closePath();
+                ctx.fill();
+                
+                // Draw constraints
+                const step = steps[currentStep];
+                
+                // x1 + x2 = 2
+                ctx.strokeStyle = step.active.includes(0) ? '#ef4444' : 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = step.active.includes(0) ? 3 : 1;
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(2, 0));
+                ctx.lineTo(...toScreen(0, 2));
+                ctx.stroke();
+                
+                // x1 = 0
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(0, 0));
+                ctx.lineTo(...toScreen(0, 2.5));
+                ctx.stroke();
+                
+                // x2 = 0
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(0, 0));
+                ctx.lineTo(...toScreen(2.5, 0));
+                ctx.stroke();
+                
+                // Draw cost contours
+                ctx.strokeStyle = 'rgba(59, 130, 246, 0.25)';
+                ctx.lineWidth = 1;
+                for (let c = 0.5; c <= 5; c += 0.5) {
+                    ctx.beginPath();
+                    for (let t = 0; t <= 2 * Math.PI; t += 0.05) {
+                        const rx = Math.sqrt(2*c);
+                        const ry = Math.sqrt(c);
+                        const x = unconstrained[0] + rx * Math.cos(t);
+                        const y = unconstrained[1] + ry * Math.sin(t);
+                        const [sx, sy] = toScreen(x, y);
+                        if (t === 0) ctx.moveTo(sx, sy);
+                        else ctx.lineTo(sx, sy);
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+                
+                // Draw path up to current step
+                if (currentStep > 0) {
+                    ctx.strokeStyle = 'rgba(34, 197, 94, 0.7)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(...toScreen(steps[0].point[0], steps[0].point[1]));
+                    for (let i = 1; i <= currentStep; i++) {
+                        ctx.lineTo(...toScreen(steps[i].point[0], steps[i].point[1]));
+                    }
+                    ctx.stroke();
+                }
+                
+                // Draw current point
+                const [cx, cy] = toScreen(step.point[0], step.point[1]);
+                ctx.fillStyle = '#22c55e';
+                ctx.beginPath();
+                ctx.arc(cx, cy, 8, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Draw unconstrained optimum
+                const [ux, uy] = toScreen(unconstrained[0], unconstrained[1]);
+                ctx.fillStyle = '#3b82f6';
+                ctx.beginPath();
+                ctx.arc(ux, uy, 6, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Draw true optimum
+                if (currentStep === steps.length - 1) {
+                    const [ox2, oy2] = toScreen(optimum[0], optimum[1]);
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.beginPath();
+                    ctx.arc(ox2, oy2, 10, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.fillStyle = '#000';
+                    ctx.font = 'bold 12px IBM Plex Sans';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('★', ox2, oy2 + 4);
+                }
+                
+                // Labels
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(10, displayWidth/45)}px IBM Plex Sans`;
+                ctx.textAlign = 'left';
+                ctx.fillText('x₁', displayWidth - margin - 10, oy + 15);
+                ctx.fillText('x₂', ox - 15, margin - 5);
+                
+                ctx.fillStyle = '#3b82f6';
+                ctx.fillText('Unconstrained (2, 1.5)', ux + 10, uy - 5);
+                
+                // Step label
+                ctx.fillStyle = '#d4d2cf';
+                ctx.font = `${Math.max(11, displayWidth/42)}px IBM Plex Sans`;
+                ctx.fillText(`Step ${currentStep}: ${step.label}`, margin, margin - 10);
+                
+                ctx.fillStyle = '#22c55e';
+                ctx.fillText(`Current: (${step.point[0].toFixed(1)}, ${step.point[1].toFixed(1)})`, margin, margin + 10);
+                
+                document.getElementById('ex1-step-num').textContent = currentStep;
+            }
+
+            document.getElementById('ex1-step').addEventListener('click', () => {
+                if (currentStep < steps.length - 1) {
+                    currentStep++;
+                    draw();
+                }
+            });
+            
+            document.getElementById('ex1-reset').addEventListener('click', () => {
+                currentStep = 0;
+                draw();
+            });
+            
+            draw();
+        }
+
+        // MPC Example visualization
+        function initMPCExampleViz() {
+            const canvas = document.getElementById('mpc-example-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 400;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            const x0Slider = document.getElementById('mpc-x0');
+            const ulimSlider = document.getElementById('mpc-ulim');
+
+            function solveMPC(x0, ulim) {
+                // Solve the 2-step MPC problem
+                // System: x_{k+1} = 0.8*x_k + 0.5*u_k
+                // Cost: x1^2 + x2^2 + 0.1*u0^2 + 0.1*u1^2
+                
+                // Unconstrained solution (approximately)
+                // This is a simplification - proper solution would solve the QP
+                const a = 0.8, b = 0.5;
+                
+                // For large x0, we'll hit the constraints
+                // Simplified: just clamp to constraints
+                let u0_unc = -x0 * 0.8; // Rough approximation
+                let u1_unc = -x0 * 0.5;
+                
+                let u0 = Math.max(-ulim, Math.min(ulim, u0_unc));
+                let u1 = Math.max(-ulim, Math.min(ulim, u1_unc));
+                
+                // Compute trajectory
+                const x1 = a * x0 + b * u0;
+                const x2 = a * x1 + b * u1;
+                
+                return {u0, u1, x0, x1, x2, u0_unc, u1_unc};
+            }
+
+            function draw() {
+                const x0 = parseFloat(x0Slider.value);
+                const ulim = parseFloat(ulimSlider.value);
+                
+                document.getElementById('mpc-x0-val').textContent = x0.toFixed(1);
+                document.getElementById('mpc-ulim-val').textContent = ulim.toFixed(1);
+                
+                const sol = solveMPC(x0, ulim);
+                
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+                
+                const halfWidth = displayWidth / 2;
+                
+                // LEFT PANEL: QP space (u0, u1)
+                const margin = 40;
+                const qpScale = (halfWidth - 2*margin) / (2*ulim + 1);
+                const qpOx = margin + (halfWidth - 2*margin) / 2;
+                const qpOy = displayHeight / 2;
+                
+                function toQP(u0, u1) {
+                    return [qpOx + u0 * qpScale, qpOy - u1 * qpScale];
+                }
+                
+                // Draw constraint box
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+                ctx.fillRect(...toQP(-ulim, ulim), 2*ulim*qpScale, 2*ulim*qpScale);
+                
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(...toQP(-ulim, ulim), 2*ulim*qpScale, 2*ulim*qpScale);
+                
+                // Draw axes
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(margin, qpOy);
+                ctx.lineTo(halfWidth - margin, qpOy);
+                ctx.moveTo(qpOx, margin);
+                ctx.lineTo(qpOx, displayHeight - margin);
+                ctx.stroke();
+                
+                // Draw cost contours (simplified)
+                ctx.strokeStyle = 'rgba(59, 130, 246, 0.3)';
+                for (let r = 0.5; r <= 3; r += 0.5) {
+                    ctx.beginPath();
+                    for (let t = 0; t <= 2 * Math.PI; t += 0.1) {
+                        const u0 = sol.u0_unc + r * Math.cos(t);
+                        const u1 = sol.u1_unc + r * 0.8 * Math.sin(t);
+                        const [sx, sy] = toQP(u0, u1);
+                        if (t === 0) ctx.moveTo(sx, sy);
+                        else ctx.lineTo(sx, sy);
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+                
+                // Draw unconstrained optimum
+                if (Math.abs(sol.u0_unc) <= ulim + 2 && Math.abs(sol.u1_unc) <= ulim + 2) {
+                    const [ux, uy] = toQP(sol.u0_unc, sol.u1_unc);
+                    ctx.fillStyle = '#3b82f6';
+                    ctx.beginPath();
+                    ctx.arc(ux, uy, 5, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+                
+                // Draw constrained optimum
+                const [cx, cy] = toQP(sol.u0, sol.u1);
+                ctx.fillStyle = '#f59e0b';
+                ctx.beginPath();
+                ctx.arc(cx, cy, 8, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Labels for QP panel
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(10, displayWidth/50)}px IBM Plex Sans`;
+                ctx.fillText('u₀', halfWidth - margin - 15, qpOy + 15);
+                ctx.fillText('u₁', qpOx + 5, margin + 10);
+                ctx.fillStyle = '#f59e0b';
+                ctx.fillText(`(${sol.u0.toFixed(2)}, ${sol.u1.toFixed(2)})`, cx + 10, cy - 5);
+                
+                // RIGHT PANEL: State trajectory
+                const trajOx = halfWidth + margin;
+                const trajOy = displayHeight - margin;
+                const trajWidth = halfWidth - 2*margin;
+                const trajHeight = displayHeight - 2*margin;
+                const trajScaleX = trajWidth / 3;
+                const trajScaleY = trajHeight / (x0 + 1);
+                
+                function toTraj(k, x) {
+                    return [trajOx + k * trajScaleX, trajOy - x * trajScaleY];
+                }
+                
+                // Draw axes
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(trajOx, trajOy);
+                ctx.lineTo(trajOx + trajWidth, trajOy);
+                ctx.moveTo(trajOx, trajOy);
+                ctx.lineTo(trajOx, margin);
+                ctx.stroke();
+                
+                // Draw zero line
+                ctx.strokeStyle = 'rgba(34, 197, 94, 0.3)';
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(...toTraj(0, 0));
+                ctx.lineTo(...toTraj(2.5, 0));
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Draw state trajectory
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(...toTraj(0, sol.x0));
+                ctx.lineTo(...toTraj(1, sol.x1));
+                ctx.lineTo(...toTraj(2, sol.x2));
+                ctx.stroke();
+                
+                // Draw points
+                [[0, sol.x0], [1, sol.x1], [2, sol.x2]].forEach(([k, x], i) => {
+                    const [px, py] = toTraj(k, x);
+                    ctx.fillStyle = '#3b82f6';
+                    ctx.beginPath();
+                    ctx.arc(px, py, 6, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = '#8a8a8a';
+                    ctx.font = `${Math.max(9, displayWidth/55)}px IBM Plex Sans`;
+                    ctx.fillText(`x${i}=${x.toFixed(2)}`, px + 8, py - 5);
+                });
+                
+                // Labels
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(10, displayWidth/50)}px IBM Plex Sans`;
+                ctx.fillText('k', trajOx + trajWidth - 10, trajOy + 15);
+                ctx.fillText('State x', trajOx + 5, margin + 10);
+                
+                // Panel titles
+                ctx.fillStyle = '#d4d2cf';
+                ctx.font = `bold ${Math.max(11, displayWidth/45)}px IBM Plex Sans`;
+                ctx.fillText('QP Space (controls)', margin, 20);
+                ctx.fillText('State Trajectory', halfWidth + margin, 20);
+            }
+
+            x0Slider.addEventListener('input', draw);
+            ulimSlider.addEventListener('input', draw);
+            draw();
+        }
+
+        // Constrained vs Unconstrained visualization
+        function initConstrainedIntroViz() {
+            const canvas = document.getElementById('constrained-intro-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 400;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            const slider = document.getElementById('constraint-pos');
+
+            function draw() {
+                const constraintC = parseFloat(slider.value);
+                document.getElementById('constraint-pos-val').textContent = constraintC.toFixed(1);
+                
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+                
+                const margin = 50;
+                const scale = (displayWidth - 2*margin) / 3;
+                const ox = margin;
+                const oy = displayHeight - margin;
+                
+                function toScreen(x, y) {
+                    return [ox + x * scale, oy - y * scale];
+                }
+                
+                // Draw cost contours (centered at (1, 1))
+                const center = [1, 1];
+                ctx.strokeStyle = 'rgba(59, 130, 246, 0.25)';
+                ctx.lineWidth = 1;
+                for (let r = 0.2; r <= 2; r += 0.25) {
+                    ctx.beginPath();
+                    for (let t = 0; t <= 2 * Math.PI; t += 0.05) {
+                        const x = center[0] + r * Math.cos(t);
+                        const y = center[1] + r * 0.7 * Math.sin(t);
+                        const [sx, sy] = toScreen(x, y);
+                        if (t === 0) ctx.moveTo(sx, sy);
+                        else ctx.lineTo(sx, sy);
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+                
+                // Draw constraint line: y = constraintC (horizontal line)
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                const [x1, y1] = toScreen(-0.5, constraintC);
+                const [x2, y2] = toScreen(3, constraintC);
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                
+                // Shade feasible region (below constraint)
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.08)';
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(-0.5, constraintC));
+                ctx.lineTo(...toScreen(3, constraintC));
+                ctx.lineTo(...toScreen(3, -0.5));
+                ctx.lineTo(...toScreen(-0.5, -0.5));
+                ctx.closePath();
+                ctx.fill();
+                
+                // Draw axes
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(0, -0.2));
+                ctx.lineTo(...toScreen(0, 2.5));
+                ctx.moveTo(...toScreen(-0.2, 0));
+                ctx.lineTo(...toScreen(2.8, 0));
+                ctx.stroke();
+                
+                // Unconstrained optimum
+                const [ux, uy] = toScreen(center[0], center[1]);
+                ctx.fillStyle = '#3b82f6';
+                ctx.beginPath();
+                ctx.arc(ux, uy, 8, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Constrained optimum (projection onto y = constraintC)
+                const constrainedY = Math.min(center[1], constraintC);
+                const constrainedX = center[0]; // x stays same for this constraint
+                const [cx, cy] = toScreen(constrainedX, constraintC < center[1] ? constraintC : center[1]);
+                
+                if (constraintC < center[1]) {
+                    // Constraint is active
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.beginPath();
+                    ctx.arc(...toScreen(center[0], constraintC), 8, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    // Draw gradient at constrained optimum
+                    ctx.strokeStyle = '#f59e0b';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    const gradStart = toScreen(center[0], constraintC);
+                    const gradEnd = toScreen(center[0], constraintC + 0.5);
+                    ctx.moveTo(gradStart[0], gradStart[1]);
+                    ctx.lineTo(gradEnd[0], gradEnd[1]);
+                    ctx.stroke();
+                    // Arrow head
+                    ctx.beginPath();
+                    ctx.moveTo(gradEnd[0], gradEnd[1]);
+                    ctx.lineTo(gradEnd[0] - 5, gradEnd[1] + 10);
+                    ctx.lineTo(gradEnd[0] + 5, gradEnd[1] + 10);
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    // Constraint inactive - optimum is unconstrained
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.beginPath();
+                    ctx.arc(ux, uy, 10, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+                
+                // Labels
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(11, displayWidth/42)}px IBM Plex Sans`;
+                ctx.fillText('Unconstrained min', ux + 12, uy - 5);
+                ctx.fillStyle = '#ef4444';
+                ctx.fillText('Constraint: g(x) = 0', ...toScreen(1.5, constraintC + 0.15));
+                
+                if (constraintC < center[1]) {
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.fillText('Constrained min', ...toScreen(center[0] + 0.1, constraintC - 0.15));
+                    ctx.fillText('∇f (perpendicular!)', ...toScreen(center[0] + 0.15, constraintC + 0.35));
+                }
+            }
+
+            slider.addEventListener('input', draw);
+            draw();
+        }
+
+        // Active vs Inactive visualization
+        function initActiveInactiveViz() {
+            const canvas = document.getElementById('active-inactive-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 400;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            const slider = document.getElementById('active-demo');
+
+            function draw() {
+                const c = parseFloat(slider.value);
+                document.getElementById('active-demo-val').textContent = c.toFixed(1);
+                
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+                
+                const margin = 50;
+                const scale = (displayWidth - 2*margin) / 2.5;
+                const ox = margin;
+                const oy = displayHeight - margin;
+                
+                function toScreen(x, y) {
+                    return [ox + x * scale, oy - y * scale];
+                }
+                
+                // Draw feasible region (x + y <= c, x >= 0, y >= 0)
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(0, 0));
+                ctx.lineTo(...toScreen(Math.min(c, 2.5), 0));
+                if (c < 2.5) {
+                    ctx.lineTo(...toScreen(0, c));
+                } else {
+                    ctx.lineTo(...toScreen(2.5, 0));
+                    ctx.lineTo(...toScreen(2.5, 2));
+                    ctx.lineTo(...toScreen(0, 2));
+                }
+                ctx.lineTo(...toScreen(0, 0));
+                ctx.closePath();
+                ctx.fill();
+                
+                // Draw constraint boundaries
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                // x = 0
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(0, 0));
+                ctx.lineTo(...toScreen(0, 2));
+                ctx.stroke();
+                // y = 0
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(0, 0));
+                ctx.lineTo(...toScreen(2.5, 0));
+                ctx.stroke();
+                // x + y = c
+                ctx.strokeStyle = c < 1.5 ? '#ef4444' : 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = c < 1.5 ? 3 : 1;
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(c, 0));
+                ctx.lineTo(...toScreen(0, c));
+                ctx.stroke();
+                
+                // Draw cost contours (minimum at (1, 0.5))
+                const center = [1, 0.5];
+                ctx.strokeStyle = 'rgba(59, 130, 246, 0.3)';
+                ctx.lineWidth = 1;
+                for (let r = 0.2; r <= 1.5; r += 0.2) {
+                    ctx.beginPath();
+                    for (let t = 0; t <= 2 * Math.PI; t += 0.05) {
+                        const x = center[0] + r * Math.cos(t);
+                        const y = center[1] + r * 0.8 * Math.sin(t);
+                        const [sx, sy] = toScreen(x, y);
+                        if (t === 0) ctx.moveTo(sx, sy);
+                        else ctx.lineTo(sx, sy);
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+                
+                // Unconstrained optimum
+                const [ux, uy] = toScreen(center[0], center[1]);
+                ctx.fillStyle = '#3b82f6';
+                ctx.beginPath();
+                ctx.arc(ux, uy, 6, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Constrained optimum
+                let optX, optY;
+                const isActive = center[0] + center[1] > c;
+                if (isActive) {
+                    // Project onto x + y = c
+                    // Minimize (x-1)^2 + (y-0.5)^2 s.t. x + y = c
+                    // Solution: x = (c + 0.5)/2, y = (c - 0.5)/2 (if both positive)
+                    optX = Math.max(0, (c + 0.5) / 2);
+                    optY = Math.max(0, c - optX);
+                } else {
+                    optX = center[0];
+                    optY = center[1];
+                }
+                
+                const [cx, cy] = toScreen(optX, optY);
+                ctx.fillStyle = '#f59e0b';
+                ctx.beginPath();
+                ctx.arc(cx, cy, 8, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Labels
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(11, displayWidth/42)}px IBM Plex Sans`;
+                ctx.fillText('x', displayWidth - margin - 10, oy + 20);
+                ctx.fillText('y', ox - 5, margin);
+                
+                ctx.fillStyle = '#3b82f6';
+                ctx.fillText('Unconstrained', ux + 10, uy - 10);
+                
+                ctx.fillStyle = '#f59e0b';
+                if (isActive) {
+                    ctx.fillText('Constrained (ACTIVE)', cx + 10, cy + 20);
+                } else {
+                    ctx.fillText('Same! (INACTIVE)', cx + 10, cy + 20);
+                }
+                
+                // Status text
+                ctx.fillStyle = isActive ? '#ef4444' : '#22c55e';
+                ctx.font = `bold ${Math.max(12, displayWidth/40)}px IBM Plex Sans`;
+                ctx.fillText(isActive ? 'Constraint is ACTIVE' : 'Constraint is INACTIVE', margin, margin - 10);
+            }
+
+            slider.addEventListener('input', draw);
+            draw();
+        }
+
+        // Main Active Set visualization
+        function initActiveSetMainViz() {
+            const canvas = document.getElementById('active-set-main-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 450;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            // Problem: min (x-1.5)^2 + 2(y-1)^2 s.t. x>=0, y>=0, x+y<=1.5
+            const center = [1.5, 1]; // Unconstrained optimum
+            
+            let currentPoint = [0.2, 0.2];
+            let activeSet = [];
+            let path = [[...currentPoint]];
+            let iteration = 0;
+            let autoRunning = false;
+            let autoInterval = null;
+
+            function reset() {
+                currentPoint = [0.2, 0.2];
+                activeSet = [];
+                path = [[...currentPoint]];
+                iteration = 0;
+                draw();
+            }
+
+            function step() {
+                iteration++;
+                
+                // Compute direction toward unconstrained optimum
+                // (simplified - real algorithm would solve KKT system)
+                let targetX = center[0];
+                let targetY = center[1];
+                
+                // If we have active constraints, project
+                if (activeSet.includes(2)) { // x + y = 1.5
+                    // Minimize on the line x + y = 1.5
+                    // Lagrangian gives: x = 1.5 - y, plug in, minimize over y
+                    // d/dy [(1.5-y-1.5)^2 + 2(y-1)^2] = 2y + 4(y-1) = 6y - 4 = 0 => y = 2/3
+                    targetX = 1.5 - 2/3;
+                    targetY = 2/3;
+                }
+                
+                // Move toward target
+                const dx = targetX - currentPoint[0];
+                const dy = targetY - currentPoint[1];
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                if (dist < 0.01) {
+                    // Check if we should remove any active constraint (λ < 0)
+                    // For this simple example, we're done
+                    draw();
+                    return;
+                }
+                
+                // Check if we hit a new constraint
+                let stepSize = 1;
+                let hitConstraint = -1;
+                
+                // Check constraint x + y <= 1.5
+                if (!activeSet.includes(2)) {
+                    // Line: currentPoint + t * (target - currentPoint)
+                    // Hits x + y = 1.5 when: (cx + t*dx) + (cy + t*dy) = 1.5
+                    // t = (1.5 - cx - cy) / (dx + dy)
+                    const denom = dx + dy;
+                    if (denom > 0.001) {
+                        const t = (1.5 - currentPoint[0] - currentPoint[1]) / denom;
+                        if (t > 0 && t < stepSize) {
+                            stepSize = t;
+                            hitConstraint = 2;
+                        }
+                    }
+                }
+                
+                // Check x >= 0
+                if (!activeSet.includes(0) && dx < -0.001) {
+                    const t = -currentPoint[0] / dx;
+                    if (t > 0 && t < stepSize) {
+                        stepSize = t;
+                        hitConstraint = 0;
+                    }
+                }
+                
+                // Check y >= 0
+                if (!activeSet.includes(1) && dy < -0.001) {
+                    const t = -currentPoint[1] / dy;
+                    if (t > 0 && t < stepSize) {
+                        stepSize = t;
+                        hitConstraint = 1;
+                    }
+                }
+                
+                currentPoint[0] += stepSize * dx;
+                currentPoint[1] += stepSize * dy;
+                
+                if (hitConstraint >= 0) {
+                    activeSet.push(hitConstraint);
+                }
+                
+                path.push([...currentPoint]);
+                draw();
+            }
+
+            function draw() {
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+                
+                const margin = 50;
+                const infoHeight = 60;
+                const plotHeight = displayHeight - margin - infoHeight;
+                const scale = (displayWidth - 2*margin) / 2;
+                const ox = margin;
+                const oy = plotHeight;
+                
+                function toScreen(x, y) {
+                    return [ox + x * scale, oy - y * scale];
+                }
+                
+                // Draw feasible region
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(0, 0));
+                ctx.lineTo(...toScreen(1.5, 0));
+                ctx.lineTo(...toScreen(0, 1.5));
+                ctx.closePath();
+                ctx.fill();
+                
+                // Draw constraint boundaries
+                const constraintColors = ['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.3)', 'rgba(255,255,255,0.3)'];
+                activeSet.forEach(i => constraintColors[i] = '#ef4444');
+                
+                // x = 0
+                ctx.strokeStyle = constraintColors[0];
+                ctx.lineWidth = activeSet.includes(0) ? 3 : 1;
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(0, 0));
+                ctx.lineTo(...toScreen(0, 1.6));
+                ctx.stroke();
+                
+                // y = 0
+                ctx.strokeStyle = constraintColors[1];
+                ctx.lineWidth = activeSet.includes(1) ? 3 : 1;
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(0, 0));
+                ctx.lineTo(...toScreen(1.6, 0));
+                ctx.stroke();
+                
+                // x + y = 1.5
+                ctx.strokeStyle = constraintColors[2];
+                ctx.lineWidth = activeSet.includes(2) ? 3 : 1;
+                ctx.beginPath();
+                ctx.moveTo(...toScreen(1.5, 0));
+                ctx.lineTo(...toScreen(0, 1.5));
+                ctx.stroke();
+                
+                // Draw cost contours
+                ctx.strokeStyle = 'rgba(59, 130, 246, 0.25)';
+                ctx.lineWidth = 1;
+                for (let c = 0.1; c <= 2; c += 0.2) {
+                    ctx.beginPath();
+                    for (let t = 0; t <= 2 * Math.PI; t += 0.05) {
+                        const rx = Math.sqrt(c);
+                        const ry = Math.sqrt(c / 2);
+                        const x = center[0] + rx * Math.cos(t);
+                        const y = center[1] + ry * Math.sin(t);
+                        const [sx, sy] = toScreen(x, y);
+                        if (t === 0) ctx.moveTo(sx, sy);
+                        else ctx.lineTo(sx, sy);
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+                
+                // Draw path
+                ctx.strokeStyle = 'rgba(34, 197, 94, 0.7)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let i = 0; i < path.length; i++) {
+                    const [sx, sy] = toScreen(path[i][0], path[i][1]);
+                    if (i === 0) ctx.moveTo(sx, sy);
+                    else ctx.lineTo(sx, sy);
+                }
+                ctx.stroke();
+                
+                // Draw path points
+                path.forEach((p, i) => {
+                    const [sx, sy] = toScreen(p[0], p[1]);
+                    ctx.fillStyle = i === path.length - 1 ? '#22c55e' : 'rgba(34, 197, 94, 0.5)';
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, i === path.length - 1 ? 8 : 4, 0, 2 * Math.PI);
+                    ctx.fill();
+                });
+                
+                // Draw unconstrained optimum
+                const [ux, uy] = toScreen(center[0], center[1]);
+                ctx.fillStyle = '#3b82f6';
+                ctx.beginPath();
+                ctx.arc(ux, uy, 6, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Labels
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(10, displayWidth/45)}px IBM Plex Sans`;
+                ctx.fillText('x', displayWidth - margin - 5, oy + 15);
+                ctx.fillText('y', ox - 15, margin - 20);
+                ctx.fillStyle = '#3b82f6';
+                ctx.fillText('Unconstrained', ux + 8, uy - 8);
+                
+                // Info panel
+                const infoY = displayHeight - infoHeight + 20;
+                ctx.fillStyle = '#d4d2cf';
+                ctx.font = `${Math.max(11, displayWidth/42)}px IBM Plex Sans`;
+                ctx.fillText(`Iteration: ${iteration}`, margin, infoY);
+                ctx.fillText(`Point: (${currentPoint[0].toFixed(3)}, ${currentPoint[1].toFixed(3)})`, margin, infoY + 20);
+                
+                const activeNames = activeSet.map(i => ['x≥0', 'y≥0', 'x+y≤1.5'][i]);
+                ctx.fillStyle = '#ef4444';
+                ctx.fillText(`Active set: {${activeNames.join(', ') || 'none'}}`, margin + 200, infoY);
+            }
+
+            document.getElementById('as-step-main').addEventListener('click', step);
+            document.getElementById('as-reset-main').addEventListener('click', () => {
+                if (autoRunning) {
+                    clearInterval(autoInterval);
+                    autoRunning = false;
+                    document.getElementById('as-auto').textContent = 'Auto Run';
+                }
+                reset();
+            });
+            document.getElementById('as-auto').addEventListener('click', () => {
+                if (autoRunning) {
+                    clearInterval(autoInterval);
+                    autoRunning = false;
+                    document.getElementById('as-auto').textContent = 'Auto Run';
+                } else {
+                    reset();
+                    autoRunning = true;
+                    document.getElementById('as-auto').textContent = 'Stop';
+                    autoInterval = setInterval(() => {
+                        step();
+                        const dx = center[0] - currentPoint[0];
+                        const dy = center[1] - currentPoint[1];
+                        // Check convergence
+                        if (activeSet.includes(2)) {
+                            const targetX = 1.5 - 2/3;
+                            const targetY = 2/3;
+                            if (Math.abs(currentPoint[0] - targetX) < 0.01 && Math.abs(currentPoint[1] - targetY) < 0.01) {
+                                clearInterval(autoInterval);
+                                autoRunning = false;
+                                document.getElementById('as-auto').textContent = 'Auto Run';
+                            }
+                        }
+                    }, 800);
+                }
+            });
+            
+            draw();
+        }
+
+        // Resize handler
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                initConstrainedIntroViz();
+                initActiveInactiveViz();
+                initActiveSetMainViz();
+                initExample1Viz();
+                initMPCExampleViz();
+            }, 250);
+        });
+    </script>
+</body>
+</html>

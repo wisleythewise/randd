@@ -1,0 +1,2859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Model Predictive Control: Fundamentals from the Ground Up</title>
+    
+    <!-- KaTeX for beautiful math -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-primary: #050507;
+            --bg-secondary: #0a0a0f;
+            --bg-card: #0f0f16;
+            --bg-elevated: #16161f;
+            --text-primary: #d4d2cf;
+            --text-secondary: #8a8a8a;
+            --text-muted: #5a5a5a;
+            --accent: #22c55e;
+            --accent-secondary: #3b82f6;
+            --accent-soft: rgba(34, 197, 94, 0.12);
+            --math-color: #5eb8db;
+            --border: rgba(255, 255, 255, 0.06);
+            --border-strong: rgba(255, 255, 255, 0.1);
+            --serif: 'Playfair Display', Georgia, serif;
+            --sans: 'IBM Plex Sans', -apple-system, sans-serif;
+            --mono: 'IBM Plex Mono', monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.8;
+            font-size: 17px;
+            font-weight: 400;
+        }
+
+        /* Subtle noise texture */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        /* Sticky Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(5, 5, 7, 0.95);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+            padding: 0.75rem 2rem;
+            opacity: 0;
+            transform: translateY(-100%);
+            transition: all 0.3s ease;
+        }
+
+        nav.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        nav ul {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            list-style: none;
+            max-width: 1000px;
+            margin: 0 auto;
+            flex-wrap: wrap;
+        }
+
+        nav a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            transition: color 0.2s;
+        }
+
+        nav a:hover {
+            color: var(--accent);
+        }
+
+        /* Header */
+        header {
+            min-height: 70vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .subtitle {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            margin-bottom: 1.5rem;
+        }
+
+        header h1 {
+            font-family: var(--serif);
+            font-size: clamp(2.5rem, 6vw, 4rem);
+            font-weight: 700;
+            line-height: 1.15;
+            max-width: 800px;
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+        }
+
+        .tagline {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            line-height: 1.7;
+        }
+
+        /* Main Content */
+        main {
+            max-width: 780px;
+            margin: 0 auto;
+            padding: 5rem 2rem 8rem;
+        }
+
+        section {
+            margin-bottom: 5rem;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @media (prefers-reduced-motion: no-preference) {
+            section {
+                opacity: 0;
+                transform: translateY(20px);
+                transition: all 0.6s ease;
+            }
+
+            section.visible {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h2 {
+            font-family: var(--serif);
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--accent);
+            display: inline-block;
+        }
+
+        h3 {
+            font-family: var(--serif);
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-top: 2.5rem;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        p {
+            margin-bottom: 1.25rem;
+            color: var(--text-primary);
+        }
+
+        strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        em {
+            font-style: italic;
+            color: var(--accent);
+        }
+
+        /* Math Blocks */
+        .math-block {
+            background: var(--bg-card);
+            border: 1px solid var(--border-strong);
+            border-left: 3px solid var(--accent);
+            border-radius: 8px;
+            padding: 1.5rem 2rem;
+            margin: 1.75rem 0;
+            overflow-x: auto;
+            text-align: center;
+        }
+
+        .math-block .katex {
+            color: var(--math-color);
+            font-size: 1.15em;
+        }
+
+        /* Inline math */
+        .katex {
+            color: var(--math-color);
+        }
+
+        /* Key Concept Boxes */
+        .key-concept {
+            background: var(--accent-soft);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 10px;
+            padding: 1.5rem 2rem;
+            margin: 2rem 0;
+        }
+
+        .key-concept p {
+            margin-bottom: 0;
+            color: var(--text-primary);
+        }
+
+        /* Algorithm boxes */
+        .algorithm {
+            background: var(--bg-card);
+            border: 1px solid var(--border-strong);
+            border-radius: 10px;
+            padding: 1.5rem 2rem;
+            margin: 2rem 0;
+        }
+
+        .algorithm-title {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 1rem;
+        }
+
+        .algorithm ol {
+            margin: 0;
+            padding-left: 1.5rem;
+        }
+
+        .algorithm li {
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        /* Lists */
+        ul, ol {
+            margin: 1.25rem 0;
+            padding-left: 1.5rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        /* Visualization containers */
+        .visualization {
+            background: var(--bg-card);
+            border: 1px solid var(--border-strong);
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2.5rem 0;
+        }
+
+        .viz-title {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 1rem;
+        }
+
+        .viz-controls {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .control-group label {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .control-group input[type="range"] {
+            width: 150px;
+            accent-color: var(--accent);
+        }
+
+        .control-group button {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .control-group button:hover {
+            opacity: 0.85;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+        }
+
+        /* Figure Captions */
+        .caption {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            font-style: italic;
+            text-align: center;
+            margin-top: 1rem;
+            line-height: 1.6;
+        }
+
+        /* Comparison table */
+        .comparison {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2rem 0;
+        }
+
+        .comparison th, .comparison td {
+            padding: 1rem;
+            text-align: left;
+            border: 1px solid var(--border-strong);
+        }
+
+        .comparison th {
+            background: var(--bg-card);
+            font-family: var(--serif);
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .comparison td {
+            background: var(--bg-secondary);
+        }
+
+        /* Summary Cards */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .summary-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-strong);
+            border-radius: 10px;
+            padding: 1.5rem;
+        }
+
+        .summary-card h4 {
+            font-family: var(--serif);
+            font-size: 1.1rem;
+            color: var(--accent);
+            margin-bottom: 0.75rem;
+        }
+
+        .summary-card p {
+            font-size: 0.95rem;
+            margin-bottom: 0;
+            color: var(--text-secondary);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Responsive - Tablet */
+        @media (max-width: 768px) {
+            main {
+                padding: 3rem 1.5rem 6rem;
+            }
+
+            h2 {
+                font-size: 1.75rem;
+            }
+
+            h3 {
+                font-size: 1.25rem;
+            }
+
+            .comparison th, .comparison td {
+                padding: 0.75rem;
+                font-size: 0.9rem;
+            }
+        }
+
+        /* Responsive - iPhone / Mobile */
+        @media (max-width: 480px) {
+            body {
+                font-size: 16px;
+                line-height: 1.7;
+                -webkit-text-size-adjust: 100%;
+            }
+
+            header {
+                min-height: 60vh;
+                padding: 3rem 1.25rem;
+            }
+
+            header h1 {
+                font-size: 1.85rem;
+                line-height: 1.25;
+            }
+
+            .subtitle {
+                font-size: 0.7rem;
+                letter-spacing: 0.15em;
+            }
+
+            .tagline {
+                font-size: 1rem;
+                line-height: 1.6;
+            }
+
+            main {
+                padding: 2.5rem 1.25rem 5rem;
+            }
+
+            h2 {
+                font-size: 1.5rem;
+                display: block;
+                padding-bottom: 0.4rem;
+            }
+
+            h3 {
+                font-size: 1.15rem;
+                margin-top: 2rem;
+            }
+
+            p {
+                font-size: 16px;
+                margin-bottom: 1.1rem;
+            }
+
+            /* Math blocks - mobile optimized */
+            .math-block {
+                padding: 1rem 0.75rem;
+                margin: 1.25rem -0.5rem;
+                border-radius: 6px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .math-block .katex {
+                font-size: 0.95em;
+            }
+
+            /* Key concept boxes */
+            .key-concept, .algorithm {
+                padding: 1.25rem 1rem;
+                margin: 1.5rem 0;
+                border-radius: 8px;
+            }
+
+            .key-concept p {
+                font-size: 15px;
+            }
+
+            /* Navigation - mobile drawer style */
+            nav {
+                padding: 0.6rem 1rem;
+            }
+
+            nav ul {
+                gap: 0.5rem 1rem;
+                justify-content: flex-start;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 0.25rem;
+                flex-wrap: nowrap;
+            }
+
+            nav a {
+                font-size: 0.75rem;
+                white-space: nowrap;
+                padding: 0.25rem 0;
+            }
+
+            /* Visualizations - mobile optimized */
+            .visualization {
+                padding: 1.25rem 1rem;
+                margin: 2rem -0.5rem;
+                border-radius: 8px;
+            }
+
+            .viz-title {
+                font-size: 0.7rem;
+                margin-bottom: 0.75rem;
+            }
+
+            .viz-controls {
+                flex-direction: column;
+                gap: 1.25rem;
+            }
+
+            .control-group {
+                width: 100%;
+            }
+
+            .control-group label {
+                font-size: 0.8rem;
+                display: block;
+                margin-bottom: 0.5rem;
+            }
+
+            /* Larger touch-friendly sliders */
+            .control-group input[type="range"] {
+                width: 100%;
+                height: 44px;
+                -webkit-appearance: none;
+                background: transparent;
+                margin: 0;
+            }
+
+            .control-group input[type="range"]::-webkit-slider-runnable-track {
+                width: 100%;
+                height: 8px;
+                background: var(--bg-elevated);
+                border-radius: 4px;
+                border: 1px solid var(--border-strong);
+            }
+
+            .control-group input[type="range"]::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                width: 28px;
+                height: 28px;
+                background: var(--accent);
+                border-radius: 50%;
+                margin-top: -10px;
+                box-shadow: 0 2px 8px rgba(34, 197, 94, 0.4);
+            }
+
+            .control-group button {
+                width: 100%;
+                padding: 0.75rem 1rem;
+            }
+
+            /* Canvas sizing for mobile */
+            canvas {
+                width: 100% !important;
+                height: auto !important;
+                max-height: 300px;
+                border-radius: 6px;
+            }
+
+            .caption {
+                font-size: 0.8rem;
+                line-height: 1.5;
+                margin-top: 0.75rem;
+            }
+
+            /* Lists */
+            ul, ol {
+                padding-left: 1.25rem;
+                margin: 1rem 0;
+            }
+
+            li {
+                font-size: 16px;
+                margin-bottom: 0.4rem;
+            }
+
+            /* Summary cards - stack on mobile */
+            .summary-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .summary-card {
+                padding: 1.25rem;
+            }
+
+            .summary-card h4 {
+                font-size: 1rem;
+            }
+
+            .summary-card p {
+                font-size: 0.9rem;
+            }
+
+            /* Table responsive */
+            .comparison {
+                font-size: 0.85rem;
+            }
+
+            .comparison th, .comparison td {
+                padding: 0.6rem 0.5rem;
+            }
+
+            /* Footer */
+            footer {
+                padding: 2rem 1.25rem;
+                font-size: 0.8rem;
+            }
+        }
+
+        /* Extra small phones */
+        @media (max-width: 360px) {
+            header h1 {
+                font-size: 1.6rem;
+            }
+
+            main {
+                padding: 2rem 1rem 4rem;
+            }
+
+            .math-block {
+                padding: 0.75rem 0.5rem;
+            }
+
+            .math-block .katex {
+                font-size: 0.85em;
+            }
+        }
+
+        /* Safe area insets for iPhone X+ */
+        @supports (padding: env(safe-area-inset-bottom)) {
+            footer {
+                padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+            }
+
+            nav {
+                padding-left: calc(1rem + env(safe-area-inset-left));
+                padding-right: calc(1rem + env(safe-area-inset-right));
+            }
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        header > * {
+            animation: fadeInUp 0.8s ease forwards;
+        }
+
+        header .subtitle { animation-delay: 0.1s; }
+        header h1 { animation-delay: 0.2s; }
+        header .tagline { animation-delay: 0.3s; }
+    </style>
+    
+    <!-- Fallback for when JS is disabled or fails -->
+    <noscript>
+        <style>
+            section { opacity: 1 !important; transform: none !important; }
+        </style>
+    </noscript>
+</head>
+<body>
+    <nav id="navbar">
+        <ul>
+            <li><a href="#intro">Introduction</a></li>
+            <li><a href="#core-idea">Core Idea</a></li>
+            <li><a href="#model">The Model</a></li>
+            <li><a href="#prediction">Prediction</a></li>
+            <li><a href="#cost">Cost Function</a></li>
+            <li><a href="#constraints">Constraints</a></li>
+            <li><a href="#optimization">Optimization</a></li>
+            <li><a href="#solution">Solving the QP</a></li>
+            <li><a href="#receding">Receding Horizon</a></li>
+            <li><a href="#vs-lqr">MPC vs LQR</a></li>
+            <li><a href="#summary">Summary</a></li>
+        </ul>
+    </nav>
+
+    <header>
+        <div class="subtitle">A Conceptual Tutorial</div>
+        <h1>Model Predictive Control</h1>
+        <p class="tagline">Understanding MPC from the ground up — how predicting the future enables smarter control decisions today.</p>
+    </header>
+
+    <main>
+        <!-- INTRODUCTION -->
+        <section id="intro">
+            <h2>Introduction</h2>
+            <p><strong>Model Predictive Control (MPC)</strong> is one of the most powerful and widely-used advanced control strategies in modern engineering. From chemical plants to self-driving cars, from building climate control to robotic locomotion, MPC has become the go-to approach when you need optimal control that respects real-world constraints.</p>
+            
+            <p>What makes MPC special? In a nutshell, MPC uses a <em>model</em> of your system to <em>predict</em> what will happen in the future, then solves an optimization problem to find the best <em>control</em> actions. Unlike simpler controllers that only react to the current error, MPC thinks ahead.</p>
+
+            <div class="key-concept">
+                <p><strong>The MPC Philosophy:</strong> "If I can predict the consequences of my actions, I can choose the best action by optimizing over those predictions."</p>
+            </div>
+
+            <p>This tutorial will build your understanding from the ground up. We'll start with the core idea, develop the mathematical formulation step by step, and build intuition for why MPC works so well in practice.</p>
+        </section>
+
+        <!-- CORE IDEA -->
+        <section id="core-idea">
+            <h2>The Core Idea: Predict, Optimize, Apply</h2>
+            
+            <p>Imagine you're driving a car on a winding road. A simple reactive controller (like cruise control) only looks at your current speed and adjusts the throttle. But you, as a human driver, do something smarter: you look ahead at the road, anticipate the curves, and plan your speed and steering in advance.</p>
+            
+            <p>MPC works exactly like this. At every moment, it:</p>
+            
+            <div class="algorithm">
+                <div class="algorithm-title">The MPC Algorithm (Conceptual)</div>
+                <ol>
+                    <li><strong>Measure</strong> the current state of the system</li>
+                    <li><strong>Predict</strong> future behavior over a horizon using the system model</li>
+                    <li><strong>Optimize</strong> a sequence of future control inputs to minimize cost while respecting constraints</li>
+                    <li><strong>Apply</strong> only the first control input from the optimal sequence</li>
+                    <li><strong>Repeat</strong> at the next time step</li>
+                </ol>
+            </div>
+            
+            <p>The key insight is that while we compute an entire sequence of optimal future controls, we only actually apply the first one. Then we measure again, re-optimize, and repeat. This is called the <em>receding horizon</em> approach, and it's what makes MPC robust to model errors and disturbances.</p>
+
+            <h3>Why Predict and Re-plan?</h3>
+            <p>You might wonder: why not just compute the optimal control for all future time and be done with it? The answer is that real systems have:</p>
+            <ul>
+                <li><strong>Model uncertainty:</strong> Our model isn't perfect — reality will diverge from predictions</li>
+                <li><strong>Disturbances:</strong> Unexpected things happen (wind gusts, load changes, etc.)</li>
+                <li><strong>Measurement updates:</strong> We get new information about the true state</li>
+            </ul>
+            <p>By re-planning at each step, MPC incorporates new information and corrects for any deviations. It's like constantly updating your GPS route based on current traffic.</p>
+        </section>
+
+        <!-- THE MODEL -->
+        <section id="model">
+            <h2>The System Model</h2>
+            
+            <p>MPC needs a model to make predictions. In discrete-time (the most common setting for MPC), we typically use a <strong>state-space model</strong>:</p>
+            
+            <div class="math-block">
+                $$x_{k+1} = f(x_k, u_k)$$
+            </div>
+            
+            <p>where $x_k \in \mathbb{R}^n$ is the <strong>state</strong> (everything we need to know about the system at time $k$), and $u_k \in \mathbb{R}^m$ is the <strong>control input</strong> (what we can manipulate). The function $f$ describes how the state evolves.</p>
+            
+            <h3>Linear Models</h3>
+            <p>For many systems, or as an approximation around an operating point, we use <strong>linear models</strong>:</p>
+            
+            <div class="math-block">
+                $$x_{k+1} = A x_k + B u_k$$
+            </div>
+            
+            <p>Here $A$ is the state transition matrix (how the state evolves on its own) and $B$ is the input matrix (how control affects the state). Linear MPC is computationally efficient because the resulting optimization problem is convex.</p>
+
+            <h3>What Goes in the State?</h3>
+            <p>The state $x_k$ should capture everything about the system's "memory" — everything needed to predict future behavior. For example:</p>
+            <ul>
+                <li><strong>Mechanical system:</strong> positions and velocities</li>
+                <li><strong>Thermal system:</strong> temperatures at various points</li>
+                <li><strong>Chemical reactor:</strong> concentrations and temperatures</li>
+                <li><strong>Vehicle:</strong> position, velocity, heading angle</li>
+            </ul>
+            
+            <div class="key-concept">
+                <p><strong>Model Quality Matters:</strong> MPC is only as good as its model. A better model means better predictions, which means better control. This is both a strength (you can incorporate detailed physics) and a challenge (you need to develop and validate that model).</p>
+            </div>
+        </section>
+
+        <!-- PREDICTION -->
+        <section id="prediction">
+            <h2>Prediction Over a Horizon</h2>
+            
+            <p>The heart of MPC is predicting the future. Given the current state $x_k$ and a sequence of planned control inputs $u_k, u_{k+1}, \ldots, u_{k+N-1}$, we can roll out the model to predict future states:</p>
+            
+            <div class="math-block">
+                $$\begin{aligned}
+                x_{k+1} &= A x_k + B u_k \\
+                x_{k+2} &= A x_{k+1} + B u_{k+1} \\
+                &\vdots \\
+                x_{k+N} &= A x_{k+N-1} + B u_{k+N-1}
+                \end{aligned}$$
+            </div>
+            
+            <p>The number $N$ is called the <strong>prediction horizon</strong> (or control horizon). It determines how far ahead we look.</p>
+
+            <h3>Choosing the Horizon</h3>
+            <p>The prediction horizon $N$ is a crucial design choice:</p>
+            <ul>
+                <li><strong>Too short:</strong> The controller is myopic — it can't anticipate problems until they're imminent</li>
+                <li><strong>Too long:</strong> Computationally expensive, and predictions far in the future become unreliable anyway</li>
+                <li><strong>Just right:</strong> Long enough to capture the relevant dynamics and constraints, short enough to be tractable</li>
+            </ul>
+            <p>A good rule of thumb: the horizon should cover the system's "settling time" — how long it takes to respond to inputs.</p>
+
+            <!-- Prediction Visualization -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: Prediction Horizon</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <label>Horizon N: <span id="horizon-val">10</span></label>
+                        <input type="range" id="horizon" min="3" max="20" step="1" value="10">
+                    </div>
+                    <div class="control-group">
+                        <label>System Speed: <span id="speed-val">0.85</span></label>
+                        <input type="range" id="speed" min="0.5" max="0.99" step="0.01" value="0.85">
+                    </div>
+                    <div class="control-group">
+                        <button id="run-pred">Run Prediction</button>
+                    </div>
+                </div>
+                <canvas id="prediction-canvas" width="500" height="300"></canvas>
+                <p class="caption">The blue line shows the current state trajectory. The green dashed region shows the prediction horizon — the "window" into the future that MPC uses to optimize control actions.</p>
+            </div>
+        </section>
+
+        <!-- COST FUNCTION -->
+        <section id="cost">
+            <h2>The Cost Function</h2>
+            
+            <p>Once we can predict the future, we need to define what "good" means. This is done through a <strong>cost function</strong> (or objective function) that we want to minimize.</p>
+            
+            <p>A typical MPC cost function penalizes:</p>
+            <ul>
+                <li><strong>State deviation:</strong> How far are we from the desired state (setpoint)?</li>
+                <li><strong>Control effort:</strong> How much energy/actuation are we using?</li>
+                <li><strong>Control changes:</strong> How jerky are our control actions?</li>
+            </ul>
+
+            <p>The standard quadratic cost function over the prediction horizon is:</p>
+            
+            <div class="math-block">
+                $$J = \sum_{i=0}^{N-1} \Big[ (x_{k+i} - x_{ref})^T Q (x_{k+i} - x_{ref}) + u_{k+i}^T R \, u_{k+i} \Big] + (x_{k+N} - x_{ref})^T Q_f (x_{k+N} - x_{ref})$$
+            </div>
+            
+            <p>Let's break this down:</p>
+            <ul>
+                <li>$Q \succeq 0$ is the <strong>state cost matrix</strong> — penalizes deviation from reference $x_{ref}$</li>
+                <li>$R \succ 0$ is the <strong>input cost matrix</strong> — penalizes control effort</li>
+                <li>$Q_f \succeq 0$ is the <strong>terminal cost matrix</strong> — extra penalty on the final predicted state</li>
+            </ul>
+
+            <h3>Tuning Q and R</h3>
+            <p>The matrices $Q$ and $R$ let you express priorities:</p>
+            <ul>
+                <li><strong>Large Q, small R:</strong> "Get to the target quickly, I don't care about control effort" → aggressive control</li>
+                <li><strong>Small Q, large R:</strong> "Save energy, I can be patient" → gentle, smooth control</li>
+            </ul>
+            <p>Different diagonal entries in $Q$ let you prioritize some states over others (e.g., "temperature matters more than pressure").</p>
+
+            <div class="key-concept">
+                <p><strong>Why Quadratic Costs?</strong> Quadratic costs are mathematically convenient (they lead to convex optimization problems with linear models) and intuitive (they create a smooth "bowl" where being twice as far from the target costs four times as much). They're the most common choice in practice.</p>
+            </div>
+        </section>
+
+        <!-- CONSTRAINTS -->
+        <section id="constraints">
+            <h2>Constraints: The MPC Superpower</h2>
+            
+            <p>Here's where MPC truly shines compared to simpler controllers. Real systems have <strong>constraints</strong> — physical limits that must not be violated:</p>
+            
+            <ul>
+                <li><strong>Input constraints:</strong> Actuator limits (max motor torque, valve positions 0-100%)</li>
+                <li><strong>State constraints:</strong> Safety limits (max temperature, min tank level)</li>
+                <li><strong>Rate constraints:</strong> How fast things can change (acceleration limits)</li>
+            </ul>
+
+            <p>MPC handles these directly in the optimization:</p>
+            
+            <div class="math-block">
+                $$\begin{aligned}
+                u_{min} &\leq u_{k+i} \leq u_{max} & \text{(input bounds)} \\
+                x_{min} &\leq x_{k+i} \leq x_{max} & \text{(state bounds)} \\
+                \Delta u_{min} &\leq u_{k+i} - u_{k+i-1} \leq \Delta u_{max} & \text{(rate limits)}
+                \end{aligned}$$
+            </div>
+            
+            <p>These constraints must hold for all $i = 0, 1, \ldots, N-1$ in the prediction horizon.</p>
+
+            <h3>Why Constraints Matter</h3>
+            <p>Consider a classic example: controlling the temperature of a chemical reactor. Without constraints, an optimal controller might command the heater to go to 200% power (impossible) or cool so fast that thermal shock damages the equipment (dangerous).</p>
+            
+            <p>MPC finds the best control <em>that respects all constraints</em>. It automatically backs off when hitting limits, and it plans ahead to avoid constraint violations before they happen.</p>
+
+            <!-- Constraint Visualization -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: Control with Constraints</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <label>Input Limit |u|: <span id="ulimit-val">1.0</span></label>
+                        <input type="range" id="ulimit" min="0.3" max="2" step="0.1" value="1">
+                    </div>
+                    <div class="control-group">
+                        <label>Target Position: <span id="target-val">2.0</span></label>
+                        <input type="range" id="target" min="0.5" max="3" step="0.1" value="2">
+                    </div>
+                    <div class="control-group">
+                        <button id="run-constrained">Simulate</button>
+                    </div>
+                </div>
+                <canvas id="constraint-canvas" width="500" height="300"></canvas>
+                <p class="caption">Orange shows the control input (constrained to ±limit). Blue shows the resulting state trajectory. Notice how tighter constraints slow down the response — MPC finds the best achievable trajectory.</p>
+            </div>
+
+            <div class="key-concept">
+                <p><strong>Constraint Satisfaction is Guaranteed:</strong> Unlike controllers where you add saturation "after the fact," MPC knows about constraints during optimization. It won't ask for the impossible, and it plans trajectories that stay within limits throughout the horizon.</p>
+            </div>
+        </section>
+
+        <!-- OPTIMIZATION PROBLEM -->
+        <section id="optimization">
+            <h2>The Optimization Problem</h2>
+            
+            <p>Putting it all together, at each time step $k$, MPC solves:</p>
+            
+            <div class="math-block">
+                $$\begin{aligned}
+                \min_{u_k, \ldots, u_{k+N-1}} \quad & \sum_{i=0}^{N-1} \Big[ x_{k+i}^T Q \, x_{k+i} + u_{k+i}^T R \, u_{k+i} \Big] + x_{k+N}^T Q_f \, x_{k+N} \\[1em]
+                \text{subject to} \quad & x_{k+i+1} = A x_{k+i} + B u_{k+i}, \quad i = 0, \ldots, N-1 \\
+                & u_{min} \leq u_{k+i} \leq u_{max} \\
+                & x_{min} \leq x_{k+i} \leq x_{max} \\
+                & x_k = x_{current} \quad \text{(initial condition)}
+                \end{aligned}$$
+            </div>
+            
+            <p>This is a <strong>constrained optimization problem</strong>. The decision variables are the $N$ future control inputs. The dynamics act as equality constraints linking states to inputs.</p>
+
+            <h3>Solving the Problem</h3>
+            <p>For <strong>linear MPC</strong> (linear model, quadratic cost, linear constraints), this is a <strong>Quadratic Program (QP)</strong> — a well-studied problem class with efficient solvers. Modern QP solvers can handle hundreds of variables in milliseconds, enabling real-time control.</p>
+            
+            <p>For <strong>nonlinear MPC</strong> (nonlinear model or constraints), we get a general nonlinear program (NLP). These are harder but still tractable with modern solvers for many applications.</p>
+
+            <h3>Dense vs. Sparse Formulations</h3>
+            <p>There are two common ways to set up the QP:</p>
+            <ul>
+                <li><strong>Dense:</strong> Eliminate state variables using the dynamics, optimize only over inputs. Smaller problem but dense matrices.</li>
+                <li><strong>Sparse:</strong> Keep both states and inputs as variables with dynamics as constraints. Larger problem but sparse structure that specialized solvers exploit.</li>
+            </ul>
+        </section>
+
+        <!-- HOW MPC SOLVES THE PROBLEM -->
+        <section id="solution">
+            <h2>How MPC Actually Solves the Problem</h2>
+            
+            <p>Now let's get into the mathematical heart of MPC — how do we actually find the optimal control sequence? There are two elegant approaches: <strong>Dynamic Programming</strong> (working backwards via Bellman's equation) and <strong>Batch Optimization</strong> (solving one big quadratic program). Both give the same answer, but offer different insights.</p>
+
+            <h3>Approach 1: Dynamic Programming and the Bellman Equation</h3>
+            
+            <p>Just like in LQR, we can use <strong>Bellman's principle of optimality</strong>. Define the <strong>cost-to-go</strong> (or value function) $V_i(x)$ as the optimal cost starting from state $x$ with $i$ steps remaining in the horizon:</p>
+            
+            <div class="math-block">
+                $$V_i(x) = \min_{u} \Big[ x^T Q x + u^T R u + V_{i-1}(Ax + Bu) \Big]$$
+            </div>
+            
+            <p>This says: the optimal cost with $i$ steps to go equals the immediate cost plus the optimal future cost, minimized over the current control $u$.</p>
+            
+            <p>We solve this <strong>backwards in time</strong>, starting from the terminal condition:</p>
+            
+            <div class="math-block">
+                $$V_0(x) = x^T Q_f x$$
+            </div>
+            
+            <p>This is the terminal cost — when there are zero steps remaining, we just pay the final state penalty.</p>
+
+            <h3>The Quadratic Structure Propagates Backwards</h3>
+            
+            <p>Here's the beautiful part (just like LQR): if we <em>assume</em> the cost-to-go is quadratic, $V_i(x) = x^T P_i x$, then the Bellman equation preserves this structure. Let's verify by substituting into the Bellman equation:</p>
+            
+            <div class="math-block">
+                $$V_i(x) = \min_{u} \Big[ x^T Q x + u^T R u + (Ax + Bu)^T P_{i-1} (Ax + Bu) \Big]$$
+            </div>
+            
+            <p>Expanding the quadratic term $(Ax + Bu)^T P_{i-1} (Ax + Bu)$:</p>
+            
+            <div class="math-block">
+                $$= x^T A^T P_{i-1} A x + 2 x^T A^T P_{i-1} B u + u^T B^T P_{i-1} B u$$
+            </div>
+            
+            <p>So our minimization becomes:</p>
+            
+            <div class="math-block">
+                $$\min_{u} \Big[ x^T(Q + A^T P_{i-1} A)x + u^T(R + B^T P_{i-1} B)u + 2x^T A^T P_{i-1} B u \Big]$$
+            </div>
+            
+            <p>This is a <strong>quadratic function in $u$</strong> with no constraints (for now). To minimize, we take the gradient with respect to $u$ and set it to zero:</p>
+            
+            <div class="math-block">
+                $$\frac{\partial}{\partial u} = 2(R + B^T P_{i-1} B)u + 2B^T P_{i-1} A x = 0$$
+            </div>
+            
+            <p>Solving for the optimal control:</p>
+            
+            <div class="math-block">
+                $$u^*_i = -\underbrace{(R + B^T P_{i-1} B)^{-1} B^T P_{i-1} A}_{K_i} x = -K_i x$$
+            </div>
+            
+            <div class="key-concept">
+                <p><strong>Key Result:</strong> The optimal control at each stage is <em>linear in the state</em>: $u^*_i = -K_i x$. The gain $K_i$ depends on how many steps remain — it's time-varying over the finite horizon.</p>
+            </div>
+
+            <h3>The Riccati Recursion</h3>
+            
+            <p>Substituting $u^*_i$ back into the cost expression, after some algebra, we find that $V_i(x) = x^T P_i x$ where $P_i$ satisfies the <strong>discrete-time Riccati recursion</strong>:</p>
+            
+            <div class="math-block">
+                $$P_i = Q + A^T P_{i-1} A - A^T P_{i-1} B (R + B^T P_{i-1} B)^{-1} B^T P_{i-1} A$$
+            </div>
+            
+            <p>Starting from $P_0 = Q_f$ and iterating backwards $i = 1, 2, \ldots, N$, we get the sequence of cost matrices $P_0, P_1, \ldots, P_N$ and corresponding gains $K_1, K_2, \ldots, K_N$.</p>
+            
+            <p>This is exactly the same Riccati equation as LQR, but we run it for a <strong>finite number of steps</strong> rather than until convergence.</p>
+
+            <h3>Connection to LQR</h3>
+            
+            <p>What happens if we let $N \to \infty$? The Riccati recursion converges to a steady-state $P_\infty$, and all gains become identical: $K_i \to K_\infty$. This is exactly the infinite-horizon LQR solution!</p>
+            
+            <div class="key-concept">
+                <p><strong>MPC ↔ LQR Connection:</strong> Unconstrained, infinite-horizon MPC with quadratic costs is mathematically equivalent to LQR. The optimal policy is $u = -K_\infty x$ where $K_\infty$ is the steady-state LQR gain. MPC generalizes LQR by handling finite horizons and constraints.</p>
+            </div>
+
+            <h3>But What About Constraints?</h3>
+            
+            <p>The dynamic programming approach gives us the unconstrained solution elegantly. But MPC's real power is handling constraints. With constraints like $u_{min} \leq u \leq u_{max}$, we can no longer just set the gradient to zero — the optimal $u$ might be at a constraint boundary.</p>
+            
+            <p>This is where the <strong>batch QP formulation</strong> becomes essential.</p>
+
+            <h3>Approach 2: The Batch Quadratic Program</h3>
+            
+            <p>Instead of solving backwards in time, we can stack everything into one big optimization problem. Define the stacked vectors:</p>
+            
+            <div class="math-block">
+                $$\mathbf{U} = \begin{bmatrix} u_0 \\ u_1 \\ \vdots \\ u_{N-1} \end{bmatrix} \in \mathbb{R}^{Nm}, \quad \mathbf{X} = \begin{bmatrix} x_1 \\ x_2 \\ \vdots \\ x_N \end{bmatrix} \in \mathbb{R}^{Nn}$$
+            </div>
+            
+            <p>The dynamics $x_{k+1} = Ax_k + Bu_k$ can be written in matrix form. Starting from $x_0$:</p>
+            
+            <div class="math-block">
+                $$\mathbf{X} = \underbrace{\begin{bmatrix} A \\ A^2 \\ \vdots \\ A^N \end{bmatrix}}_{\mathbf{A}} x_0 + \underbrace{\begin{bmatrix} B & 0 & \cdots & 0 \\ AB & B & \cdots & 0 \\ \vdots & & \ddots & \vdots \\ A^{N-1}B & A^{N-2}B & \cdots & B \end{bmatrix}}_{\mathbf{B}} \mathbf{U}$$
+            </div>
+            
+            <p>Or compactly: $\mathbf{X} = \mathbf{A} x_0 + \mathbf{B} \mathbf{U}$</p>
+            
+            <p>The cost function becomes a quadratic in $\mathbf{U}$:</p>
+            
+            <div class="math-block">
+                $$J = \mathbf{X}^T \bar{Q} \mathbf{X} + \mathbf{U}^T \bar{R} \mathbf{U}$$
+            </div>
+            
+            <p>where $\bar{Q} = \text{diag}(Q, Q, \ldots, Q, Q_f)$ and $\bar{R} = \text{diag}(R, R, \ldots, R)$.</p>
+            
+            <p>Substituting $\mathbf{X} = \mathbf{A} x_0 + \mathbf{B} \mathbf{U}$:</p>
+            
+            <div class="math-block">
+                $$J = (\mathbf{A} x_0 + \mathbf{B} \mathbf{U})^T \bar{Q} (\mathbf{A} x_0 + \mathbf{B} \mathbf{U}) + \mathbf{U}^T \bar{R} \mathbf{U}$$
+            </div>
+            
+            <p>Expanding and collecting terms:</p>
+            
+            <div class="math-block">
+                $$J = \mathbf{U}^T \underbrace{(\mathbf{B}^T \bar{Q} \mathbf{B} + \bar{R})}_{H} \mathbf{U} + 2 x_0^T \underbrace{\mathbf{A}^T \bar{Q} \mathbf{B}}_{F^T} \mathbf{U} + \text{const}$$
+            </div>
+            
+            <p>This is a <strong>quadratic function</strong> in $\mathbf{U}$: $J = \mathbf{U}^T H \mathbf{U} + 2 x_0^T F^T \mathbf{U} + \text{const}$</p>
+
+            <h3>The QP with Constraints</h3>
+            
+            <p>Now we add constraints. Input constraints $u_{min} \leq u_k \leq u_{max}$ become:</p>
+            
+            <div class="math-block">
+                $$\mathbf{u}_{min} \leq \mathbf{U} \leq \mathbf{u}_{max}$$
+            </div>
+            
+            <p>State constraints $x_{min} \leq x_k \leq x_{max}$ become (using $\mathbf{X} = \mathbf{A} x_0 + \mathbf{B} \mathbf{U}$):</p>
+            
+            <div class="math-block">
+                $$\mathbf{x}_{min} \leq \mathbf{A} x_0 + \mathbf{B} \mathbf{U} \leq \mathbf{x}_{max}$$
+            </div>
+            
+            <p>Rearranging: $\mathbf{x}_{min} - \mathbf{A} x_0 \leq \mathbf{B} \mathbf{U} \leq \mathbf{x}_{max} - \mathbf{A} x_0$</p>
+            
+            <p>The complete MPC problem is now a standard <strong>Quadratic Program (QP)</strong>:</p>
+            
+            <div class="math-block">
+                $$\begin{aligned}
+                \min_{\mathbf{U}} \quad & \frac{1}{2} \mathbf{U}^T H \mathbf{U} + f^T \mathbf{U} \\[0.5em]
+                \text{subject to} \quad & G \mathbf{U} \leq w
+                \end{aligned}$$
+            </div>
+            
+            <p>where $H = \mathbf{B}^T \bar{Q} \mathbf{B} + \bar{R}$, $f = \mathbf{B}^T \bar{Q} \mathbf{A} x_0$, and $G, w$ encode all the inequality constraints.</p>
+
+            <div class="key-concept">
+                <p><strong>The QP Structure:</strong> MPC with linear dynamics, quadratic costs, and linear constraints reduces to a convex QP. The Hessian $H$ is positive definite (since $R \succ 0$), guaranteeing a unique global minimum. This is why linear MPC is so tractable — we're solving a well-understood convex optimization problem.</p>
+            </div>
+
+            <h3>Solving the QP: How the Algorithms Actually Work</h3>
+            
+            <p>We've reduced MPC to solving a Quadratic Program at each time step. But how do QP solvers actually find the optimal $\mathbf{U}^*$? Let's build intuition for the three main approaches.</p>
+
+            <h4>The Geometry of Constrained Optimization</h4>
+            
+            <p>First, visualize what we're doing. The cost function $J(\mathbf{U}) = \frac{1}{2}\mathbf{U}^T H \mathbf{U} + f^T \mathbf{U}$ is a <em>bowl</em> in the space of control sequences. Without constraints, the minimum is at the bottom of the bowl:</p>
+            
+            <div class="math-block">
+                $$\mathbf{U}^*_{unconstrained} = -H^{-1} f$$
+            </div>
+            
+            <p>But constraints carve out a <em>feasible region</em> — a polytope (multi-dimensional polygon) defined by the linear inequalities $G\mathbf{U} \leq w$. The constrained optimum is either:</p>
+            <ul>
+                <li><strong>Inside the feasible region:</strong> Same as unconstrained (constraints don't matter)</li>
+                <li><strong>On the boundary:</strong> The bowl's minimum is outside, so we slide along the boundary to find the best feasible point</li>
+            </ul>
+
+            <div class="key-concept">
+                <p><strong>The Key Insight:</strong> At the constrained optimum, some constraints are <em>active</em> (binding, satisfied with equality) and others are <em>inactive</em> (satisfied with slack). If we knew which constraints were active, we could solve an easier equality-constrained problem!</p>
+            </div>
+
+            <h4>Method 1: Active Set Methods</h4>
+            
+            <p><strong>Core idea:</strong> Guess which constraints are active, solve the resulting equality-constrained problem, then update our guess.</p>
+            
+            <p>Imagine you're at a point inside the feasible region. You want to roll downhill on the cost bowl, but walls (constraint boundaries) might block you. The active set method works like this:</p>
+            
+            <div class="algorithm">
+                <div class="algorithm-title">Active Set Algorithm (Conceptual)</div>
+                <ol>
+                    <li><strong>Start</strong> with a feasible point and an initial guess of which constraints are active (the "working set")</li>
+                    <li><strong>Solve</strong> the equality-constrained subproblem: minimize $J(\mathbf{U})$ treating active constraints as equalities</li>
+                    <li><strong>Check optimality:</strong> Compute Lagrange multipliers $\lambda_i$ for active constraints
+                        <ul style="margin-top: 0.5rem; margin-bottom: 0.5rem;">
+                            <li>If all $\lambda_i \geq 0$: we're optimal! The active constraints are "pushing" in the right direction</li>
+                            <li>If some $\lambda_i < 0$: that constraint wants to be inactive — remove it from the working set</li>
+                        </ul>
+                    </li>
+                    <li><strong>Check feasibility:</strong> If the solution violates an inactive constraint, add that constraint to the working set</li>
+                    <li><strong>Repeat</strong> until optimal</li>
+                </ol>
+            </div>
+            
+            <p><strong>The equality-constrained subproblem</strong> is easy to solve. If active constraints are $A_{eq}\mathbf{U} = b_{eq}$, we form the KKT system:</p>
+            
+            <div class="math-block">
+                $$\begin{bmatrix} H & A_{eq}^T \\ A_{eq} & 0 \end{bmatrix} \begin{bmatrix} \mathbf{U} \\ \lambda \end{bmatrix} = \begin{bmatrix} -f \\ b_{eq} \end{bmatrix}$$
+            </div>
+            
+            <p>This is just a linear system — solve it with standard linear algebra!</p>
+            
+            <p><strong>Lagrange multipliers</strong> $\lambda_i$ have a beautiful interpretation: they measure the "cost" of a constraint. If $\lambda_i > 0$, the constraint is actively limiting us (removing it would improve the cost). If $\lambda_i < 0$, something's wrong — the constraint is in our working set but shouldn't be active.</p>
+
+            <!-- Active Set Visualization -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: Active Set Method</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <button id="as-step">Step</button>
+                    </div>
+                    <div class="control-group">
+                        <button id="as-reset">Reset</button>
+                    </div>
+                    <div class="control-group">
+                        <label>Iteration: <span id="as-iter">0</span></label>
+                    </div>
+                </div>
+                <canvas id="active-set-canvas" width="500" height="400"></canvas>
+                <p class="caption">2D example: minimize a quadratic (elliptical contours) subject to linear constraints (gray region). Green point is current iterate. Red lines show active constraints. Watch how the algorithm walks along constraint boundaries toward the optimum.</p>
+            </div>
+            
+            <p><strong>Pros:</strong> Finite convergence (for convex QPs), exact solution, exploits warm-starting (if constraints don't change much between MPC steps, the active set is similar)</p>
+            <p><strong>Cons:</strong> Worst-case exponential in number of constraints (rare in practice), needs a feasible starting point</p>
+
+            <h4>Method 2: Interior Point Methods</h4>
+            
+            <p><strong>Core idea:</strong> Instead of walking along constraint boundaries, stay strictly inside the feasible region and approach the boundary smoothly.</p>
+            
+            <p>Interior point methods replace the hard inequality constraints with a soft <em>barrier function</em> that goes to infinity as you approach the boundary:</p>
+            
+            <div class="math-block">
+                $$\min_{\mathbf{U}} \; \frac{1}{2}\mathbf{U}^T H \mathbf{U} + f^T \mathbf{U} - \mu \sum_{i} \log(w_i - g_i^T \mathbf{U})$$
+            </div>
+            
+            <p>The log barrier $-\log(w_i - g_i^T \mathbf{U})$ is:</p>
+            <ul>
+                <li>Small when far from the constraint boundary</li>
+                <li>Huge (approaching $+\infty$) as you get close to the boundary</li>
+            </ul>
+            
+            <p>The parameter $\mu > 0$ controls the "strength" of the barrier. For large $\mu$, the barrier dominates and we stay far from boundaries. As $\mu \to 0$, the barrier weakens and we can approach the true constrained optimum.</p>
+            
+            <div class="algorithm">
+                <div class="algorithm-title">Interior Point Algorithm (Conceptual)</div>
+                <ol>
+                    <li><strong>Start</strong> with a strictly feasible point (inside all constraints) and large $\mu$</li>
+                    <li><strong>Solve</strong> the barrier problem using Newton's method — this gives us a point on the "central path"</li>
+                    <li><strong>Reduce</strong> $\mu$ (typically $\mu \leftarrow \mu / 10$)</li>
+                    <li><strong>Repeat</strong> until $\mu$ is tiny and we're close enough to the true optimum</li>
+                </ol>
+            </div>
+            
+            <p><strong>Newton's method</strong> for the barrier subproblem linearizes the optimality conditions. At each Newton step, we solve:</p>
+            
+            <div class="math-block">
+                $$\begin{bmatrix} H + \sum_i \frac{g_i g_i^T}{(w_i - g_i^T \mathbf{U})^2} & G^T \\ S^{-1} G & \Lambda^{-1} \end{bmatrix} \begin{bmatrix} \Delta \mathbf{U} \\ \Delta \lambda \end{bmatrix} = -\begin{bmatrix} \text{gradient} \\ \text{complementarity} \end{bmatrix}$$
+            </div>
+            
+            <p>where $S$ is a diagonal matrix of slacks and $\Lambda$ is diagonal Lagrange multipliers. Don't worry about the details — the key point is it's still just a linear system!</p>
+
+            <!-- Interior Point Visualization -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: Interior Point Method</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <label>Barrier μ: <span id="ip-mu-val">2.0</span></label>
+                        <input type="range" id="ip-mu" min="0.01" max="3" step="0.01" value="2">
+                    </div>
+                    <div class="control-group">
+                        <button id="ip-animate">Animate Path</button>
+                    </div>
+                </div>
+                <canvas id="interior-point-canvas" width="500" height="400"></canvas>
+                <p class="caption">Same problem as above. The blue curve shows the "central path" — the set of barrier-problem solutions as $\mu$ varies. As $\mu \to 0$, the path approaches the true constrained optimum (red star). Interior point follows this path.</p>
+            </div>
+            
+            <p><strong>Pros:</strong> Polynomial complexity (guaranteed efficient), handles many constraints well, numerically stable</p>
+            <p><strong>Cons:</strong> Each iteration is expensive (large linear systems), less suited for warm-starting, needs strictly feasible start</p>
+
+            <h4>Method 3: ADMM and First-Order Methods</h4>
+            
+            <p><strong>Core idea:</strong> Avoid solving big linear systems altogether. Use only matrix-vector multiplications and simple operations.</p>
+            
+            <p><strong>ADMM (Alternating Direction Method of Multipliers)</strong> splits the problem into easier pieces. Rewrite our QP as:</p>
+            
+            <div class="math-block">
+                $$\min_{\mathbf{U}, \mathbf{z}} \; \frac{1}{2}\mathbf{U}^T H \mathbf{U} + f^T \mathbf{U} + \mathcal{I}_{\mathcal{C}}(\mathbf{z}) \quad \text{subject to} \quad G\mathbf{U} = \mathbf{z}$$
+            </div>
+            
+            <p>where $\mathcal{I}_{\mathcal{C}}(\mathbf{z})$ is the <em>indicator function</em> of the constraint set: 0 if $\mathbf{z} \leq w$, infinity otherwise.</p>
+            
+            <p>ADMM forms the <em>augmented Lagrangian</em> and alternates between optimizing over $\mathbf{U}$ and $\mathbf{z}$:</p>
+            
+            <div class="algorithm">
+                <div class="algorithm-title">ADMM Algorithm</div>
+                <ol>
+                    <li><strong>U-update:</strong> $\mathbf{U}^{k+1} = \arg\min_{\mathbf{U}} \frac{1}{2}\mathbf{U}^T H \mathbf{U} + f^T \mathbf{U} + \frac{\rho}{2}\|G\mathbf{U} - \mathbf{z}^k + \mathbf{y}^k\|^2$
+                        <br><span style="color: var(--text-secondary); font-size: 0.9em;">→ This is an unconstrained QP: solve $(H + \rho G^T G)\mathbf{U} = -f + \rho G^T(\mathbf{z}^k - \mathbf{y}^k)$</span></li>
+                    <li><strong>z-update:</strong> $\mathbf{z}^{k+1} = \Pi_{\mathcal{C}}(G\mathbf{U}^{k+1} + \mathbf{y}^k)$
+                        <br><span style="color: var(--text-secondary); font-size: 0.9em;">→ Just project onto the constraint set! For box constraints: $z_i = \min(w_i, G\mathbf{U}_i + y_i)$</span></li>
+                    <li><strong>y-update:</strong> $\mathbf{y}^{k+1} = \mathbf{y}^k + G\mathbf{U}^{k+1} - \mathbf{z}^{k+1}$
+                        <br><span style="color: var(--text-secondary); font-size: 0.9em;">→ Update the dual variable (running sum of constraint violations)</span></li>
+                    <li><strong>Repeat</strong> until convergence</li>
+                </ol>
+            </div>
+            
+            <p><strong>Why is this good?</strong></p>
+            <ul>
+                <li>The U-update solves a <em>fixed</em> linear system $(H + \rho G^T G)$ — we can pre-factorize it!</li>
+                <li>The z-update is embarrassingly simple: just clipping values</li>
+                <li>Each iteration is cheap; we trade iteration count for per-iteration cost</li>
+            </ul>
+            
+            <div class="key-concept">
+                <p><strong>Embedded Systems Love ADMM:</strong> The operations are simple (matrix-vector multiply, clipping), memory footprint is small, and you can pre-compute the matrix factorization offline. This makes ADMM ideal for microcontrollers running MPC at high rates. OSQP, a popular open-source QP solver, uses ADMM.</p>
+            </div>
+
+            <!-- ADMM Visualization -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: ADMM Convergence</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <label>ρ (penalty): <span id="admm-rho-val">1.0</span></label>
+                        <input type="range" id="admm-rho" min="0.1" max="5" step="0.1" value="1">
+                    </div>
+                    <div class="control-group">
+                        <button id="admm-step">Step (×10)</button>
+                    </div>
+                    <div class="control-group">
+                        <button id="admm-reset">Reset</button>
+                    </div>
+                </div>
+                <canvas id="admm-canvas" width="500" height="400"></canvas>
+                <p class="caption">ADMM alternates between an unconstrained minimization (moving toward bowl center) and projection onto constraints (snapping back to feasible region). The iterates zigzag but converge to the optimum.</p>
+            </div>
+            
+            <p><strong>Pros:</strong> Simple operations, low memory, excellent for embedded systems, warm-starting friendly</p>
+            <p><strong>Cons:</strong> Slow convergence to high accuracy (but often good enough for MPC), needs tuning of $\rho$</p>
+
+            <h4>Which Solver Should You Use?</h4>
+            
+            <table class="comparison">
+                <tr>
+                    <th>Scenario</th>
+                    <th>Recommended</th>
+                    <th>Why</th>
+                </tr>
+                <tr>
+                    <td>Small problems, high accuracy needed</td>
+                    <td>Active Set</td>
+                    <td>Exact solution, fast for few constraints</td>
+                </tr>
+                <tr>
+                    <td>Large problems, many constraints</td>
+                    <td>Interior Point</td>
+                    <td>Polynomial complexity, handles scale well</td>
+                </tr>
+                <tr>
+                    <td>Embedded systems, real-time control</td>
+                    <td>ADMM</td>
+                    <td>Simple operations, pre-computation, warm start</td>
+                </tr>
+                <tr>
+                    <td>MPC with similar problems each step</td>
+                    <td>Active Set or ADMM</td>
+                    <td>Warm-starting from previous solution</td>
+                </tr>
+            </table>
+
+            <h3>What the Solution Looks Like</h3>
+            
+            <p>The QP solver returns the optimal control sequence $\mathbf{U}^* = [u_0^*, u_1^*, \ldots, u_{N-1}^*]^T$. We extract and apply only $u_0^*$.</p>
+            
+            <p>When no constraints are active, the solution is the unconstrained optimum:</p>
+            
+            <div class="math-block">
+                $$\mathbf{U}^* = -H^{-1} f = -H^{-1} \mathbf{B}^T \bar{Q} \mathbf{A} x_0$$
+            </div>
+            
+            <p>This is linear in $x_0$, so extracting the first component gives $u_0^* = -K x_0$ — exactly what dynamic programming predicted!</p>
+            
+            <p>When constraints are active, the solution is more complex — it's <strong>piecewise affine</strong> in $x_0$. The state space is partitioned into regions, and in each region the optimal control is an affine function of the state (but with different coefficients in each region).</p>
+
+            <!-- Visualization of solution regions -->
+            <div class="visualization">
+                <div class="viz-title">Interactive: Unconstrained vs Constrained Solution</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <label>Input Constraint |u|: <span id="qp-ulimit-val">1.5</span></label>
+                        <input type="range" id="qp-ulimit" min="0.5" max="3" step="0.1" value="1.5">
+                    </div>
+                    <div class="control-group">
+                        <label>Initial State x₀: <span id="qp-x0-val">2.0</span></label>
+                        <input type="range" id="qp-x0" min="0.5" max="4" step="0.1" value="2">
+                    </div>
+                </div>
+                <canvas id="qp-solution-canvas" width="500" height="300"></canvas>
+                <p class="caption">Blue dashed: unconstrained optimal control (linear in state). Orange solid: constrained optimal (saturates at limits). The constrained solution equals the unconstrained when constraints aren't active.</p>
+            </div>
+
+            <h3>Summary: Two Views, One Solution</h3>
+            
+            <table class="comparison">
+                <tr>
+                    <th>Aspect</th>
+                    <th>Dynamic Programming</th>
+                    <th>Batch QP</th>
+                </tr>
+                <tr>
+                    <td>Direction</td>
+                    <td>Backwards in time</td>
+                    <td>All at once</td>
+                </tr>
+                <tr>
+                    <td>Key equation</td>
+                    <td>Bellman + Riccati</td>
+                    <td>QP: min ½U'HU + f'U</td>
+                </tr>
+                <tr>
+                    <td>Handles constraints</td>
+                    <td>Complex (requires modifications)</td>
+                    <td>Natural (linear inequalities)</td>
+                </tr>
+                <tr>
+                    <td>Insight</td>
+                    <td>Structure of optimal solution</td>
+                    <td>Practical computation</td>
+                </tr>
+                <tr>
+                    <td>Result (unconstrained)</td>
+                    <td>$u^* = -K_i x$</td>
+                    <td>$u^* = -K x$ (same!)</td>
+                </tr>
+            </table>
+            
+            <p>Both approaches reveal that MPC finds a control that balances immediate cost against future cost, respecting the system dynamics. The batch QP is what's actually implemented in practice because it handles constraints directly.</p>
+        </section>
+
+        <!-- RECEDING HORIZON -->
+            <h2>The Receding Horizon Principle</h2>
+            
+            <p>Remember: although we compute $N$ optimal control inputs $u_k^*, u_{k+1}^*, \ldots, u_{k+N-1}^*$, we only <strong>apply the first one</strong> $u_k^*$. Then we:</p>
+            
+            <ol>
+                <li>Wait for the next time step</li>
+                <li>Measure the new state $x_{k+1}$</li>
+                <li>Solve a new optimization starting from $x_{k+1}$</li>
+                <li>Apply $u_{k+1}^*$</li>
+                <li>Repeat forever</li>
+            </ol>
+            
+            <p>The horizon "recedes" — it always extends $N$ steps into the future from the current time. This is also called <strong>moving horizon</strong> or <strong>rolling horizon</strong> control.</p>
+
+            <div class="visualization">
+                <div class="viz-title">Interactive: Receding Horizon Animation</div>
+                <div class="viz-controls">
+                    <div class="control-group">
+                        <label>Horizon N: <span id="rh-horizon-val">8</span></label>
+                        <input type="range" id="rh-horizon" min="3" max="15" step="1" value="8">
+                    </div>
+                    <div class="control-group">
+                        <button id="run-receding">Start Animation</button>
+                    </div>
+                </div>
+                <canvas id="receding-canvas" width="500" height="300"></canvas>
+                <p class="caption">Watch the prediction horizon (green) move forward with each time step. The solid blue line is the actual trajectory; the dashed line is the current prediction. Only the first control action is applied before re-planning.</p>
+            </div>
+
+            <h3>Why Does This Work?</h3>
+            <p>The receding horizon approach provides <strong>feedback</strong>. Even though we're solving an open-loop optimization (assuming no future disturbances), repeatedly re-solving creates closed-loop behavior:</p>
+            <ul>
+                <li>Model errors are corrected as we measure the true state</li>
+                <li>Disturbances are rejected as they appear</li>
+                <li>Changing setpoints or constraints are immediately incorporated</li>
+            </ul>
+
+            <div class="key-concept">
+                <p><strong>Implicit Feedback:</strong> MPC transforms open-loop optimal control into closed-loop control through repeated re-optimization. This is sometimes called "implicit feedback" because the feedback law isn't given by a formula — it's implicitly defined by the optimization problem.</p>
+            </div>
+        </section>
+
+        <!-- MPC VS LQR -->
+        <section id="vs-lqr">
+            <h2>MPC vs. LQR: What's the Difference?</h2>
+            
+            <p>If you know about the Linear Quadratic Regulator (LQR), you might wonder how MPC compares. They're related but serve different purposes:</p>
+            
+            <table class="comparison">
+                <tr>
+                    <th>Aspect</th>
+                    <th>LQR</th>
+                    <th>MPC</th>
+                </tr>
+                <tr>
+                    <td>Constraints</td>
+                    <td>Cannot handle directly</td>
+                    <td>Handles explicitly</td>
+                </tr>
+                <tr>
+                    <td>Horizon</td>
+                    <td>Infinite (or finite with terminal cost)</td>
+                    <td>Finite, receding</td>
+                </tr>
+                <tr>
+                    <td>Solution</td>
+                    <td>Closed-form: $u = -Kx$</td>
+                    <td>Online optimization at each step</td>
+                </tr>
+                <tr>
+                    <td>Computation</td>
+                    <td>Offline (compute $K$ once)</td>
+                    <td>Online (solve QP each step)</td>
+                </tr>
+                <tr>
+                    <td>Nonlinear systems</td>
+                    <td>Requires linearization</td>
+                    <td>Can use nonlinear models</td>
+                </tr>
+                <tr>
+                    <td>Time-varying setpoints</td>
+                    <td>Requires modification</td>
+                    <td>Natural to include</td>
+                </tr>
+            </table>
+            
+            <h3>The Connection</h3>
+            <p>Interestingly, <strong>unconstrained linear MPC with infinite horizon is equivalent to LQR</strong>. The MPC solution would be $u_k = -Kx_k$ where $K$ is the LQR gain. In this sense, MPC generalizes LQR to handle constraints and finite horizons.</p>
+            
+            <p>In practice, when constraints aren't active, a well-tuned MPC behaves similarly to LQR. The power of MPC emerges when you need to push the system hard and constraints become active.</p>
+        </section>
+
+        <!-- SUMMARY -->
+        <section id="summary">
+            <h2>Summary: The MPC Recipe</h2>
+            
+            <p>Let's consolidate everything into the complete MPC picture:</p>
+            
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <h4>1. Model</h4>
+                    <p>You need a dynamic model $x_{k+1} = f(x_k, u_k)$ that predicts how your system evolves. Better models give better control.</p>
+                </div>
+                <div class="summary-card">
+                    <h4>2. Cost Function</h4>
+                    <p>Define what "good" means via $J = \sum (x^T Q x + u^T R u)$. Tune $Q$ and $R$ to balance tracking vs. effort.</p>
+                </div>
+                <div class="summary-card">
+                    <h4>3. Constraints</h4>
+                    <p>Specify physical limits on inputs and states. MPC will respect these while optimizing performance.</p>
+                </div>
+                <div class="summary-card">
+                    <h4>4. Horizon</h4>
+                    <p>Choose $N$ long enough to see relevant dynamics but short enough for tractable computation.</p>
+                </div>
+                <div class="summary-card">
+                    <h4>5. Solve Online</h4>
+                    <p>At each time step, solve the constrained optimization to get the optimal control sequence.</p>
+                </div>
+                <div class="summary-card">
+                    <h4>6. Apply First Input</h4>
+                    <p>Use only $u_k^*$, then re-measure and re-solve. The receding horizon provides robustness.</p>
+                </div>
+            </div>
+
+            <div class="key-concept" style="margin-top: 2rem;">
+                <p><strong>The MPC Mindset:</strong> MPC is about looking ahead and planning optimally within physical limits. It trades computational effort for performance and constraint satisfaction. When you need to operate a system near its limits while respecting hard constraints, MPC is often the answer.</p>
+            </div>
+
+            <h3>Where is MPC Used?</h3>
+            <p>MPC has found success in countless applications:</p>
+            <ul>
+                <li><strong>Process industries:</strong> Chemical plants, refineries, power generation</li>
+                <li><strong>Automotive:</strong> Adaptive cruise control, autonomous driving, engine management</li>
+                <li><strong>Aerospace:</strong> Spacecraft attitude control, aircraft autopilots</li>
+                <li><strong>Robotics:</strong> Legged locomotion, manipulation, drone control</li>
+                <li><strong>Buildings:</strong> HVAC optimization, energy management</li>
+                <li><strong>Finance:</strong> Portfolio optimization (a form of MPC!)</li>
+            </ul>
+
+            <h3>Next Steps</h3>
+            <p>To deepen your understanding, explore:</p>
+            <ul>
+                <li><strong>Stability guarantees:</strong> Terminal constraints and costs that ensure closed-loop stability</li>
+                <li><strong>Robust MPC:</strong> Handling model uncertainty explicitly</li>
+                <li><strong>Stochastic MPC:</strong> Dealing with probabilistic disturbances</li>
+                <li><strong>Explicit MPC:</strong> Pre-computing the solution as a piecewise affine function</li>
+                <li><strong>Nonlinear MPC:</strong> Handling nonlinear dynamics and constraints</li>
+            </ul>
+        </section>
+    </main>
+
+    <footer>
+        <p>Model Predictive Control: Fundamentals from the Ground Up — A Conceptual Tutorial</p>
+    </footer>
+
+    <script>
+        // Initialize KaTeX auto-render
+        document.addEventListener("DOMContentLoaded", function() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false}
+                ],
+                throwOnError: false
+            });
+            
+            initVisualizations();
+            initScrollAnimations();
+        });
+
+        // Scroll animations
+        function initScrollAnimations() {
+            const nav = document.getElementById('navbar');
+            const sections = document.querySelectorAll('section');
+            
+            // Fallback: make all sections visible after a short delay
+            setTimeout(() => {
+                sections.forEach(section => section.classList.add('visible'));
+            }, 100);
+            
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -10% 0px'
+            };
+            
+            // Only use IntersectionObserver if supported and not on mobile
+            if ('IntersectionObserver' in window) {
+                const sectionObserver = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            entry.target.classList.add('visible');
+                        }
+                    });
+                }, observerOptions);
+                
+                sections.forEach(section => sectionObserver.observe(section));
+            } else {
+                // Fallback for browsers without IntersectionObserver
+                sections.forEach(section => section.classList.add('visible'));
+            }
+            
+            // Navbar visibility
+            window.addEventListener('scroll', () => {
+                const currentScroll = window.pageYOffset;
+                if (currentScroll > 400) {
+                    nav.classList.add('visible');
+                } else {
+                    nav.classList.remove('visible');
+                }
+            });
+        }
+
+        // Visualizations
+        function initVisualizations() {
+            initPredictionViz();
+            initConstraintViz();
+            initQPSolutionViz();
+            initActiveSetViz();
+            initInteriorPointViz();
+            initADMMViz();
+            initRecedingViz();
+        }
+
+        // Active Set visualization
+        function initActiveSetViz() {
+            const canvas = document.getElementById('active-set-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 400;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            // Problem setup: min 0.5*(x^2 + 2y^2) - x - y
+            // subject to: x >= 0, y >= 0, x + y <= 1.5, -x + y <= 0.5
+            const H = [[1, 0], [0, 2]];
+            const f = [-1, -1];
+            
+            // Constraints: Ax <= b
+            const constraints = [
+                {a: [-1, 0], b: 0, label: 'x ≥ 0'},      // x >= 0 => -x <= 0
+                {a: [0, -1], b: 0, label: 'y ≥ 0'},      // y >= 0 => -y <= 0
+                {a: [1, 1], b: 1.5, label: 'x + y ≤ 1.5'},
+                {a: [-1, 1], b: 0.5, label: '-x + y ≤ 0.5'}
+            ];
+            
+            // Unconstrained optimum
+            const unconstrained = [1, 0.5];
+            // True constrained optimum (precomputed)
+            const optimum = [1, 0.5]; // happens to be feasible
+            
+            let iteration = 0;
+            let currentPoint = [0.2, 0.2];
+            let activeSet = [];
+            let path = [[...currentPoint]];
+
+            function reset() {
+                iteration = 0;
+                currentPoint = [0.2, 0.2];
+                activeSet = [];
+                path = [[...currentPoint]];
+                draw();
+            }
+
+            function step() {
+                iteration++;
+                
+                // Simplified active set step for visualization
+                // Move toward unconstrained optimum, stop at constraint boundaries
+                const dir = [unconstrained[0] - currentPoint[0], unconstrained[1] - currentPoint[1]];
+                const len = Math.sqrt(dir[0]*dir[0] + dir[1]*dir[1]);
+                
+                if (len < 0.01) {
+                    document.getElementById('as-iter').textContent = iteration + ' (converged)';
+                    draw();
+                    return;
+                }
+                
+                // Normalize direction
+                dir[0] /= len;
+                dir[1] /= len;
+                
+                // Find step size (hit a constraint or reach optimum)
+                let maxStep = len;
+                let hitConstraint = -1;
+                
+                for (let i = 0; i < constraints.length; i++) {
+                    if (activeSet.includes(i)) continue;
+                    const c = constraints[i];
+                    const denom = c.a[0]*dir[0] + c.a[1]*dir[1];
+                    if (denom > 0.001) {
+                        const slack = c.b - (c.a[0]*currentPoint[0] + c.a[1]*currentPoint[1]);
+                        const t = slack / denom;
+                        if (t > 0 && t < maxStep) {
+                            maxStep = t;
+                            hitConstraint = i;
+                        }
+                    }
+                }
+                
+                currentPoint[0] += maxStep * dir[0];
+                currentPoint[1] += maxStep * dir[1];
+                
+                if (hitConstraint >= 0) {
+                    activeSet.push(hitConstraint);
+                }
+                
+                path.push([...currentPoint]);
+                document.getElementById('as-iter').textContent = iteration;
+                draw();
+            }
+
+            function draw() {
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+                
+                const margin = 50;
+                const scale = (displayWidth - 2*margin) / 2;
+                const ox = margin;
+                const oy = displayHeight - margin;
+                
+                function toScreen(x, y) {
+                    return [ox + x * scale, oy - y * scale];
+                }
+                
+                // Draw feasible region
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+                ctx.beginPath();
+                let [sx, sy] = toScreen(0, 0);
+                ctx.moveTo(sx, sy);
+                [sx, sy] = toScreen(1.5, 0);
+                ctx.lineTo(sx, sy);
+                [sx, sy] = toScreen(1, 0.5);
+                ctx.lineTo(sx, sy);
+                [sx, sy] = toScreen(0.5, 0.5);
+                ctx.lineTo(sx, sy);
+                [sx, sy] = toScreen(0, 0.5);
+                ctx.lineTo(sx, sy);
+                [sx, sy] = toScreen(0, 0);
+                ctx.lineTo(sx, sy);
+                ctx.fill();
+                
+                // Draw constraint boundaries
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 1;
+                
+                // x = 0
+                let [x1, y1] = toScreen(0, 0);
+                let [x2, y2] = toScreen(0, 1);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                
+                // y = 0
+                [x1, y1] = toScreen(0, 0);
+                [x2, y2] = toScreen(2, 0);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                
+                // x + y = 1.5
+                [x1, y1] = toScreen(1.5, 0);
+                [x2, y2] = toScreen(0, 1.5);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                
+                // -x + y = 0.5
+                [x1, y1] = toScreen(0, 0.5);
+                [x2, y2] = toScreen(1.5, 2);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                
+                // Draw cost contours
+                ctx.strokeStyle = 'rgba(59, 130, 246, 0.3)';
+                for (let c = 0.2; c <= 2; c += 0.3) {
+                    ctx.beginPath();
+                    for (let t = 0; t <= 2 * Math.PI; t += 0.1) {
+                        const rx = Math.sqrt(2 * c);
+                        const ry = Math.sqrt(c);
+                        const px = unconstrained[0] + rx * Math.cos(t);
+                        const py = unconstrained[1] + ry * Math.sin(t);
+                        const [sx, sy] = toScreen(px, py);
+                        if (t === 0) ctx.moveTo(sx, sy);
+                        else ctx.lineTo(sx, sy);
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+                
+                // Draw active constraints (highlighted)
+                ctx.strokeStyle = '#ff6b4a';
+                ctx.lineWidth = 3;
+                activeSet.forEach(i => {
+                    const c = constraints[i];
+                    ctx.beginPath();
+                    if (i === 0) { // x >= 0
+                        [x1, y1] = toScreen(0, 0);
+                        [x2, y2] = toScreen(0, 1);
+                    } else if (i === 1) { // y >= 0
+                        [x1, y1] = toScreen(0, 0);
+                        [x2, y2] = toScreen(2, 0);
+                    } else if (i === 2) { // x + y <= 1.5
+                        [x1, y1] = toScreen(1.5, 0);
+                        [x2, y2] = toScreen(0, 1.5);
+                    } else { // -x + y <= 0.5
+                        [x1, y1] = toScreen(0, 0.5);
+                        [x2, y2] = toScreen(1, 1.5);
+                    }
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                    ctx.stroke();
+                });
+                
+                // Draw path
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let i = 0; i < path.length; i++) {
+                    const [sx, sy] = toScreen(path[i][0], path[i][1]);
+                    if (i === 0) ctx.moveTo(sx, sy);
+                    else ctx.lineTo(sx, sy);
+                }
+                ctx.stroke();
+                
+                // Draw current point
+                const [cx, cy] = toScreen(currentPoint[0], currentPoint[1]);
+                ctx.fillStyle = '#22c55e';
+                ctx.beginPath();
+                ctx.arc(cx, cy, 8, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Draw unconstrained optimum
+                const [ux, uy] = toScreen(unconstrained[0], unconstrained[1]);
+                ctx.fillStyle = '#3b82f6';
+                ctx.beginPath();
+                ctx.arc(ux, uy, 6, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Labels
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(10, displayWidth/45)}px IBM Plex Sans`;
+                ctx.fillText('Unconstrained opt', ux + 10, uy - 5);
+                ctx.fillStyle = '#22c55e';
+                ctx.fillText(`(${currentPoint[0].toFixed(2)}, ${currentPoint[1].toFixed(2)})`, cx + 10, cy - 10);
+            }
+
+            document.getElementById('as-step').addEventListener('click', step);
+            document.getElementById('as-reset').addEventListener('click', reset);
+            draw();
+        }
+
+        // Interior Point visualization
+        function initInteriorPointViz() {
+            const canvas = document.getElementById('interior-point-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 400;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            const muSlider = document.getElementById('ip-mu');
+            const animateBtn = document.getElementById('ip-animate');
+            
+            let animating = false;
+            let currentMu = 2.0;
+
+            function barrierOptimum(mu) {
+                // Approximate barrier-problem solution for visualization
+                // For large mu, stays near center; for small mu, approaches true optimum
+                const blend = Math.exp(-mu);
+                const center = [0.5, 0.3]; // Analytic center approximation
+                const opt = [1, 0.5];
+                return [
+                    center[0] * (1 - blend) + opt[0] * blend,
+                    center[1] * (1 - blend) + opt[1] * blend
+                ];
+            }
+
+            function draw() {
+                const mu = parseFloat(muSlider.value);
+                document.getElementById('ip-mu-val').textContent = mu.toFixed(2);
+                
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+                
+                const margin = 50;
+                const scale = (displayWidth - 2*margin) / 2;
+                const ox = margin;
+                const oy = displayHeight - margin;
+                
+                function toScreen(x, y) {
+                    return [ox + x * scale, oy - y * scale];
+                }
+                
+                // Draw feasible region
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+                ctx.beginPath();
+                let [sx, sy] = toScreen(0, 0);
+                ctx.moveTo(sx, sy);
+                [sx, sy] = toScreen(1.5, 0);
+                ctx.lineTo(sx, sy);
+                [sx, sy] = toScreen(1, 0.5);
+                ctx.lineTo(sx, sy);
+                [sx, sy] = toScreen(0.5, 0.5);
+                ctx.lineTo(sx, sy);
+                [sx, sy] = toScreen(0, 0.5);
+                ctx.lineTo(sx, sy);
+                ctx.fill();
+                
+                // Draw constraint boundaries
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 1;
+                
+                let [x1, y1] = toScreen(0, 0);
+                let [x2, y2] = toScreen(0, 1);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                
+                [x1, y1] = toScreen(0, 0);
+                [x2, y2] = toScreen(2, 0);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                
+                [x1, y1] = toScreen(1.5, 0);
+                [x2, y2] = toScreen(0, 1.5);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                
+                [x1, y1] = toScreen(0, 0.5);
+                [x2, y2] = toScreen(1.5, 2);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                
+                // Draw central path
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let m = 3; m >= 0.01; m -= 0.05) {
+                    const pt = barrierOptimum(m);
+                    const [sx, sy] = toScreen(pt[0], pt[1]);
+                    if (m === 3) ctx.moveTo(sx, sy);
+                    else ctx.lineTo(sx, sy);
+                }
+                ctx.stroke();
+                
+                // Draw current point for current mu
+                const current = barrierOptimum(mu);
+                const [cx, cy] = toScreen(current[0], current[1]);
+                ctx.fillStyle = '#22c55e';
+                ctx.beginPath();
+                ctx.arc(cx, cy, 8, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Draw true optimum
+                const [ox2, oy2] = toScreen(1, 0.5);
+                ctx.fillStyle = '#ff6b4a';
+                ctx.beginPath();
+                ctx.arc(ox2, oy2, 6, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Labels
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(10, displayWidth/45)}px IBM Plex Sans`;
+                ctx.fillText('True optimum', ox2 + 10, oy2);
+                ctx.fillStyle = '#3b82f6';
+                ctx.fillText('Central path', toScreen(0.6, 0.35)[0], toScreen(0.6, 0.35)[1]);
+                ctx.fillStyle = '#22c55e';
+                ctx.fillText(`μ = ${mu.toFixed(2)}`, cx + 10, cy - 10);
+            }
+
+            function animate() {
+                if (!animating) return;
+                currentMu *= 0.95;
+                if (currentMu < 0.02) {
+                    currentMu = 3;
+                    animating = false;
+                    animateBtn.textContent = 'Animate Path';
+                }
+                muSlider.value = currentMu;
+                draw();
+                if (animating) requestAnimationFrame(animate);
+            }
+
+            muSlider.addEventListener('input', draw);
+            animateBtn.addEventListener('click', () => {
+                if (animating) {
+                    animating = false;
+                    animateBtn.textContent = 'Animate Path';
+                } else {
+                    animating = true;
+                    currentMu = 3;
+                    animateBtn.textContent = 'Stop';
+                    animate();
+                }
+            });
+            draw();
+        }
+
+        // ADMM visualization
+        function initADMMViz() {
+            const canvas = document.getElementById('admm-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 400;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            const rhoSlider = document.getElementById('admm-rho');
+            
+            let u = [0.2, 0.2];
+            let z = [0.2, 0.2];
+            let y = [0, 0];
+            let path = [[...u]];
+
+            function project(x, y) {
+                // Project onto feasible region (simplified: just box [0, 1.5] x [0, 0.5])
+                return [
+                    Math.max(0, Math.min(1, x)),
+                    Math.max(0, Math.min(0.5, y))
+                ];
+            }
+
+            function reset() {
+                u = [0.2, 0.2];
+                z = [0.2, 0.2];
+                y = [0, 0];
+                path = [[...u]];
+                draw();
+            }
+
+            function step() {
+                const rho = parseFloat(rhoSlider.value);
+                document.getElementById('admm-rho-val').textContent = rho.toFixed(1);
+                
+                // U-update: minimize 0.5*(u1^2 + 2*u2^2) - u1 - u2 + (rho/2)*||u - z + y||^2
+                // Solution: (H + rho*I) u = f + rho*(z - y)
+                // For H = diag(1, 2): u1 = (1 + rho*(z1 - y1)) / (1 + rho)
+                //                      u2 = (1 + rho*(z2 - y2)) / (2 + rho)
+                for (let iter = 0; iter < 10; iter++) {
+                    u[0] = (1 + rho * (z[0] - y[0])) / (1 + rho);
+                    u[1] = (1 + rho * (z[1] - y[1])) / (2 + rho);
+                    path.push([...u]);
+                    
+                    // Z-update: project
+                    const newZ = project(u[0] + y[0], u[1] + y[1]);
+                    z[0] = newZ[0];
+                    z[1] = newZ[1];
+                    path.push([...z]);
+                    
+                    // Y-update
+                    y[0] = y[0] + u[0] - z[0];
+                    y[1] = y[1] + u[1] - z[1];
+                }
+                
+                draw();
+            }
+
+            function draw() {
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+                
+                const margin = 50;
+                const scale = (displayWidth - 2*margin) / 2;
+                const ox = margin;
+                const oy = displayHeight - margin;
+                
+                function toScreen(x, y) {
+                    return [ox + x * scale, oy - y * scale];
+                }
+                
+                // Draw feasible region (simplified box)
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+                ctx.beginPath();
+                let [sx, sy] = toScreen(0, 0);
+                ctx.moveTo(sx, sy);
+                [sx, sy] = toScreen(1, 0);
+                ctx.lineTo(sx, sy);
+                [sx, sy] = toScreen(1, 0.5);
+                ctx.lineTo(sx, sy);
+                [sx, sy] = toScreen(0, 0.5);
+                ctx.lineTo(sx, sy);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Draw constraint boundaries
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(...toScreen(0, 0.5), scale, 0.5 * scale);
+                
+                // Draw cost contours
+                const unconstrained = [1, 0.5];
+                ctx.strokeStyle = 'rgba(59, 130, 246, 0.3)';
+                for (let c = 0.1; c <= 1.5; c += 0.2) {
+                    ctx.beginPath();
+                    for (let t = 0; t <= 2 * Math.PI; t += 0.1) {
+                        const rx = Math.sqrt(2 * c);
+                        const ry = Math.sqrt(c);
+                        const px = unconstrained[0] + rx * Math.cos(t);
+                        const py = unconstrained[1] + ry * Math.sin(t);
+                        const [sx, sy] = toScreen(px, py);
+                        if (t === 0) ctx.moveTo(sx, sy);
+                        else ctx.lineTo(sx, sy);
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+                
+                // Draw path (zigzag pattern)
+                if (path.length > 1) {
+                    ctx.strokeStyle = 'rgba(34, 197, 94, 0.6)';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    for (let i = 0; i < path.length; i++) {
+                        const [sx, sy] = toScreen(path[i][0], path[i][1]);
+                        if (i === 0) ctx.moveTo(sx, sy);
+                        else ctx.lineTo(sx, sy);
+                    }
+                    ctx.stroke();
+                }
+                
+                // Draw current point
+                const current = path[path.length - 1];
+                const [cx, cy] = toScreen(current[0], current[1]);
+                ctx.fillStyle = '#22c55e';
+                ctx.beginPath();
+                ctx.arc(cx, cy, 8, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Draw true optimum
+                const [ox2, oy2] = toScreen(1, 0.5);
+                ctx.fillStyle = '#ff6b4a';
+                ctx.beginPath();
+                ctx.arc(ox2, oy2, 6, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Labels
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(10, displayWidth/45)}px IBM Plex Sans`;
+                ctx.fillText('Optimum', ox2 + 10, oy2);
+                ctx.fillText(`Iterations: ${Math.floor(path.length / 2)}`, margin + 10, margin + 20);
+            }
+
+            rhoSlider.addEventListener('input', () => {
+                document.getElementById('admm-rho-val').textContent = parseFloat(rhoSlider.value).toFixed(1);
+            });
+            document.getElementById('admm-step').addEventListener('click', step);
+            document.getElementById('admm-reset').addEventListener('click', reset);
+            draw();
+        }
+
+        // QP Solution visualization
+        function initQPSolutionViz() {
+            const canvas = document.getElementById('qp-solution-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Responsive sizing
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 300;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            const ulimitSlider = document.getElementById('qp-ulimit');
+            const x0Slider = document.getElementById('qp-x0');
+
+            function draw() {
+                const umax = parseFloat(ulimitSlider.value);
+                const x0 = parseFloat(x0Slider.value);
+                
+                document.getElementById('qp-ulimit-val').textContent = umax.toFixed(1);
+                document.getElementById('qp-x0-val').textContent = x0.toFixed(1);
+                
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+                
+                const margin = 50;
+                const plotWidth = displayWidth - 2 * margin;
+                const plotHeight = displayHeight - 2 * margin;
+                
+                // Draw axes
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(margin, displayHeight - margin);
+                ctx.lineTo(displayWidth - margin, displayHeight - margin);
+                ctx.moveTo(margin, margin);
+                ctx.lineTo(margin, displayHeight - margin);
+                ctx.stroke();
+                
+                // Axis labels
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(10, displayWidth/45)}px IBM Plex Sans`;
+                ctx.fillText('State x₀', displayWidth - margin - 50, displayHeight - margin + 20);
+                ctx.fillText('Control u*', margin - 10, margin - 10);
+                
+                // Scale
+                const xScale = plotWidth / 5; // x from 0 to 5
+                const uScale = plotHeight / 6; // u from -3 to 3
+                const uCenter = margin + plotHeight / 2;
+                
+                // Draw zero line
+                ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+                ctx.beginPath();
+                ctx.moveTo(margin, uCenter);
+                ctx.lineTo(displayWidth - margin, uCenter);
+                ctx.stroke();
+                
+                // Draw constraint lines
+                ctx.strokeStyle = 'rgba(255, 107, 74, 0.5)';
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(margin, uCenter - umax * uScale);
+                ctx.lineTo(displayWidth - margin, uCenter - umax * uScale);
+                ctx.moveTo(margin, uCenter + umax * uScale);
+                ctx.lineTo(displayWidth - margin, uCenter + umax * uScale);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Constraint labels
+                ctx.fillStyle = '#ff6b4a';
+                ctx.font = `${Math.max(9, displayWidth/50)}px IBM Plex Mono`;
+                ctx.fillText(`+${umax.toFixed(1)}`, displayWidth - margin + 5, uCenter - umax * uScale + 4);
+                ctx.fillText(`-${umax.toFixed(1)}`, displayWidth - margin + 5, uCenter + umax * uScale + 4);
+                
+                // Optimal control gain (simplified model: u* = -K*x for regulation to 0)
+                const K = 0.8; // Feedback gain
+                
+                // Draw unconstrained solution (dashed blue)
+                ctx.strokeStyle = '#3b82f6';
+                ctx.setLineDash([6, 4]);
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let x = 0; x <= 5; x += 0.1) {
+                    const u_unconstrained = -K * x;
+                    const px = margin + x * xScale;
+                    const py = uCenter - u_unconstrained * uScale;
+                    if (x === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Draw constrained solution (solid orange)
+                ctx.strokeStyle = '#ff6b4a';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                for (let x = 0; x <= 5; x += 0.1) {
+                    let u_constrained = -K * x;
+                    u_constrained = Math.max(-umax, Math.min(umax, u_constrained));
+                    const px = margin + x * xScale;
+                    const py = uCenter - u_constrained * uScale;
+                    if (x === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+                
+                // Mark current state
+                const u_unc = -K * x0;
+                let u_con = Math.max(-umax, Math.min(umax, u_unc));
+                
+                // Current point markers
+                const px = margin + x0 * xScale;
+                
+                // Unconstrained point
+                ctx.fillStyle = '#3b82f6';
+                ctx.beginPath();
+                ctx.arc(px, uCenter - u_unc * uScale, 5, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Constrained point
+                ctx.fillStyle = '#ff6b4a';
+                ctx.beginPath();
+                ctx.arc(px, uCenter - u_con * uScale, 7, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Vertical line at x0
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.setLineDash([3, 3]);
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(px, margin);
+                ctx.lineTo(px, displayHeight - margin);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Info text
+                ctx.fillStyle = '#d4d2cf';
+                ctx.font = `${Math.max(11, displayWidth/42)}px IBM Plex Sans`;
+                ctx.fillText(`u* unconstrained: ${u_unc.toFixed(2)}`, margin + 10, margin + 20);
+                ctx.fillText(`u* constrained: ${u_con.toFixed(2)}`, margin + 10, margin + 40);
+                
+                if (Math.abs(u_unc) > umax) {
+                    ctx.fillStyle = '#22c55e';
+                    ctx.fillText('← Constraint active!', margin + 10, margin + 60);
+                }
+                
+                // Legend
+                ctx.fillStyle = '#3b82f6';
+                ctx.fillRect(displayWidth - margin - 120, margin + 10, 15, 3);
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(9, displayWidth/50)}px IBM Plex Sans`;
+                ctx.fillText('Unconstrained', displayWidth - margin - 100, margin + 15);
+                
+                ctx.fillStyle = '#ff6b4a';
+                ctx.fillRect(displayWidth - margin - 120, margin + 28, 15, 3);
+                ctx.fillStyle = '#8a8a8a';
+                ctx.fillText('Constrained', displayWidth - margin - 100, margin + 33);
+            }
+
+            ulimitSlider.addEventListener('input', draw);
+            x0Slider.addEventListener('input', draw);
+            draw();
+        }
+
+        // Prediction horizon visualization
+        function initPredictionViz() {
+            const canvas = document.getElementById('prediction-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Responsive sizing
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 300;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            const horizonSlider = document.getElementById('horizon');
+            const speedSlider = document.getElementById('speed');
+            const runBtn = document.getElementById('run-pred');
+            
+            let animating = false;
+            let currentStep = 0;
+
+            function draw(step = 0) {
+                const N = parseInt(horizonSlider.value);
+                const a = parseFloat(speedSlider.value);
+                
+                document.getElementById('horizon-val').textContent = N;
+                document.getElementById('speed-val').textContent = a.toFixed(2);
+                
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+                
+                const margin = 40;
+                const plotWidth = displayWidth - 2 * margin;
+                const plotHeight = displayHeight - 2 * margin;
+                
+                // Draw axes
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(margin, margin);
+                ctx.lineTo(margin, displayHeight - margin);
+                ctx.lineTo(displayWidth - margin, displayHeight - margin);
+                ctx.stroke();
+                
+                // Labels
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(10, displayWidth/45)}px IBM Plex Sans`;
+                ctx.fillText('State', margin + 5, margin + 15);
+                ctx.fillText('Time', displayWidth - margin - 25, displayHeight - margin - 10);
+                
+                // Generate trajectory
+                const totalSteps = 30;
+                const states = [3]; // Initial state
+                for (let i = 1; i < totalSteps; i++) {
+                    states.push(states[i-1] * a);
+                }
+                
+                const xScale = plotWidth / totalSteps;
+                const yScale = plotHeight / 4;
+                const yOffset = displayHeight - margin;
+                
+                // Draw past trajectory (solid blue)
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let i = 0; i <= Math.min(step, totalSteps - 1); i++) {
+                    const x = margin + i * xScale;
+                    const y = yOffset - states[i] * yScale;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                
+                // Draw prediction horizon (green region)
+                if (step < totalSteps - N) {
+                    ctx.fillStyle = 'rgba(34, 197, 94, 0.15)';
+                    ctx.fillRect(margin + step * xScale, margin, N * xScale, plotHeight);
+                    
+                    // Prediction line (dashed green)
+                    ctx.strokeStyle = '#22c55e';
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    for (let i = step; i <= step + N && i < totalSteps; i++) {
+                        const x = margin + i * xScale;
+                        const y = yOffset - states[i] * yScale;
+                        if (i === step) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    }
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+                
+                // Current state marker
+                if (step < totalSteps) {
+                    ctx.fillStyle = '#22c55e';
+                    ctx.beginPath();
+                    ctx.arc(margin + step * xScale, yOffset - states[step] * yScale, 6, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+                
+                // Horizon label
+                ctx.fillStyle = '#22c55e';
+                ctx.font = `${Math.max(10, displayWidth/45)}px IBM Plex Mono`;
+                ctx.fillText(`N = ${N}`, margin + step * xScale + 5, margin + 20);
+            }
+
+            function animate() {
+                if (!animating) return;
+                currentStep++;
+                if (currentStep >= 25) {
+                    currentStep = 0;
+                }
+                draw(currentStep);
+                setTimeout(() => requestAnimationFrame(animate), 200);
+            }
+
+            runBtn.addEventListener('click', () => {
+                if (animating) {
+                    animating = false;
+                    runBtn.textContent = 'Run Prediction';
+                } else {
+                    animating = true;
+                    currentStep = 0;
+                    runBtn.textContent = 'Stop';
+                    animate();
+                }
+            });
+
+            horizonSlider.addEventListener('input', () => draw(currentStep));
+            speedSlider.addEventListener('input', () => draw(currentStep));
+            draw(0);
+        }
+
+        // Constraint visualization
+        function initConstraintViz() {
+            const canvas = document.getElementById('constraint-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Responsive sizing
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 300;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            const ulimitSlider = document.getElementById('ulimit');
+            const targetSlider = document.getElementById('target');
+            const runBtn = document.getElementById('run-constrained');
+
+            function simulate() {
+                const umax = parseFloat(ulimitSlider.value);
+                const target = parseFloat(targetSlider.value);
+                
+                document.getElementById('ulimit-val').textContent = umax.toFixed(1);
+                document.getElementById('target-val').textContent = target.toFixed(1);
+                
+                // Simple simulation: double integrator with constrained input
+                const dt = 0.1;
+                const steps = 50;
+                const states = [{x: 0, v: 0}];
+                const controls = [];
+                
+                // Simple proportional control with saturation
+                for (let i = 0; i < steps; i++) {
+                    const s = states[i];
+                    // PD-like control
+                    let u = 2 * (target - s.x) - 1.5 * s.v;
+                    // Apply constraint
+                    u = Math.max(-umax, Math.min(umax, u));
+                    controls.push(u);
+                    
+                    // Integrate (double integrator)
+                    states.push({
+                        x: s.x + s.v * dt + 0.5 * u * dt * dt,
+                        v: s.v + u * dt
+                    });
+                }
+                
+                // Draw
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+                
+                const margin = 40;
+                const plotWidth = displayWidth - 2 * margin;
+                const plotHeight = (displayHeight - 3 * margin) / 2;
+                
+                // State plot
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(margin, margin + plotHeight);
+                ctx.lineTo(displayWidth - margin, margin + plotHeight);
+                ctx.stroke();
+                
+                // Target line
+                ctx.strokeStyle = 'rgba(34, 197, 94, 0.5)';
+                ctx.setLineDash([5, 5]);
+                const targetY = margin + plotHeight - (target / 4) * plotHeight;
+                ctx.beginPath();
+                ctx.moveTo(margin, targetY);
+                ctx.lineTo(displayWidth - margin, targetY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // State trajectory
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let i = 0; i < states.length; i++) {
+                    const x = margin + (i / steps) * plotWidth;
+                    const y = margin + plotHeight - (states[i].x / 4) * plotHeight;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                
+                // Control plot
+                const ctrlBase = margin + plotHeight + margin;
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(margin, ctrlBase + plotHeight/2);
+                ctx.lineTo(displayWidth - margin, ctrlBase + plotHeight/2);
+                ctx.stroke();
+                
+                // Constraint lines
+                ctx.strokeStyle = 'rgba(255, 107, 74, 0.5)';
+                ctx.setLineDash([5, 5]);
+                const umaxY = ctrlBase + plotHeight/2 - (umax / 2) * (plotHeight/2);
+                const uminY = ctrlBase + plotHeight/2 + (umax / 2) * (plotHeight/2);
+                ctx.beginPath();
+                ctx.moveTo(margin, umaxY);
+                ctx.lineTo(displayWidth - margin, umaxY);
+                ctx.moveTo(margin, uminY);
+                ctx.lineTo(displayWidth - margin, uminY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Control trajectory
+                ctx.strokeStyle = '#ff6b4a';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let i = 0; i < controls.length; i++) {
+                    const x = margin + (i / steps) * plotWidth;
+                    const y = ctrlBase + plotHeight/2 - (controls[i] / 2) * (plotHeight/2);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                
+                // Labels
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(10, displayWidth/45)}px IBM Plex Sans`;
+                ctx.fillText('State x', margin + 5, margin + 15);
+                ctx.fillText('Control u', margin + 5, ctrlBase + 15);
+            }
+
+            runBtn.addEventListener('click', simulate);
+            ulimitSlider.addEventListener('input', simulate);
+            targetSlider.addEventListener('input', simulate);
+            simulate();
+        }
+
+        // Receding horizon visualization
+        function initRecedingViz() {
+            const canvas = document.getElementById('receding-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Responsive sizing
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth - 32;
+            const baseWidth = 500, baseHeight = 300;
+            const displayWidth = Math.min(containerWidth, baseWidth);
+            const displayHeight = (baseHeight / baseWidth) * displayWidth;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            ctx.scale(dpr, dpr);
+
+            const horizonSlider = document.getElementById('rh-horizon');
+            const runBtn = document.getElementById('run-receding');
+            
+            let animating = false;
+            let currentStep = 0;
+            let animationId = null;
+
+            // Simple system: trying to reach target with disturbances
+            const target = 2;
+            const a = 0.9;
+            const b = 0.3;
+            
+            function draw(step) {
+                const N = parseInt(horizonSlider.value);
+                document.getElementById('rh-horizon-val').textContent = N;
+                
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+                
+                const margin = 40;
+                const plotWidth = displayWidth - 2 * margin;
+                const plotHeight = displayHeight - 2 * margin;
+                
+                // Draw axes
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(margin, margin);
+                ctx.lineTo(margin, displayHeight - margin);
+                ctx.lineTo(displayWidth - margin, displayHeight - margin);
+                ctx.stroke();
+                
+                // Target line
+                ctx.strokeStyle = 'rgba(34, 197, 94, 0.4)';
+                ctx.setLineDash([5, 5]);
+                const targetY = displayHeight - margin - (target / 3) * plotHeight;
+                ctx.beginPath();
+                ctx.moveTo(margin, targetY);
+                ctx.lineTo(displayWidth - margin, targetY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Simulate actual trajectory
+                const totalSteps = 35;
+                const xScale = plotWidth / totalSteps;
+                const yScale = plotHeight / 3;
+                
+                let x = 0;
+                const actual = [x];
+                const disturbances = [];
+                for (let i = 0; i < totalSteps; i++) {
+                    // Simulated MPC-like control
+                    const u = 0.8 * (target - x);
+                    // Add small disturbance
+                    const d = 0.1 * Math.sin(i * 0.5);
+                    disturbances.push(d);
+                    x = a * x + b * u + d;
+                    actual.push(x);
+                }
+                
+                // Draw actual trajectory up to current step
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let i = 0; i <= step && i < actual.length; i++) {
+                    const px = margin + i * xScale;
+                    const py = displayHeight - margin - actual[i] * yScale;
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+                
+                // Draw prediction horizon
+                if (step < totalSteps - 1) {
+                    // Prediction (without disturbances)
+                    let xPred = actual[step];
+                    const predicted = [xPred];
+                    for (let i = 0; i < N; i++) {
+                        const u = 0.8 * (target - xPred);
+                        xPred = a * xPred + b * u;
+                        predicted.push(xPred);
+                    }
+                    
+                    // Horizon shading
+                    ctx.fillStyle = 'rgba(34, 197, 94, 0.1)';
+                    ctx.fillRect(margin + step * xScale, margin, N * xScale, plotHeight);
+                    
+                    // Predicted trajectory
+                    ctx.strokeStyle = '#22c55e';
+                    ctx.setLineDash([4, 4]);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    for (let i = 0; i < predicted.length && step + i < totalSteps; i++) {
+                        const px = margin + (step + i) * xScale;
+                        const py = displayHeight - margin - predicted[i] * yScale;
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    
+                    // Current state marker
+                    ctx.fillStyle = '#22c55e';
+                    ctx.beginPath();
+                    ctx.arc(margin + step * xScale, displayHeight - margin - actual[step] * yScale, 6, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    // "Apply u₀" indicator
+                    ctx.fillStyle = '#22c55e';
+                    ctx.font = `${Math.max(10, displayWidth/45)}px IBM Plex Mono`;
+                    ctx.fillText('Apply u₀', margin + step * xScale + 10, displayHeight - margin - actual[step] * yScale - 10);
+                }
+                
+                // Labels
+                ctx.fillStyle = '#8a8a8a';
+                ctx.font = `${Math.max(10, displayWidth/45)}px IBM Plex Sans`;
+                ctx.fillText('State', margin + 5, margin + 15);
+                ctx.fillText('Target', displayWidth - margin - 40, targetY - 5);
+                ctx.fillText(`k = ${step}`, displayWidth - margin - 45, displayHeight - margin - 10);
+            }
+
+            function animate() {
+                if (!animating) return;
+                currentStep++;
+                if (currentStep >= 30) {
+                    currentStep = 0;
+                }
+                draw(currentStep);
+                animationId = setTimeout(() => requestAnimationFrame(animate), 400);
+            }
+
+            runBtn.addEventListener('click', () => {
+                if (animating) {
+                    animating = false;
+                    if (animationId) clearTimeout(animationId);
+                    runBtn.textContent = 'Start Animation';
+                } else {
+                    animating = true;
+                    currentStep = 0;
+                    runBtn.textContent = 'Stop';
+                    animate();
+                }
+            });
+
+            horizonSlider.addEventListener('input', () => {
+                if (!animating) draw(currentStep);
+            });
+            draw(0);
+        }
+
+        // Resize handler
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                initPredictionViz();
+                initConstraintViz();
+                initQPSolutionViz();
+                initActiveSetViz();
+                initInteriorPointViz();
+                initADMMViz();
+                initRecedingViz();
+            }, 250);
+        });
+    </script>
+</body>
+</html>
