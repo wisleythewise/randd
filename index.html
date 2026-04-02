@@ -5,6 +5,78 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Servo7 — R&D</title>
   <style>
+    /* ── Auth overlay ── */
+    #auth-overlay {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 999;
+    }
+
+    #auth-box {
+      width: 320px;
+    }
+
+    #auth-box .logo {
+      font-family: 'Syne', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 28px;
+    }
+
+    #auth-box h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 24px;
+      color: var(--text);
+      letter-spacing: normal;
+      text-transform: none;
+    }
+
+    #auth-box input[type="password"] {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-size: 14px;
+      padding: 13px 16px;
+      outline: none;
+      transition: border-color 0.15s;
+      margin-bottom: 12px;
+    }
+
+    #auth-box input[type="password"]:focus { border-color: var(--accent); }
+    #auth-box input[type="password"].error { border-color: #ff4747; }
+
+    #auth-box button {
+      width: 100%;
+      background: var(--accent);
+      border: none;
+      color: #0a0a0a;
+      font-family: 'Syne', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 13px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    #auth-box button:hover { opacity: 0.85; }
+
+    #auth-error {
+      font-size: 11px;
+      color: #ff4747;
+      margin-top: 10px;
+      min-height: 16px;
+    }
+  </style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;700;800&display=swap');
 
     :root {
@@ -180,6 +252,16 @@
 </head>
 <body>
 
+<div id="auth-overlay">
+  <div id="auth-box">
+    <div class="logo">Servo7</div>
+    <h2>Enter password</h2>
+    <input type="password" id="auth-input" placeholder="Password" autocomplete="current-password">
+    <button id="auth-btn">Unlock →</button>
+    <div id="auth-error"></div>
+  </div>
+</div>
+
 <header>
   <div class="logo">Servo7</div>
   <h1>R&amp;D <span>index</span></h1>
@@ -304,6 +386,40 @@
 </footer>
 
 <script>
+  // ── Auth ──
+  const PASSWORD_HASH = '0730b5b22ac8e9c01ba7fe71784eb7f57af77f816a4a02caad3c75c12aa49421';
+
+  async function sha256(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  const overlay = document.getElementById('auth-overlay');
+  const authInput = document.getElementById('auth-input');
+  const authBtn = document.getElementById('auth-btn');
+  const authError = document.getElementById('auth-error');
+
+  if (sessionStorage.getItem('auth') === PASSWORD_HASH) {
+    overlay.remove();
+  }
+
+  async function tryUnlock() {
+    const hash = await sha256(authInput.value);
+    if (hash === PASSWORD_HASH) {
+      sessionStorage.setItem('auth', hash);
+      overlay.remove();
+    } else {
+      authInput.classList.add('error');
+      authError.textContent = 'Incorrect password.';
+      authInput.value = '';
+      setTimeout(() => { authInput.classList.remove('error'); authError.textContent = ''; }, 2000);
+    }
+  }
+
+  authBtn.addEventListener('click', tryUnlock);
+  authInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
+
+  // ── Search ──
   const input = document.getElementById('search');
   const links = document.querySelectorAll('.page-link');
   const noResults = document.getElementById('no-results');
