@@ -1,0 +1,1566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Action Chunking Transformer — From Attention to Robot Control</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: #0a0a0f;
+      color: #c8c5d0;
+      font-family: 'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', monospace;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0a0a0f; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a3a4a; }
+
+    #header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #1a1a24;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      background: #0c0c12;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header-icon { font-size: 18px; }
+    .header-title { font-size: 14px; font-weight: 600; color: #e0dce8; letter-spacing: 0.02em; }
+    .header-sub { font-size: 11px; color: #666; margin-top: 1px; }
+    .header-back { color: #666; text-decoration: none; font-size: 12px; transition: color 0.2s; }
+    .header-back:hover { color: #4ade80; }
+    .step-counter { font-size: 12px; color: #555; font-variant-numeric: tabular-nums; }
+
+    #progress-bar-track { height: 2px; background: #1a1a24; flex-shrink: 0; }
+    #progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #1a5a3a, #4ade80, #a3f7bf);
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+
+    #dots-container {
+      padding: 12px 24px;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .step-dot {
+      height: 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .step-dot:hover { transform: scale(1.5); }
+
+    #content-area {
+      flex: 1;
+      overflow: auto;
+      padding: 0 24px 24px;
+    }
+    #step-content {
+      max-width: 820px;
+      margin: 0 auto;
+    }
+
+    .step-icon { font-size: 32px; margin-bottom: 8px; }
+    .step-title {
+      font-size: 26px;
+      font-weight: 600;
+      color: #ece8f4;
+      margin: 0 0 6px 0;
+      font-family: 'IBM Plex Mono', monospace;
+      letter-spacing: -0.02em;
+    }
+    .step-subtitle {
+      font-size: 15px;
+      color: #7a7888;
+      font-family: 'Crimson Pro', serif;
+      font-style: italic;
+    }
+    .tags-row { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+    .tag {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .explanation-text {
+      font-family: 'Crimson Pro', Georgia, serif;
+      font-size: 17px;
+      line-height: 1.85;
+      color: #b8b5c4;
+      letter-spacing: 0.01em;
+    }
+    .explanation-text strong { color: #e0dce8; font-weight: 600; }
+    .explanation-text code {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 14px;
+      background: #16161e;
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: #4ade80;
+    }
+    .explanation-text .para { margin-bottom: 18px; margin-top: 0; }
+
+    .code-wrapper { margin: 20px 0; }
+    .code-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: #12121a;
+      border: 1px solid #1e1e2e;
+      cursor: pointer;
+      font-size: 12px;
+      color: #666;
+      user-select: none;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .code-toggle.open { border-radius: 8px 8px 0 0; border-bottom: none; }
+    .code-toggle.closed { border-radius: 8px; }
+    .toggle-arrow { transition: transform 0.2s; }
+    .toggle-arrow.open { transform: rotate(180deg); }
+    .code-block {
+      background: #12121a;
+      border: 1px solid #1e1e2e;
+      border-top: 1px solid #1a1a24;
+      border-radius: 0 0 8px 8px;
+      padding: 20px;
+      overflow-x: auto;
+      font-size: 12.5px;
+      line-height: 1.7;
+      white-space: pre;
+      margin-bottom: 0;
+      font-family: 'IBM Plex Mono', monospace;
+      color: #c8c5d0;
+    }
+
+    .math-block {
+      background: #0e1018;
+      border: 1px solid #1e2838;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 16px 0;
+      text-align: center;
+      overflow-x: auto;
+    }
+
+    .insight-box {
+      background: linear-gradient(135deg, #0e1a14, #0e1518);
+      border-left: 3px solid #4ade80;
+      border-radius: 0 8px 8px 0;
+      padding: 14px 18px;
+      margin: 16px 0;
+      font-family: 'Crimson Pro', Georgia, serif;
+      font-size: 16px;
+      color: #a3f7bf;
+      line-height: 1.7;
+    }
+    .insight-box::before { content: "Key Insight — "; font-weight: 600; color: #4ade80; }
+
+    .quiz-box {
+      background: #10101a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 18px;
+      margin: 20px 0;
+    }
+    .quiz-question {
+      font-family: 'Crimson Pro', serif;
+      font-size: 16px;
+      color: #ddd;
+      margin-bottom: 12px;
+    }
+    .quiz-question::before { content: "Test yourself: "; font-weight: 600; color: #a78bfa; }
+    .quiz-reveal {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      color: #c8c5d0;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .quiz-reveal:hover { background: #22223a; border-color: #4a4a6a; }
+    .quiz-answer {
+      display: none;
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: #12122a;
+      border-radius: 6px;
+      font-family: 'Crimson Pro', serif;
+      font-size: 15px;
+      color: #a0a4b0;
+      line-height: 1.7;
+    }
+    .quiz-answer.visible { display: block; animation: fadeIn 0.3s ease; }
+
+    .diagram-container {
+      background: #08080e;
+      border: 1px solid #1e1e2e;
+      border-radius: 10px;
+      margin: 20px 0;
+      overflow: hidden;
+    }
+    .diagram-container canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .diagram-label {
+      padding: 8px 14px;
+      font-size: 11px;
+      color: #555;
+      border-top: 1px solid #1e1e2e;
+      text-align: center;
+    }
+
+    #nav-footer {
+      padding: 16px 24px;
+      border-top: 1px solid #1a1a24;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      background: #0c0c12;
+    }
+    .nav-btn {
+      background: #16161e;
+      border: 1px solid #2a2a3a;
+      color: #c8c5d0;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .nav-btn:hover:not(:disabled) {
+      background: #1e1e2e;
+      border-color: #4ade80;
+      transform: translateY(-1px);
+    }
+    .nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .key-hint { font-size: 12px; color: #444; text-align: center; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn 0.4s ease forwards; }
+
+    @media (max-width: 600px) {
+      .step-title { font-size: 20px; }
+      #content-area { padding: 0 14px 14px; }
+      #header { padding: 12px 14px; }
+      #nav-footer { padding: 12px 14px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header id="header">
+    <div class="header-left">
+      <a href="index.html" class="header-back">< back</a>
+      <div>
+        <div class="header-title">Action Chunking Transformer</div>
+        <div class="header-sub">from attention to robot control</div>
+      </div>
+    </div>
+    <div id="step-counter" class="step-counter"></div>
+  </header>
+
+  <div id="progress-bar-track">
+    <div id="progress-bar"></div>
+  </div>
+
+  <div id="dots-container"></div>
+
+  <div id="content-area">
+    <div id="step-content"></div>
+  </div>
+
+  <footer id="nav-footer">
+    <button id="btn-prev" class="nav-btn" onclick="navigate(-1)">&larr; Prev</button>
+    <div class="key-hint">use &larr; &rarr; arrow keys</div>
+    <button id="btn-next" class="nav-btn" onclick="navigate(1)">Next &rarr;</button>
+  </footer>
+
+<script>
+const tagColors = {
+  transformer:   { bg: "#1a1a2e", text: "#d4d4ff" },
+  attention:     { bg: "#2e1a2a", text: "#ffd4ee" },
+  architecture:  { bg: "#2e2e1a", text: "#ffffd4" },
+  act:           { bg: "#1a2e1a", text: "#4ade80" },
+  detr:          { bg: "#2e2a1a", text: "#ffeed4" },
+  cvae:          { bg: "#2a1a2e", text: "#d4aaff" },
+  chunking:      { bg: "#1a2e2e", text: "#d4ffee" },
+  robotics:      { bg: "#2e1a1a", text: "#ffd4d4" },
+  inference:     { bg: "#1a2a2e", text: "#d4eeff" },
+  training:      { bg: "#2a2e1a", text: "#eeffd4" },
+  cnn:           { bg: "#1e2a1e", text: "#b8f0b8" },
+  quiz:          { bg: "#2a1a2a", text: "#e0b0ff" },
+};
+
+const steps = [
+  {
+    title: "The Big Picture",
+    subtitle: "What ACT is and why it matters",
+    icon: "🤖",
+    tags: ["act", "robotics", "architecture"],
+    content: `
+<div class="explanation-text">
+<p class="para"><strong>Action Chunking Transformer (ACT)</strong> is one of the most effective approaches to robot imitation learning. Given a few human demonstrations, it learns to replicate complex manipulation tasks — picking, placing, inserting — with remarkable precision.</p>
+<p class="para">The core idea: instead of predicting one robot action at a time (like a language model predicts one token), ACT predicts an entire <strong>chunk</strong> of future actions simultaneously. This turns out to be dramatically more effective.</p>
+</div>
+<div class="insight-box">ACT combines three powerful ideas: (1) an encoder-decoder transformer for action generation, (2) the DETR approach from object detection for parallel decoding, and (3) a CVAE-style variable to handle the multimodality of demonstrations.</div>
+<div class="diagram-container">
+  <canvas id="canvas-overview" width="780" height="520"></canvas>
+  <div class="diagram-label">Full ACT architecture (Zhao et al., 2023) — CVAE encoder (left, training only) and main encoder-decoder (right)</div>
+</div>
+<div class="explanation-text">
+<p class="para">Before we dive into ACT itself, we need to build up the foundations. We'll start with the transformer's core mechanism — <strong>attention</strong> — and work our way up to the full architecture.</p>
+<p class="para">This walkthrough follows Willem's study notes, enriched with interactive diagrams and self-test questions. By the end, you'll understand every component of ACT and why each design choice was made.</p>
+</div>
+`
+  },
+  {
+    title: "Self-Attention",
+    subtitle: "Q, K, V — the building blocks of transformers",
+    icon: "🔑",
+    tags: ["transformer", "attention"],
+    content: `
+<div class="explanation-text">
+<p class="para">At the heart of every transformer is <strong>self-attention</strong>. It's the mechanism that lets each element in a sequence look at every other element and decide what's relevant.</p>
+<p class="para">Given an input matrix <strong>X</strong> (where each row is a token/position embedding), we compute three matrices:</p>
+</div>
+<div class="math-block" id="math-qkv"></div>
+<div class="explanation-text">
+<p class="para">These are just linear projections — multiply X by different learned weight matrices to get different "views" of the data:</p>
+<p class="para"><strong>Query (Q):</strong> "What am I looking for?"<br><strong>Key (K):</strong> "What do I contain?"<br><strong>Value (V):</strong> "What information do I carry?"</p>
+<p class="para">The attention output is then:</p>
+</div>
+<div class="math-block" id="math-attn"></div>
+<div class="explanation-text">
+<p class="para">The dot product <code>QK^T</code> measures how much each query matches each key. We scale by <code>sqrt(d)</code> to prevent the softmax from becoming too peaked when dimensions are large. The softmax turns these scores into probabilities, and we use them to take a weighted sum of the values.</p>
+</div>
+<div class="diagram-container">
+  <canvas id="canvas-attention" width="780" height="340"></canvas>
+  <div class="diagram-label">Self-attention: each position attends to all other positions via Q, K, V projections</div>
+</div>
+<div class="quiz-box">
+  <div class="quiz-question">Why do we divide by sqrt(d) in the attention formula? What would happen without it?</div>
+  <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+  <div class="quiz-answer">Without the scaling, when d is large the dot products <code>QK^T</code> grow in magnitude, pushing the softmax into regions where it has extremely small gradients (near 0 or 1). This makes training unstable. Dividing by sqrt(d) keeps the variance of the dot products at approximately 1, regardless of the dimensionality.</div>
+</div>
+`
+  },
+  {
+    title: "Causal vs. Bidirectional",
+    subtitle: "Two flavors of attention for different jobs",
+    icon: "🔀",
+    tags: ["transformer", "attention"],
+    content: `
+<div class="explanation-text">
+<p class="para">Not all attention is created equal. The two main variants serve fundamentally different purposes:</p>
+<p class="para"><strong>Causal (masked) attention</strong> is used in decoder-only models like GPT. Position <em>t</em> can only attend to positions 0 through <em>t</em>. This preserves temporal ordering — the model can't "peek" at future tokens. It's enforced by masking future positions to negative infinity before the softmax.</p>
+<p class="para"><strong>Bidirectional attention</strong> is used in encoders (like BERT) and in encoder-decoder cross-attention. Every position can attend to every other position. This gives the model full context but means you can't do autoregressive generation.</p>
+</div>
+<div class="diagram-container">
+  <canvas id="canvas-masks" width="780" height="300"></canvas>
+  <div class="diagram-label">Left: causal mask (GPT-style) — Right: bidirectional (BERT-style / encoder)</div>
+</div>
+<div class="explanation-text">
+<p class="para"><strong>Why does this matter for ACT?</strong> This is the critical design decision. If ACT used causal attention in its decoder (like GPT generating one token at a time), action <em>t</em> could only depend on actions 0 through <em>t-1</em>. The authors wanted the decoder to reason about the <strong>entire output sequence at once</strong> — and they found a clever way to do it using DETR-style queries (we'll get there in step 5).</p>
+</div>
+<div class="insight-box">The encoder in ACT uses bidirectional attention over the input (images + robot state). The decoder also gets to see all positions — no causal mask needed — thanks to the DETR trick.</div>
+<div class="quiz-box">
+  <div class="quiz-question">In a standard autoregressive decoder, why is causal masking necessary? And what limitation does it impose on the generated sequence?</div>
+  <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+  <div class="quiz-answer">Causal masking prevents information leakage during training — without it, the model could trivially "copy" the answer from future positions. The limitation: each action is generated conditioned only on past actions, so the model can't consider future context when making a decision. ACT sidesteps this entirely by generating all actions in parallel via learned queries.</div>
+</div>
+`
+  },
+  {
+    title: "The ACT Encoder",
+    subtitle: "Images + robot state → contextual embeddings",
+    icon: "📸",
+    tags: ["act", "architecture", "cnn"],
+    content: `
+<div class="explanation-text">
+<p class="para">The ACT encoder is the right-hand side of the architecture (the blue transformer). It takes in the robot's current observation and produces a set of rich contextual embeddings for the decoder to attend to.</p>
+<p class="para">The inputs to the encoder are:</p>
+<p class="para"><strong>1. Camera images</strong> — One or more RGB images are passed through a <code>ResNet-18</code> backbone (with the classification head removed). For each image, this produces <strong>512 feature maps</strong> of size 15&times;20. These are reshaped into <strong>300 vectors of dimension 512</strong> (the hidden dimension). Positional embeddings are added so the model knows which spatial region each vector came from.</p>
+<p class="para"><strong>2. Robot proprioception</strong> — The current state of the robot (14 floats: 7 joint positions + 7 joint velocities, or similar) is projected to dimension 512 using a single linear layer.</p>
+<p class="para"><strong>3. Style variable z</strong> — A latent variable from the CVAE (more on this in step 7). During training, this carries information about the specific trajectory. During inference, it's just zeros.</p>
+</div>
+<div class="diagram-container">
+  <canvas id="canvas-encoder" width="780" height="400"></canvas>
+  <div class="diagram-label">ACT encoder: CNN features + robot state + style variable z → contextual embeddings</div>
+</div>
+<div class="explanation-text">
+<p class="para">The reshaping operation is worth pausing on: each of the 300 vectors concatenates all 512 feature activations at a particular spatial location. So vector <em>i</em> represents "everything the CNN sees" at spatial position <em>i</em> of the image.</p>
+<p class="para">All these inputs get concatenated into a single sequence and passed through the transformer encoder's self-attention layers. The output: a set of embeddings that capture the full context of the current observation.</p>
+</div>
+<div class="quiz-box">
+  <div class="quiz-question">Why use a pretrained CNN backbone instead of feeding raw pixels into the transformer?</div>
+  <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+  <div class="quiz-answer">Raw pixels are high-dimensional and spatially redundant. A CNN backbone like ResNet-18 compresses the image into semantically meaningful features (edges, textures, objects) at reduced spatial resolution. This dramatically reduces the sequence length the transformer needs to process (300 vectors vs. thousands of pixel patches) and provides better inductive biases for visual features.</div>
+</div>
+`
+  },
+  {
+    title: "DETR-Style Decoder",
+    subtitle: "Learned queries replace autoregressive generation",
+    icon: "🎯",
+    tags: ["act", "detr", "architecture"],
+    content: `
+<div class="explanation-text">
+<p class="para">This is the <strong>most ingenious part</strong> of ACT. In a standard transformer decoder (like GPT), you feed in the output tokens you've generated so far and predict the next one. This requires causal masking and sequential generation.</p>
+<p class="para">ACT borrows from <strong>DETR (DEtection TRansformer)</strong>, an object detection model. DETR's key innovation: instead of feeding actual data into the decoder, you feed in <strong>learned query embeddings</strong> — fixed vectors that the model learns during training.</p>
+<p class="para">In DETR, each query learns to "look for" a particular object in the image. In ACT, each query represents a <strong>time step in the action sequence</strong>. If the chunk size is 100, there are 100 learned queries, one per predicted action.</p>
+</div>
+<div class="diagram-container">
+  <canvas id="canvas-detr" width="780" height="380"></canvas>
+  <div class="diagram-label">DETR-style decoder: learned queries attend to encoder output → parallel action prediction</div>
+</div>
+<div class="explanation-text">
+<p class="para"><strong>Critical implementation detail:</strong> The actual input to the decoder is a vector of <strong>all zeros</strong>. The learned query embeddings are added as positional encodings at every decoder layer:</p>
+</div>
+<div class="code-wrapper">
+  <div class="code-toggle open" onclick="toggleCode(this)">
+    <span>DETR decoder cross-attention</span>
+    <span class="toggle-arrow open">&#9660;</span>
+  </div>
+  <div class="code-block">tgt2 = self.multihead_attn(
+    query=self.with_pos_embed(tgt, query_pos),  # zeros + learned queries
+    key=self.with_pos_embed(memory, pos),        # encoder output + pos
+    value=memory,                                 # encoder output
+    attn_mask=memory_mask,
+    key_padding_mask=memory_key_padding_mask
+)[0]</div>
+</div>
+<div class="explanation-text">
+<p class="para">Because we're not passing in any ground-truth actions, there's <strong>no need for causal masking</strong>. Each query can attend to all other queries and to the full encoder output. This means when predicting action at time step <em>t</em>, the model can consider what it's predicting at time steps <em>t-1</em> and <em>t+1</em>.</p>
+</div>
+<div class="insight-box">The decoder input is zeros. The queries are positional encodings. Each layer adds queries to the running state, giving free residual connections that help gradient flow. No ground truth goes in, so no causal mask is needed.</div>
+<div class="quiz-box">
+  <div class="quiz-question">What are two advantages of the DETR-style decoder over an autoregressive decoder for action prediction?</div>
+  <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+  <div class="quiz-answer">(1) <strong>Bidirectional reasoning:</strong> each predicted action can be influenced by both earlier and later actions in the chunk, leading to more coherent trajectories. (2) <strong>Parallel generation:</strong> all actions are predicted in a single forward pass, no sequential loop needed — this is much faster at inference time.</div>
+</div>
+`
+  },
+  {
+    title: "Encoder ↔ Decoder",
+    subtitle: "How the full architecture connects",
+    icon: "🔗",
+    tags: ["act", "architecture"],
+    content: `
+<div class="explanation-text">
+<p class="para">Let's put the full picture together. The ACT architecture has two main flows during <strong>training</strong>:</p>
+<p class="para"><strong>Right side (blue):</strong> The main encoder-decoder transformer.</p>
+<ul style="margin: 0 0 18px 20px; color: #b8b5c4; font-family: 'Crimson Pro', serif; font-size: 17px; line-height: 2;">
+<li><strong>Encoder</strong> receives: CNN image features + robot state + style variable z</li>
+<li><strong>Decoder</strong> receives: zeros as input, learned query embeddings as positional encoding</li>
+<li><strong>Output:</strong> predicted actions for each time step in the chunk</li>
+</ul>
+<p class="para"><strong>Left side (gray):</strong> The CVAE encoder (a separate, smaller transformer).</p>
+<ul style="margin: 0 0 18px 20px; color: #b8b5c4; font-family: 'Crimson Pro', serif; font-size: 17px; line-height: 2;">
+<li>Sees the <strong>ground-truth action sequence</strong> we're trying to predict</li>
+<li>Compresses it into the style variable z</li>
+<li>Only used during training — discarded at inference</li>
+</ul>
+</div>
+<div class="diagram-container">
+  <canvas id="canvas-full-arch" width="780" height="440"></canvas>
+  <div class="diagram-label">Full ACT architecture: CVAE encoder (left) feeds style variable z to the main encoder-decoder (right)</div>
+</div>
+<div class="explanation-text">
+<p class="para">The <strong>loss function</strong> is straightforward: L1 distance between predicted and actual joint positions/actions at each time step. No fancy reward shaping, no reinforcement learning — just supervised regression on demonstration data.</p>
+<p class="para">This simplicity is part of ACT's appeal. The architectural innovations (DETR queries + CVAE) do the heavy lifting, allowing a simple loss to be highly effective.</p>
+</div>
+`
+  },
+  {
+    title: "The Style Variable z",
+    subtitle: "Handling multimodality with a CVAE",
+    icon: "🎨",
+    tags: ["cvae", "training"],
+    content: `
+<div class="explanation-text">
+<p class="para">Here's a fundamental problem with imitation learning: there are <strong>infinitely many valid trajectories</strong> from point A to point B. Your demonstrations might reach for an object from the left, from the right, from above — all valid, all different.</p>
+<p class="para">If you simply train a model to minimize L1 loss against demonstrations, it might learn the <strong>average</strong> of all trajectories — which could be a trajectory that goes nowhere useful. This is the "multimodality problem."</p>
+</div>
+<div class="diagram-container">
+  <canvas id="canvas-cvae" width="780" height="280"></canvas>
+  <div class="diagram-label">Without z: model averages trajectories (bad). With z: model can generate specific trajectory styles.</div>
+</div>
+<div class="explanation-text">
+<p class="para">ACT's solution: the <strong>Conditional Variational Autoencoder (CVAE)</strong> style variable.</p>
+<p class="para"><strong>During training:</strong> A separate encoder (the left-side transformer) looks at the ground-truth action sequence and compresses its "style" — the unique characteristics of <em>this particular</em> trajectory — into a low-dimensional variable <strong>z</strong>. This z is then passed to the main encoder as additional context.</p>
+<p class="para">The main encoder-decoder learns: "Given these images, this robot state, and <em>this style hint</em>, predict these specific actions." The style variable resolves the ambiguity.</p>
+<p class="para"><strong>During inference:</strong> We discard the CVAE encoder entirely. We set <strong>z = 0</strong> (zeros). This says to the model: "I don't care about any particular style — just give me a reasonable trajectory."</p>
+</div>
+<div class="insight-box">Think of z as a "trajectory fingerprint." During training, it tells the model which specific demonstration style to reproduce. During inference, setting z=0 asks for the "average" style — but now the model has learned to produce coherent trajectories, not blurry averages, because each training example had a specific z.</div>
+<div class="quiz-box">
+  <div class="quiz-question">Why does setting z=0 at inference produce good results instead of the "average trajectory" problem we were trying to avoid?</div>
+  <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+  <div class="quiz-answer">During training, the model learned to generate trajectories conditioned on z. The KL divergence loss in the CVAE encourages z to be normally distributed around zero. So z=0 represents the most "typical" or "default" trajectory style, not an average of trajectories. The model has learned to produce a single coherent trajectory for any given z — z=0 just happens to select the most common style.</div>
+</div>
+`
+  },
+  {
+    title: "Action Chunking",
+    subtitle: "Why predicting n steps beats predicting 1",
+    icon: "📦",
+    tags: ["chunking", "act"],
+    content: `
+<div class="explanation-text">
+<p class="para"><strong>Chunking</strong> is the idea that gives ACT its name. Instead of predicting the next single action, the model predicts the next <strong>n</strong> actions (a "chunk") all at once.</p>
+<p class="para">The chunk size is a hyperparameter — typically 50 to 100 time steps. At each observation, the model outputs a full trajectory chunk, but in practice you execute some fraction of it before querying the model again.</p>
+<p class="para">The surprising finding: <strong>chunking dramatically improves performance across all methods</strong>, not just ACT:</p>
+</div>
+<div class="diagram-container">
+  <canvas id="canvas-chunking" width="780" height="320"></canvas>
+  <div class="diagram-label">Performance vs. chunk size: larger chunks improve results up to a point, then plateau</div>
+</div>
+<div class="explanation-text">
+<p class="para"><strong>Why does chunking work?</strong> The explanation draws from cognitive science:</p>
+<p class="para">Humans don't plan movement at the level of individual muscle activations. We think in terms of <strong>cohesive actions</strong>: "reach for the cup," "lift it up," "bring it to my mouth." We <em>chunk</em> movements into meaningful units.</p>
+<p class="para">The same principle applies to neural networks. It's "easier" to learn and reproduce <strong>sequences of coordinated movements</strong> than individual atomic actions. Predicting a chunk forces the model to reason about the <em>intent</em> behind a movement, not just the next incremental step.</p>
+</div>
+<div class="insight-box">Chunking is not ACT-specific — it's a general principle. Any method that predicts action sequences improves with chunking. This suggests that the temporal structure of actions has an inherent "chunk size" that models benefit from matching.</div>
+<div class="explanation-text">
+<p class="para">In practice, <strong>temporal ensembling</strong> smooths out the transitions between chunks. When you query the model at time <em>t</em> and again at <em>t+k</em>, the overlapping predictions are averaged with exponential weighting, giving priority to more recent predictions.</p>
+</div>
+<div class="quiz-box">
+  <div class="quiz-question">If chunk size is 100 and you re-query the model every 10 steps, how many overlapping action predictions exist for step t=50? Why is this overlap useful?</div>
+  <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+  <div class="quiz-answer">At step t=50, you'd have predictions from queries made at t=0, t=10, t=20, t=30, t=40, and t=50 — that's <strong>6 overlapping predictions</strong>. The overlap is useful because it enables temporal ensembling: averaging multiple predictions from different viewpoints reduces jitter and creates smoother, more robust trajectories.</div>
+</div>
+`
+  },
+  {
+    title: "Training & Inference",
+    subtitle: "Putting it all together",
+    icon: "⚡",
+    tags: ["training", "inference", "act"],
+    content: `
+<div class="explanation-text">
+<p class="para"><strong>Training pipeline:</strong></p>
+<ol style="margin: 0 0 18px 20px; color: #b8b5c4; font-family: 'Crimson Pro', serif; font-size: 17px; line-height: 2.2;">
+<li>Sample a demonstration trajectory and pick a random time step <em>t</em></li>
+<li>Feed the image(s) at time <em>t</em> and robot state at time <em>t</em> to the main encoder</li>
+<li>Feed the ground-truth action chunk (steps <em>t</em> to <em>t+chunk_size</em>) to the CVAE encoder → get z</li>
+<li>Pass z to the main encoder alongside image features and state</li>
+<li>Decoder uses learned queries to predict the action chunk</li>
+<li>Compute L1 loss between predicted and actual actions + KL divergence on z</li>
+<li>Backpropagate and update all parameters</li>
+</ol>
+</div>
+<div class="explanation-text">
+<p class="para"><strong>Inference pipeline (simplified):</strong></p>
+<ol style="margin: 0 0 18px 20px; color: #b8b5c4; font-family: 'Crimson Pro', serif; font-size: 17px; line-height: 2.2;">
+<li>Capture current camera image(s) and robot state</li>
+<li>Set z = 0 (discard CVAE encoder)</li>
+<li>Forward pass through the main encoder-decoder</li>
+<li>Get predicted action chunk (e.g., 100 future actions)</li>
+<li>Execute actions with temporal ensembling from previous chunks</li>
+<li>Repeat from step 1 every <em>k</em> steps</li>
+</ol>
+</div>
+<div class="insight-box">At inference, the CVAE encoder is gone. The model is just: images + state → encoder → decoder with learned queries → chunk of actions. Simple, fast, effective.</div>
+<div class="explanation-text">
+<p class="para"><strong>The results speak for themselves.</strong> ACT dramatically outperforms previous behavior cloning methods across a range of manipulation tasks. The combination of DETR-style parallel decoding, CVAE for multimodality, and action chunking creates an approach that's both elegant and practical.</p>
+<p class="para">The key takeaways:</p>
+<ul style="margin: 0 0 18px 20px; color: #b8b5c4; font-family: 'Crimson Pro', serif; font-size: 17px; line-height: 2;">
+<li><strong>Parallel decoding</strong> via learned queries — no causal mask, bidirectional reasoning</li>
+<li><strong>CVAE style variable</strong> — resolves trajectory multimodality during training</li>
+<li><strong>Action chunking</strong> — forces the model to reason about movement intent</li>
+<li><strong>Temporal ensembling</strong> — smooth transitions between prediction windows</li>
+</ul>
+<p class="para">Each piece is important, but it's their combination that makes ACT so potent. The transformer's ability to pick up on subtle patterns is unparalleled, and these architectural choices give it the right inductive biases for robot control.</p>
+</div>
+`
+  },
+  {
+    title: "Recap & Self-Test",
+    subtitle: "Test your understanding of the full architecture",
+    icon: "🧪",
+    tags: ["quiz", "act"],
+    content: `
+<div class="explanation-text">
+<p class="para">You've now walked through every component of ACT. Let's make sure it all clicks with some harder questions:</p>
+</div>
+<div class="quiz-box">
+  <div class="quiz-question">1. What goes into the decoder as input values, and what role do the learned queries play?</div>
+  <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+  <div class="quiz-answer">The decoder receives <strong>a tensor of zeros</strong> as input values. The learned query embeddings are added as positional encodings at every decoder layer. This means the queries shape the representation through repeated addition (residual-like connections), while the actual "content" comes entirely from cross-attending to the encoder output.</div>
+</div>
+<div class="quiz-box">
+  <div class="quiz-question">2. Why can't you just train a standard sequence-to-sequence model with teacher forcing for action prediction?</div>
+  <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+  <div class="quiz-answer">Teacher forcing with causal masking means action <em>t</em> can only see actions 0 to <em>t-1</em>. This prevents the model from considering future context when generating each action. For robot trajectories where global coherence matters (e.g., the reach angle affects the entire subsequent grasp motion), this is a significant limitation. The DETR approach allows each action to attend to all others.</div>
+</div>
+<div class="quiz-box">
+  <div class="quiz-question">3. If you removed the CVAE (style variable z) from ACT, what specific failure mode would you expect?</div>
+  <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+  <div class="quiz-answer">Without z, the model would try to minimize L1 loss against all demonstration trajectories simultaneously. When demonstrations contain different "styles" (e.g., reaching from the left vs. the right), the model would learn the <strong>mean trajectory</strong>, which could be a path that goes through the middle — physically invalid or suboptimal. The CVAE resolves this by conditioning each training example on its specific style.</div>
+</div>
+<div class="quiz-box">
+  <div class="quiz-question">4. The CNN backbone produces 512 features of dimension 15x20. After reshaping, we get 300 vectors of dim 512. Walk through this reshape step-by-step.</div>
+  <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+  <div class="quiz-answer">The CNN outputs a feature tensor of shape <code>[512, 15, 20]</code> — 512 channels, each a 15x20 spatial grid. The reshape transposes this to <code>[15*20, 512] = [300, 512]</code>. Each of the 300 vectors corresponds to one spatial position in the feature grid and contains all 512 channel values at that position. This converts a spatial feature map into a sequence suitable for the transformer.</div>
+</div>
+<div class="quiz-box">
+  <div class="quiz-question">5. How does temporal ensembling work, and what problem does it solve?</div>
+  <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+  <div class="quiz-answer">When the model is queried every <em>k</em> steps with chunk size <em>n</em>, consecutive chunks overlap by <em>n-k</em> steps. For each time step, multiple predictions exist from different query times. Temporal ensembling computes a weighted average (exponentially weighted, favoring more recent predictions) across all predictions for that step. This solves the problem of jerky transitions at chunk boundaries and makes the executed trajectory smoother.</div>
+</div>
+<div class="explanation-text" style="margin-top: 24px;">
+<p class="para"><strong>Papers to read next:</strong></p>
+<ul style="margin: 0 0 18px 20px; color: #b8b5c4; font-family: 'Crimson Pro', serif; font-size: 17px; line-height: 2;">
+<li>Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware (Zhao et al., 2023) — the ACT paper</li>
+<li>End-to-End Object Detection with Transformers (Carion et al., 2020) — DETR</li>
+<li>Attention Is All You Need (Vaswani et al., 2017) — the original transformer</li>
+</ul>
+</div>
+`
+  },
+];
+
+/* ── Rendering ── */
+let currentStep = 0;
+
+function renderStep(idx) {
+  const s = steps[idx];
+  const tagsHtml = s.tags.map(t => {
+    const c = tagColors[t] || { bg: "#1a1a2e", text: "#ccc" };
+    return `<span class="tag" style="background:${c.bg};color:${c.text}">${t}</span>`;
+  }).join('');
+
+  document.getElementById('step-content').innerHTML = `
+    <div class="fade-in">
+      <div class="step-icon">${s.icon}</div>
+      <h2 class="step-title">${s.title}</h2>
+      <div class="step-subtitle">${s.subtitle}</div>
+      <div class="tags-row">${tagsHtml}</div>
+      <div style="margin-top:28px">${s.content}</div>
+    </div>
+  `;
+
+  document.getElementById('step-counter').textContent = `${idx + 1} / ${steps.length}`;
+  document.getElementById('progress-bar').style.width = `${((idx + 1) / steps.length) * 100}%`;
+  document.getElementById('btn-prev').disabled = idx === 0;
+  document.getElementById('btn-next').disabled = idx === steps.length - 1;
+  document.getElementById('content-area').scrollTop = 0;
+
+  document.querySelectorAll('.step-dot').forEach((dot, i) => {
+    dot.style.background = i === idx ? '#4ade80' : i < idx ? '#1a5a3a' : '#1e1e2e';
+    dot.style.width = i === idx ? '24px' : '8px';
+  });
+
+  // Render math and diagrams after DOM update
+  requestAnimationFrame(() => {
+    renderMath();
+    renderDiagrams(idx);
+  });
+}
+
+function renderMath() {
+  const qkv = document.getElementById('math-qkv');
+  if (qkv && window.katex) {
+    katex.render('Q = XW^Q \\quad K = XW^K \\quad V = XW^V', qkv, { displayMode: true });
+  }
+  const attn = document.getElementById('math-attn');
+  if (attn && window.katex) {
+    katex.render('\\text{Attention}(Q,K,V) = \\text{softmax}\\!\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V', attn, { displayMode: true });
+  }
+}
+
+function navigate(dir) {
+  const next = currentStep + dir;
+  if (next >= 0 && next < steps.length) {
+    currentStep = next;
+    renderStep(currentStep);
+  }
+}
+
+function toggleQuiz(btn) {
+  const answer = btn.nextElementSibling;
+  answer.classList.toggle('visible');
+  btn.textContent = answer.classList.contains('visible') ? 'Hide answer' : 'Reveal answer';
+}
+
+function toggleCode(el) {
+  const block = el.nextElementSibling;
+  const arrow = el.querySelector('.toggle-arrow');
+  if (block.style.display === 'none') {
+    block.style.display = 'block';
+    el.classList.remove('closed');
+    el.classList.add('open');
+    arrow.classList.add('open');
+  } else {
+    block.style.display = 'none';
+    el.classList.remove('open');
+    el.classList.add('closed');
+    arrow.classList.remove('open');
+  }
+}
+
+/* ── Dots ── */
+function buildDots() {
+  const container = document.getElementById('dots-container');
+  steps.forEach((_, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'step-dot';
+    dot.style.width = '8px';
+    dot.style.background = '#1e1e2e';
+    dot.addEventListener('click', () => { currentStep = i; renderStep(i); });
+    container.appendChild(dot);
+  });
+}
+
+/* ── Keyboard nav ── */
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); navigate(1); }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); navigate(-1); }
+});
+
+/* ── Canvas diagrams ── */
+function renderDiagrams(stepIdx) {
+  if (stepIdx === 0) drawOverviewDiagram();
+  if (stepIdx === 1) drawAttentionDiagram();
+  if (stepIdx === 2) drawMaskDiagram();
+  if (stepIdx === 3) drawEncoderDiagram();
+  if (stepIdx === 4) drawDetrDiagram();
+  if (stepIdx === 5) drawFullArchDiagram();
+  if (stepIdx === 6) drawCvaeDiagram();
+  if (stepIdx === 7) drawChunkingDiagram();
+}
+
+function getCtx(id, w, h) {
+  const c = document.getElementById(id);
+  if (!c) return null;
+  const dpr = window.devicePixelRatio || 1;
+  c.width = w * dpr;
+  c.height = h * dpr;
+  c.style.width = w + 'px';
+  c.style.height = h + 'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return ctx;
+}
+
+function drawBox(ctx, x, y, w, h, fill, stroke, text, textColor, fontSize) {
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 6);
+  ctx.fill();
+  ctx.stroke();
+  if (text) {
+    ctx.fillStyle = textColor || '#ccc';
+    ctx.font = `${fontSize || 12}px IBM Plex Mono, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const lines = text.split('\n');
+    const lh = (fontSize || 12) + 4;
+    const startY = y + h/2 - ((lines.length - 1) * lh) / 2;
+    lines.forEach((line, i) => {
+      ctx.fillText(line, x + w/2, startY + i * lh);
+    });
+  }
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color) {
+  ctx.strokeStyle = color || '#4ade80';
+  ctx.fillStyle = color || '#4ade80';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - 8 * Math.cos(angle - 0.4), y2 - 8 * Math.sin(angle - 0.4));
+  ctx.lineTo(x2 - 8 * Math.cos(angle + 0.4), y2 - 8 * Math.sin(angle + 0.4));
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawAttentionDiagram() {
+  const ctx = getCtx('canvas-attention', 780, 340);
+  if (!ctx) return;
+
+  // Input tokens
+  const tokens = ['x₁', 'x₂', 'x₃', 'x₄'];
+  const startX = 80;
+  tokens.forEach((t, i) => {
+    drawBox(ctx, startX + i * 90, 20, 70, 36, '#1a1a2e', '#3a3a5a', t, '#d4d4ff', 14);
+  });
+
+  // Projection labels
+  ctx.fillStyle = '#666';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ['W^Q', 'W^K', 'W^V'].forEach((label, i) => {
+    const bx = 480 + i * 100;
+    drawBox(ctx, bx, 20, 80, 36, '#1e2a1e', '#3a5a3a', label, '#4ade80', 13);
+  });
+
+  // Q, K, V matrices
+  drawBox(ctx, 480, 90, 80, 40, '#1a1a2e', '#4a4a8a', 'Q', '#aaaaff', 16);
+  drawBox(ctx, 580, 90, 80, 40, '#2e1a1a', '#8a4a4a', 'K', '#ffaaaa', 16);
+  drawBox(ctx, 680, 90, 80, 40, '#1a2e1a', '#4a8a4a', 'V', '#aaffaa', 16);
+
+  // Arrows from W to Q/K/V
+  drawArrow(ctx, 520, 56, 520, 88, '#4ade80');
+  drawArrow(ctx, 620, 56, 620, 88, '#4ade80');
+  drawArrow(ctx, 720, 56, 720, 88, '#4ade80');
+
+  // Attention computation
+  drawBox(ctx, 480, 165, 280, 45, '#0e1018', '#2a3a4a', 'softmax(QKᵀ / √d) · V', '#e0dce8', 14);
+  drawArrow(ctx, 520, 130, 560, 163, '#aaaaff');
+  drawArrow(ctx, 620, 130, 620, 163, '#ffaaaa');
+  drawArrow(ctx, 720, 130, 680, 163, '#aaffaa');
+
+  // Output
+  drawBox(ctx, 530, 245, 180, 40, '#1a2e2e', '#3a6a6a', 'Attention Output', '#4adeac', 13);
+  drawArrow(ctx, 620, 210, 620, 243, '#4ade80');
+
+  // Left side: attention weight visualization
+  ctx.fillStyle = '#555';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Attention weights (example for x₂)', 200, 95);
+
+  const gridX = 105, gridY = 110, cellSize = 36;
+  const weights = [
+    [0.1, 0.4, 0.3, 0.2],
+  ];
+  for (let j = 0; j < 4; j++) {
+    const alpha = weights[0][j];
+    ctx.fillStyle = `rgba(74, 222, 128, ${alpha * 0.9 + 0.1})`;
+    ctx.beginPath();
+    ctx.roundRect(gridX + j * (cellSize + 4), gridY, cellSize, cellSize, 4);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '11px IBM Plex Mono, monospace';
+    ctx.fillText(alpha.toFixed(1), gridX + j * (cellSize + 4) + cellSize/2, gridY + cellSize/2);
+  }
+
+  // Labels under grid
+  tokens.forEach((t, j) => {
+    ctx.fillStyle = '#666';
+    ctx.font = '10px IBM Plex Mono, monospace';
+    ctx.fillText(t, gridX + j * (cellSize + 4) + cellSize/2, gridY + cellSize + 14);
+  });
+
+  ctx.fillStyle = '#666';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('→ x₂ attends most to x₂ itself', gridX, gridY + cellSize + 38);
+  ctx.fillText('  and to x₃ (0.4 + 0.3 = 0.7)', gridX, gridY + cellSize + 54);
+
+  // Multiplied by values arrow
+  ctx.fillStyle = '#555';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('weights × values = weighted sum', 200, 230);
+  drawBox(ctx, 120, 245, 160, 40, '#1a2e1a', '#3a6a3a', '0.1v₁+0.4v₂+0.3v₃+0.2v₄', '#aaffaa', 10);
+}
+
+function drawMaskDiagram() {
+  const ctx = getCtx('canvas-masks', 780, 300);
+  if (!ctx) return;
+
+  const cellSize = 40;
+
+  // Causal mask
+  ctx.fillStyle = '#aaa';
+  ctx.font = '13px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Causal (Decoder)', 140, 25);
+
+  const causalX = 50, causalY = 40;
+  for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 5; j++) {
+      const allowed = j <= i;
+      ctx.fillStyle = allowed ? 'rgba(74, 222, 128, 0.3)' : 'rgba(255, 80, 80, 0.15)';
+      ctx.beginPath();
+      ctx.roundRect(causalX + j * (cellSize + 3), causalY + i * (cellSize + 3), cellSize, cellSize, 3);
+      ctx.fill();
+      ctx.fillStyle = allowed ? '#4ade80' : '#ff5050';
+      ctx.font = '14px IBM Plex Mono, monospace';
+      ctx.fillText(allowed ? '✓' : '✗', causalX + j * (cellSize + 3) + cellSize/2, causalY + i * (cellSize + 3) + cellSize/2 + 1);
+    }
+  }
+
+  // Labels
+  ctx.fillStyle = '#666';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  for (let i = 0; i < 5; i++) {
+    ctx.textAlign = 'right';
+    ctx.fillText(`t${i}`, causalX - 8, causalY + i * (cellSize + 3) + cellSize/2 + 1);
+    ctx.textAlign = 'center';
+    ctx.fillText(`t${i}`, causalX + i * (cellSize + 3) + cellSize/2, causalY - 8);
+  }
+
+  // Bidirectional mask
+  ctx.fillStyle = '#aaa';
+  ctx.font = '13px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Bidirectional (Encoder / ACT Decoder)', 570, 25);
+
+  const biX = 430, biY = 40;
+  for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 5; j++) {
+      ctx.fillStyle = 'rgba(74, 222, 128, 0.3)';
+      ctx.beginPath();
+      ctx.roundRect(biX + j * (cellSize + 3), biY + i * (cellSize + 3), cellSize, cellSize, 3);
+      ctx.fill();
+      ctx.fillStyle = '#4ade80';
+      ctx.font = '14px IBM Plex Mono, monospace';
+      ctx.fillText('✓', biX + j * (cellSize + 3) + cellSize/2, biY + i * (cellSize + 3) + cellSize/2 + 1);
+    }
+  }
+
+  ctx.fillStyle = '#666';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  for (let i = 0; i < 5; i++) {
+    ctx.textAlign = 'right';
+    ctx.fillText(`t${i}`, biX - 8, biY + i * (cellSize + 3) + cellSize/2 + 1);
+    ctx.textAlign = 'center';
+    ctx.fillText(`t${i}`, biX + i * (cellSize + 3) + cellSize/2, biY - 8);
+  }
+
+  // Explanation
+  ctx.fillStyle = '#555';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('t2 can only see t0, t1, t2', 140, 275);
+  ctx.fillText('t2 can see all positions', 570, 275);
+}
+
+function drawEncoderDiagram() {
+  const ctx = getCtx('canvas-encoder', 780, 400);
+  if (!ctx) return;
+
+  // Camera images
+  drawBox(ctx, 30, 20, 120, 60, '#1a1a2e', '#3a3a5a', 'Camera\nImage(s)', '#d4d4ff', 12);
+  drawBox(ctx, 30, 110, 120, 50, '#1e2a1e', '#3a5a3a', 'ResNet-18\nBackbone', '#4ade80', 11);
+  drawArrow(ctx, 90, 80, 90, 108, '#4ade80');
+
+  // Feature reshape
+  drawBox(ctx, 30, 190, 120, 45, '#1a2e2e', '#3a5a5a', 'Reshape\n512×15×20→300×512', '#4adeac', 10);
+  drawArrow(ctx, 90, 160, 90, 188, '#4ade80');
+
+  // + pos embeddings
+  drawBox(ctx, 30, 265, 120, 35, '#2a2a1a', '#5a5a3a', '+ Pos Embed', '#ffeed4', 11);
+  drawArrow(ctx, 90, 235, 90, 263, '#4ade80');
+
+  // Robot state
+  drawBox(ctx, 200, 20, 120, 60, '#2e1a1a', '#5a3a3a', 'Robot State\n14 floats', '#ffd4d4', 12);
+  drawBox(ctx, 200, 110, 120, 50, '#2e1a2a', '#5a3a4a', 'Linear\nProjection', '#ffd4ee', 11);
+  drawArrow(ctx, 260, 80, 260, 108, '#ffd4d4');
+  drawBox(ctx, 200, 190, 120, 45, '#1a2e2e', '#3a5a5a', '1×512', '#4adeac', 12);
+  drawArrow(ctx, 260, 160, 260, 188, '#ffd4d4');
+
+  // Style variable z
+  drawBox(ctx, 370, 20, 120, 60, '#2a1a2e', '#5a3a6a', 'Style Var z\n(from CVAE)', '#d4aaff', 12);
+  drawBox(ctx, 370, 110, 120, 50, '#2a1a2e', '#4a2a4a', 'Linear\nProjection', '#d4aaff', 11);
+  drawArrow(ctx, 430, 80, 430, 108, '#d4aaff');
+  drawBox(ctx, 370, 190, 120, 45, '#1a2e2e', '#3a5a5a', '1×512', '#4adeac', 12);
+  drawArrow(ctx, 430, 160, 430, 188, '#d4aaff');
+
+  // Concatenate
+  drawBox(ctx, 100, 330, 360, 40, '#0e1a14', '#2a5a3a', 'Concatenate → (302 × 512) sequence', '#4ade80', 12);
+  drawArrow(ctx, 90, 300, 200, 328, '#4ade80');
+  drawArrow(ctx, 260, 235, 280, 328, '#4ade80');
+  drawArrow(ctx, 430, 235, 360, 328, '#d4aaff');
+
+  // Transformer Encoder
+  drawBox(ctx, 540, 100, 200, 180, '#0e1018', '#2a3a5a', 'Transformer\nEncoder\n\nSelf-Attention\n+\nFeed-Forward\n×N layers', '#e0dce8', 12);
+  drawArrow(ctx, 460, 350, 640, 282, '#4ade80');
+
+  // Output
+  drawBox(ctx, 560, 330, 160, 40, '#1a2e1a', '#3a6a3a', 'Contextual\nEmbeddings', '#4ade80', 12);
+  drawArrow(ctx, 640, 280, 640, 328, '#4ade80');
+}
+
+function drawDetrDiagram() {
+  const ctx = getCtx('canvas-detr', 780, 380);
+  if (!ctx) return;
+
+  // Encoder output (from previous step)
+  drawBox(ctx, 30, 20, 160, 50, '#1a2e1a', '#3a6a3a', 'Encoder Output\n(302×512)', '#4ade80', 12);
+
+  // Learned queries
+  drawBox(ctx, 560, 20, 180, 50, '#2a1a2e', '#5a3a6a', 'Learned Queries\n(chunk_size × 512)', '#d4aaff', 11);
+
+  // Zeros input
+  drawBox(ctx, 560, 100, 180, 40, '#1a1a1a', '#3a3a3a', 'Zeros (input)', '#888', 12);
+
+  // Decoder layers
+  for (let i = 0; i < 3; i++) {
+    const y = 170 + i * 65;
+    // Self-attention
+    drawBox(ctx, 250, y, 200, 24, '#1a1a2e', '#3a3a5a', 'Self-Attention (queries)', '#d4d4ff', 10);
+    // Cross-attention
+    drawBox(ctx, 250, y + 28, 200, 24, '#1e2a1e', '#3a5a3a', 'Cross-Attention (encoder)', '#4ade80', 10);
+    // + queries
+    drawBox(ctx, 480, y + 10, 80, 30, '#2a1a2e', '#4a2a4a', '+ queries', '#d4aaff', 10);
+
+    // Layer label
+    ctx.fillStyle = '#555';
+    ctx.font = '10px IBM Plex Mono, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`Layer ${i + 1}`, 240, y + 22);
+
+    if (i < 2) {
+      drawArrow(ctx, 350, y + 55, 350, y + 63, '#4ade80');
+    }
+  }
+
+  // Arrows
+  drawArrow(ctx, 110, 70, 300, 168, '#4ade80');
+  drawArrow(ctx, 650, 70, 520, 185, '#d4aaff');
+  drawArrow(ctx, 650, 140, 520, 175, '#888');
+
+  // Cross-attention arrows from encoder
+  drawArrow(ctx, 110, 70, 300, 233, '#4ade80');
+  drawArrow(ctx, 110, 70, 300, 298, '#4ade80');
+
+  // Output actions
+  drawBox(ctx, 250, 370 - 20, 200, 36, '#0e1a14', '#2a5a3a', 'Predicted Actions\n(chunk_size × action_dim)', '#4ade80', 11);
+  drawArrow(ctx, 350, 340 - 6, 350, 348, '#4ade80');
+
+  // Key insight annotation
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('No causal mask!', 590, 180);
+  ctx.fillText('Full bidirectional', 590, 196);
+  ctx.fillText('attention at each layer', 590, 212);
+}
+
+function drawFullArchDiagram() {
+  const ctx = getCtx('canvas-full-arch', 780, 440);
+  if (!ctx) return;
+
+  // Left side: CVAE encoder
+  ctx.fillStyle = '#666';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('CVAE Encoder (training only)', 160, 20);
+
+  drawBox(ctx, 60, 35, 200, 45, '#2e1a1a', '#5a3a3a', 'Ground-truth Actions\n(chunk of joint positions)', '#ffd4d4', 11);
+
+  drawBox(ctx, 100, 110, 120, 80, '#2a1a2e', '#4a2a5a', 'Transformer\nEncoder\n(small)', '#d4aaff', 11);
+  drawArrow(ctx, 160, 80, 160, 108, '#ffd4d4');
+
+  drawBox(ctx, 110, 220, 100, 35, '#2a1a2e', '#5a3a6a', 'μ, σ → z', '#d4aaff', 12);
+  drawArrow(ctx, 160, 190, 160, 218, '#d4aaff');
+
+  // Arrow from z to right side
+  drawArrow(ctx, 210, 237, 420, 120, '#d4aaff');
+
+  // Right side: Main encoder-decoder
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Main Encoder-Decoder', 560, 20);
+
+  // Encoder
+  drawBox(ctx, 380, 35, 90, 40, '#1a1a2e', '#3a3a5a', 'Images\n(CNN)', '#d4d4ff', 10);
+  drawBox(ctx, 480, 35, 90, 40, '#2e1a1a', '#5a3a3a', 'Robot\nState', '#ffd4d4', 10);
+  drawBox(ctx, 580, 35, 70, 40, '#2a1a2e', '#5a3a6a', 'z', '#d4aaff', 14);
+
+  drawBox(ctx, 390, 100, 270, 70, '#0e1018', '#2a3a5a', 'Transformer Encoder\nSelf-Attention + FFN × N', '#e0dce8', 12);
+  drawArrow(ctx, 425, 75, 460, 98, '#d4d4ff');
+  drawArrow(ctx, 525, 75, 525, 98, '#ffd4d4');
+  drawArrow(ctx, 615, 75, 590, 98, '#d4aaff');
+
+  // Decoder
+  drawBox(ctx, 390, 210, 270, 80, '#0e1018', '#2a3a5a', 'Transformer Decoder\n(DETR-style)\nCross-Attn + Self-Attn + FFN', '#e0dce8', 11);
+  drawArrow(ctx, 525, 170, 525, 208, '#4ade80');
+
+  // Learned queries
+  drawBox(ctx, 680, 230, 90, 40, '#2a1a2e', '#5a3a6a', 'Learned\nQueries', '#d4aaff', 10);
+  drawArrow(ctx, 680, 250, 662, 250, '#d4aaff');
+
+  // Output
+  drawBox(ctx, 420, 330, 210, 45, '#0e1a14', '#2a5a3a', 'Predicted Action Chunk\na₁, a₂, ..., aₙ', '#4ade80', 12);
+  drawArrow(ctx, 525, 290, 525, 328, '#4ade80');
+
+  // Loss
+  drawBox(ctx, 420, 400, 210, 30, '#2e2a1a', '#5a5a3a', 'L1 Loss + KL Divergence', '#ffeed4', 11);
+  drawArrow(ctx, 525, 375, 525, 398, '#ffeed4');
+
+  // Dashed box around CVAE
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = '#5a3a3a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(45, 28, 230, 240, 8);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = '#ff6b4a';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Discarded at inference', 160, 285);
+  ctx.fillText('(z set to 0)', 160, 298);
+}
+
+function drawCvaeDiagram() {
+  const ctx = getCtx('canvas-cvae', 780, 280);
+  if (!ctx) return;
+
+  // Left: without z
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Without style variable z', 180, 20);
+
+  // Draw multiple trajectory lines converging to average
+  ctx.strokeStyle = 'rgba(255, 107, 74, 0.4)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 4]);
+  // Trajectory 1 (curves up)
+  ctx.beginPath();
+  ctx.moveTo(50, 150);
+  ctx.quadraticCurveTo(130, 60, 310, 100);
+  ctx.stroke();
+  // Trajectory 2 (curves down)
+  ctx.beginPath();
+  ctx.moveTo(50, 150);
+  ctx.quadraticCurveTo(130, 240, 310, 100);
+  ctx.stroke();
+  // Trajectory 3 (straight-ish)
+  ctx.beginPath();
+  ctx.moveTo(50, 150);
+  ctx.quadraticCurveTo(180, 130, 310, 100);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Average (bad) trajectory
+  ctx.strokeStyle = '#ff6b4a';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(50, 150);
+  ctx.quadraticCurveTo(150, 140, 310, 100);
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#ff6b4a';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.fillText('Learned: blurry average', 180, 260);
+
+  // Start/end dots
+  ctx.fillStyle = '#4ade80';
+  ctx.beginPath(); ctx.arc(50, 150, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#4da6ff';
+  ctx.beginPath(); ctx.arc(310, 100, 6, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = '#666';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('A', 35, 140);
+  ctx.fillText('B', 318, 100);
+
+  // Right: with z
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('With style variable z', 580, 20);
+
+  // Distinct trajectories with z labels
+  const trajectories = [
+    { cp: { x: 530, y: 60 }, color: '#4ade80', label: 'z₁' },
+    { cp: { x: 530, y: 240 }, color: '#4da6ff', label: 'z₂' },
+    { cp: { x: 580, y: 130 }, color: '#a78bfa', label: 'z₃' },
+  ];
+
+  trajectories.forEach(t => {
+    ctx.strokeStyle = t.color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(450, 150);
+    ctx.quadraticCurveTo(t.cp.x, t.cp.y, 710, 100);
+    ctx.stroke();
+
+    ctx.fillStyle = t.color;
+    ctx.font = '11px IBM Plex Mono, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(t.label, t.cp.x + 10, t.cp.y + (t.cp.y < 150 ? -5 : 15));
+  });
+
+  // Start/end dots
+  ctx.fillStyle = '#4ade80';
+  ctx.beginPath(); ctx.arc(450, 150, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#4da6ff';
+  ctx.beginPath(); ctx.arc(710, 100, 6, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = '#666';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('A', 435, 140);
+  ctx.fillText('B', 718, 100);
+
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Each z → coherent trajectory', 580, 260);
+}
+
+function drawChunkingDiagram() {
+  const ctx = getCtx('canvas-chunking', 780, 320);
+  if (!ctx) return;
+
+  // Performance chart
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Success Rate vs. Chunk Size', 390, 20);
+
+  // Axes
+  const ax = 80, ay = 260, aw = 620, ah = 200;
+  ctx.strokeStyle = '#3a3a5a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(ax, ay - ah);
+  ctx.lineTo(ax, ay);
+  ctx.lineTo(ax + aw, ay);
+  ctx.stroke();
+
+  // Y-axis labels
+  ctx.fillStyle = '#666';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'right';
+  [0, 25, 50, 75, 100].forEach(v => {
+    const y = ay - (v / 100) * ah;
+    ctx.fillText(v + '%', ax - 10, y + 4);
+    ctx.strokeStyle = '#1a1a24';
+    ctx.beginPath();
+    ctx.moveTo(ax, y);
+    ctx.lineTo(ax + aw, y);
+    ctx.stroke();
+  });
+
+  // X-axis labels
+  ctx.textAlign = 'center';
+  const chunkSizes = [1, 10, 25, 50, 100, 200];
+  const xPositions = chunkSizes.map((_, i) => ax + 40 + i * (aw - 60) / (chunkSizes.length - 1));
+  chunkSizes.forEach((cs, i) => {
+    ctx.fillStyle = '#666';
+    ctx.fillText(cs.toString(), xPositions[i], ay + 18);
+  });
+  ctx.fillText('Chunk Size', ax + aw / 2, ay + 36);
+
+  // ACT line (high performance)
+  const actScores = [40, 65, 82, 92, 96, 94];
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  actScores.forEach((score, i) => {
+    const x = xPositions[i];
+    const y = ay - (score / 100) * ah;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Dots on ACT line
+  actScores.forEach((score, i) => {
+    ctx.fillStyle = '#4ade80';
+    ctx.beginPath();
+    ctx.arc(xPositions[i], ay - (score / 100) * ah, 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Baseline line (lower performance)
+  const baseScores = [20, 35, 50, 58, 62, 60];
+  ctx.strokeStyle = '#ff6b4a';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  baseScores.forEach((score, i) => {
+    const x = xPositions[i];
+    const y = ay - (score / 100) * ah;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  baseScores.forEach((score, i) => {
+    ctx.fillStyle = '#ff6b4a';
+    ctx.beginPath();
+    ctx.arc(xPositions[i], ay - (score / 100) * ah, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Legend
+  ctx.fillStyle = '#4ade80';
+  ctx.fillRect(550, 55, 20, 3);
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('ACT', 575, 59);
+
+  ctx.fillStyle = '#ff6b4a';
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = '#ff6b4a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(550, 77);
+  ctx.lineTo(570, 77);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ff6b4a';
+  ctx.fillText('Baseline BC', 575, 80);
+
+  // Annotation
+  ctx.fillStyle = '#555';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Both methods improve with chunking — but ACT benefits most', 390, 300);
+}
+
+function drawOverviewDiagram() {
+  const ctx = getCtx('canvas-overview', 780, 520);
+  if (!ctx) return;
+
+  // ── CVAE Encoder (left side) ──
+  // Dashed border
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = '#5a3a5a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(15, 15, 235, 470, 10);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Label
+  ctx.fillStyle = '#d4aaff';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('CVAE Encoder', 132, 35);
+  ctx.fillStyle = '#ff6b4a';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.fillText('(training only)', 132, 49);
+
+  // Action sequence input
+  drawBox(ctx, 42, 60, 180, 42, '#2e1a1a', '#6a3a3a', 'Action Sequence\n(ground-truth chunk)', '#ffd4d4', 11);
+
+  // CLS token
+  drawBox(ctx, 42, 125, 80, 32, '#2a2a1a', '#5a5a3a', 'CLS token', '#ffeed4', 10);
+
+  // Action tokens
+  drawBox(ctx, 135, 125, 87, 32, '#1a1a2e', '#3a3a5a', 'a₁  a₂ ... aₙ', '#d4d4ff', 10);
+
+  drawArrow(ctx, 132, 102, 82, 123, '#ffd4d4');
+  drawArrow(ctx, 132, 102, 178, 123, '#ffd4d4');
+
+  // Transformer encoder
+  drawBox(ctx, 42, 180, 180, 75, '#1a1028', '#3a2850', 'Transformer\nEncoder\n(self-attention × L)', '#d4aaff', 11);
+  drawArrow(ctx, 82, 157, 100, 178, '#ffeed4');
+  drawArrow(ctx, 178, 157, 160, 178, '#d4d4ff');
+
+  // CLS output → mu, sigma
+  drawBox(ctx, 55, 280, 70, 30, '#2a1a2e', '#5a3a6a', 'mu (μ)', '#d4aaff', 11);
+  drawBox(ctx, 138, 280, 70, 30, '#2a1a2e', '#5a3a6a', 'sigma (σ)', '#d4aaff', 10);
+  drawArrow(ctx, 100, 255, 90, 278, '#d4aaff');
+  drawArrow(ctx, 160, 255, 173, 278, '#d4aaff');
+
+  // Reparameterization → z
+  ctx.fillStyle = '#666';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('reparameterize', 132, 328);
+
+  drawBox(ctx, 82, 340, 100, 36, '#2a1a2e', '#7a4aaa', 'z', '#d4aaff', 18);
+  drawArrow(ctx, 90, 310, 110, 338, '#d4aaff');
+  drawArrow(ctx, 173, 310, 155, 338, '#d4aaff');
+
+  // Arrow from z to main encoder
+  ctx.setLineDash([5, 3]);
+  ctx.strokeStyle = '#d4aaff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(182, 358);
+  ctx.quadraticCurveTo(280, 358, 340, 275);
+  ctx.stroke();
+  // Arrowhead
+  ctx.fillStyle = '#d4aaff';
+  ctx.beginPath();
+  ctx.moveTo(340, 275);
+  ctx.lineTo(333, 283);
+  ctx.lineTo(342, 283);
+  ctx.closePath();
+  ctx.fill();
+  ctx.setLineDash([]);
+
+  // KL loss label
+  drawBox(ctx, 62, 405, 140, 30, '#2e2a1a', '#5a5a3a', 'KL Divergence Loss', '#ffeed4', 10);
+  drawArrow(ctx, 132, 376, 132, 403, '#ffeed4');
+
+  // ── Main Encoder-Decoder (right side) ──
+  // Blue-ish border
+  ctx.setLineDash([]);
+  ctx.strokeStyle = '#2a4a6a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(270, 15, 495, 470, 10);
+  ctx.stroke();
+
+  ctx.fillStyle = '#4da6ff';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Main Encoder-Decoder (Policy)', 517, 35);
+
+  // ── Inputs row ──
+  // Camera images (two small image icons)
+  drawBox(ctx, 290, 55, 100, 55, '#1a1a2e', '#3a3a6a', '', '#d4d4ff', 10);
+  // Camera icon representation
+  ctx.fillStyle = '#3a3a6a';
+  ctx.fillRect(300, 63, 35, 25);
+  ctx.fillRect(342, 63, 35, 25);
+  ctx.fillStyle = '#6a6aaa';
+  ctx.fillRect(303, 66, 29, 19);
+  ctx.fillRect(345, 66, 29, 19);
+  ctx.fillStyle = '#888';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Camera images', 340, 103);
+
+  // CNN backbone
+  drawBox(ctx, 295, 118, 90, 32, '#1e2a1e', '#3a6a3a', 'ResNet-18', '#4ade80', 10);
+  drawArrow(ctx, 340, 110, 340, 116, '#4ade80');
+
+  // Feature reshape
+  drawBox(ctx, 286, 165, 108, 28, '#1a2e2e', '#3a5a5a', '300 × 512 feats', '#4adeac', 10);
+  drawArrow(ctx, 340, 150, 340, 163, '#4ade80');
+
+  // + pos embeddings
+  ctx.fillStyle = '#666';
+  ctx.font = '9px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('+ pos embed', 296, 207);
+
+  // Joint positions
+  drawBox(ctx, 415, 55, 100, 40, '#2e1a1a', '#6a3a3a', 'Joint Positions\n(14 floats)', '#ffd4d4', 10);
+  drawBox(ctx, 425, 108, 80, 28, '#2e1a2a', '#5a3a4a', 'Linear → 512', '#ffd4ee', 9);
+  drawArrow(ctx, 465, 95, 465, 106, '#ffd4d4');
+
+  // Style variable z input
+  drawBox(ctx, 540, 55, 80, 40, '#2a1a2e', '#7a4aaa', 'z\n(style var)', '#d4aaff', 10);
+  drawBox(ctx, 545, 108, 70, 28, '#2a1a2e', '#4a2a5a', 'Linear → 512', '#d4aaff', 9);
+  drawArrow(ctx, 580, 95, 580, 106, '#d4aaff');
+
+  // ── Transformer Encoder ──
+  drawBox(ctx, 290, 225, 335, 65, '#0e1220', '#2a4a6a', '', '#e0dce8', 11);
+  // Inner label
+  ctx.fillStyle = '#4da6ff';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Transformer Encoder', 457, 250);
+  ctx.fillStyle = '#7a8a9a';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.fillText('Self-Attention + FFN  × N layers', 457, 268);
+
+  // Arrows into encoder
+  drawArrow(ctx, 340, 207, 370, 223, '#4adeac');
+  drawArrow(ctx, 465, 136, 440, 223, '#ffd4ee');
+  drawArrow(ctx, 580, 136, 530, 223, '#d4aaff');
+
+  // Encoder output label
+  ctx.fillStyle = '#555';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('contextual embeddings', 457, 306);
+
+  // ── Transformer Decoder ──
+  drawBox(ctx, 290, 315, 335, 75, '#0e1220', '#2a4a6a', '', '#e0dce8', 11);
+  ctx.fillStyle = '#4da6ff';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Transformer Decoder', 457, 337);
+  ctx.fillStyle = '#7a8a9a';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.fillText('Self-Attn + Cross-Attn + FFN  × N layers', 457, 355);
+  ctx.fillStyle = '#555';
+  ctx.font = '9px IBM Plex Mono, monospace';
+  ctx.fillText('(no causal mask — DETR-style)', 457, 372);
+
+  // Arrow from encoder to decoder (cross-attention)
+  drawArrow(ctx, 457, 290, 457, 313, '#4da6ff');
+
+  // Learned queries input (from right)
+  drawBox(ctx, 650, 325, 100, 50, '#2a1a2e', '#5a3a6a', 'Learned\nQuery Embeds\n(chunk_size)', '#d4aaff', 9);
+  drawArrow(ctx, 650, 350, 627, 350, '#d4aaff');
+
+  // Zeros input label
+  ctx.fillStyle = '#555';
+  ctx.font = '9px IBM Plex Mono, monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('input = zeros', 285, 350);
+
+  // ── Predicted actions output ──
+  drawBox(ctx, 365, 415, 185, 42, '#0e1a14', '#2a6a3a', 'Predicted Action Chunk\nâ₁, â₂, ..., âₙ', '#4ade80', 11);
+  drawArrow(ctx, 457, 390, 457, 413, '#4ade80');
+
+  // L1 Loss
+  drawBox(ctx, 382, 470, 150, 26, '#2e2a1a', '#5a5a3a', 'L1 Loss (predicted vs actual)', '#ffeed4', 9);
+  drawArrow(ctx, 457, 457, 457, 468, '#ffeed4');
+
+  // ── Data flow annotations ──
+  // Images flow label
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '9px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('visual features', 296, 160);
+
+  // Cross-attention annotation
+  ctx.save();
+  ctx.fillStyle = '#4da6ff';
+  ctx.font = '9px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('cross-attn', 462, 305);
+  ctx.restore();
+}
+
+/* ── Init ── */
+buildDots();
+renderStep(0);
+</script>
+</body>
+</html>
