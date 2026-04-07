@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STEP — Sequential Testing for Robot Policy Evaluation</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: #080a0e;
+      color: #c8c5d0;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #080a0e; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a3a4a; }
+
+    /* Scroll progress bar */
+    #scroll-progress-track {
+      position: fixed; top: 0; left: 0; width: 100%; height: 3px;
+      background: #1a1a24; z-index: 1000;
+    }
+    #scroll-progress-bar {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #92400e, #f59e0b, #fcd34d);
+      transition: width 0.1s linear;
+    }
+
+    #header {
+      position: sticky; top: 3px; z-index: 999;
+      padding: 16px 24px;
+      border-bottom: 1px solid #1a1a24;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0; background: #0a0c12;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header-back { color: #666; text-decoration: none; font-size: 12px; transition: color 0.2s; }
+    .header-back:hover { color: #f59e0b; }
+    .header-title { font-size: 14px; font-weight: 600; color: #e0dce8; letter-spacing: 0.02em; }
+    .header-sub { font-size: 11px; color: #666; margin-top: 1px; }
+
+    /* Floating TOC nav */
+    #toc-nav {
+      position: fixed; right: 16px; top: 50%; transform: translateY(-50%);
+      z-index: 998; display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
+    }
+    .toc-dot-row {
+      display: flex; align-items: center; gap: 8px; cursor: pointer;
+    }
+    .toc-label {
+      font-size: 10px; color: #444; white-space: nowrap;
+      opacity: 0; transition: opacity 0.2s; pointer-events: none;
+    }
+    .toc-dot-row:hover .toc-label,
+    .toc-dot-row.active .toc-label { opacity: 1; }
+    .toc-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #1e1e2e; transition: all 0.3s;
+      flex-shrink: 0;
+    }
+    .toc-dot-row.active .toc-dot {
+      background: #f59e0b; width: 10px; height: 10px;
+    }
+    .toc-dot-row.visited .toc-dot {
+      background: #92400e;
+    }
+
+    #content-area { padding: 0 24px 80px; }
+
+    .step-section {
+      max-width: 840px; margin: 0 auto;
+      padding: 60px 0 40px;
+    }
+    .step-section + .step-section {
+      border-top: 1px solid #1a1a24;
+    }
+
+    .step-icon { font-size: 32px; margin-bottom: 8px; }
+    .step-title {
+      font-size: 26px; font-weight: 600; color: #ece8f4;
+      margin: 0 0 6px 0; letter-spacing: -0.02em;
+    }
+    .step-subtitle { font-size: 15px; color: #7a7888; font-family: 'Crimson Pro', serif; font-style: italic; }
+    .tags-row { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+    .tag {
+      display: inline-block; padding: 2px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase;
+    }
+
+    .explanation-text {
+      font-family: 'Crimson Pro', Georgia, serif;
+      font-size: 17px; line-height: 1.85; color: #b8b5c4; letter-spacing: 0.01em;
+    }
+    .explanation-text strong { color: #e0dce8; font-weight: 600; }
+    .explanation-text code {
+      font-family: 'IBM Plex Mono', monospace; font-size: 14px;
+      background: #14161e; padding: 2px 6px; border-radius: 3px; color: #f59e0b;
+    }
+    .explanation-text .para { margin-bottom: 18px; margin-top: 0; }
+
+    .code-wrapper { margin: 20px 0; }
+    .code-toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; background: #10121a; border: 1px solid #1e1e2e;
+      cursor: pointer; font-size: 12px; color: #666; user-select: none;
+    }
+    .code-toggle.open { border-radius: 8px 8px 0 0; border-bottom: none; }
+    .code-toggle.closed { border-radius: 8px; }
+    .toggle-arrow { transition: transform 0.2s; }
+    .toggle-arrow.open { transform: rotate(180deg); }
+    .code-block {
+      background: #10121a; border: 1px solid #1e1e2e; border-top: 1px solid #1a1a24;
+      border-radius: 0 0 8px 8px; padding: 20px; overflow-x: auto;
+      font-size: 12.5px; line-height: 1.7; white-space: pre; color: #c8c5d0;
+    }
+
+    .math-block {
+      background: #0c0e14; border: 1px solid #1e2838; border-radius: 8px;
+      padding: 16px 20px; margin: 16px 0; text-align: center; overflow-x: auto;
+    }
+
+    .insight-box {
+      background: linear-gradient(135deg, #1a1508, #18150a);
+      border-left: 3px solid #f59e0b; border-radius: 0 8px 8px 0;
+      padding: 14px 18px; margin: 16px 0;
+      font-family: 'Crimson Pro', serif; font-size: 16px; color: #fcd34d; line-height: 1.7;
+    }
+    .insight-box::before { content: "Key Insight — "; font-weight: 600; color: #f59e0b; }
+
+    .quiz-box {
+      background: #0e1018; border: 1px solid #2a2a4a; border-radius: 10px;
+      padding: 18px; margin: 20px 0;
+    }
+    .quiz-question {
+      font-family: 'Crimson Pro', serif; font-size: 16px; color: #ddd; margin-bottom: 12px;
+    }
+    .quiz-question::before { content: "Test yourself: "; font-weight: 600; color: #a78bfa; }
+    .quiz-reveal {
+      background: #1a1a2e; border: 1px solid #2a2a4a; color: #c8c5d0;
+      padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.2s;
+    }
+    .quiz-reveal:hover { background: #22223a; border-color: #4a4a6a; }
+    .quiz-answer {
+      display: none; margin-top: 12px; padding: 12px 16px; background: #10122a;
+      border-radius: 6px; font-family: 'Crimson Pro', serif; font-size: 15px;
+      color: #a0a4b0; line-height: 1.7;
+    }
+    .quiz-answer.visible { display: block; animation: fadeIn 0.3s ease; }
+
+    .diagram-container {
+      background: #06080c; border: 1px solid #1e1e2e; border-radius: 10px;
+      margin: 20px 0; overflow: hidden;
+    }
+    .diagram-container canvas { display: block; width: 100%; height: auto; }
+    .diagram-label {
+      padding: 8px 14px; font-size: 11px; color: #555;
+      border-top: 1px solid #1e1e2e; text-align: center;
+    }
+
+    /* Interactive sim widgets */
+    .sim-panel {
+      background: #0c0e14; border: 1px solid #1e2838; border-radius: 10px;
+      padding: 20px; margin: 20px 0;
+    }
+    .sim-title {
+      font-size: 13px; font-weight: 600; color: #f59e0b; text-transform: uppercase;
+      letter-spacing: 0.08em; margin-bottom: 14px;
+    }
+    .sim-row { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+    .sim-label { font-size: 12px; color: #888; min-width: 120px; }
+    .sim-input {
+      background: #14161e; border: 1px solid #2a2a3a; color: #e0dce8;
+      padding: 6px 10px; border-radius: 5px; font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px; width: 80px; text-align: center;
+    }
+    .sim-input:focus { outline: none; border-color: #f59e0b; }
+    .sim-btn {
+      background: linear-gradient(135deg, #92400e, #b45309);
+      border: none; color: #fef3c7; padding: 8px 18px; border-radius: 6px;
+      cursor: pointer; font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+      font-weight: 600; transition: all 0.2s;
+    }
+    .sim-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,158,11,0.25); }
+    .sim-result {
+      margin-top: 14px; padding: 12px 16px; border-radius: 6px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .sim-result.pass { background: #0e1a14; border: 1px solid #166534; color: #4ade80; }
+    .sim-result.fail { background: #1a0e0e; border: 1px solid #7f1d1d; color: #fca5a5; }
+    .sim-result.neutral { background: #0e1018; border: 1px solid #2a2a4a; color: #c8c5d0; }
+
+    .results-table {
+      width: 100%; border-collapse: collapse; margin: 16px 0;
+      font-size: 12px;
+    }
+    .results-table th, .results-table td {
+      border: 1px solid #1e2838; padding: 8px 12px; text-align: center;
+    }
+    .results-table th { background: #0e1018; color: #f59e0b; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .results-table td { color: #b8b5c4; }
+    .results-table tr:nth-child(even) td { background: #0a0c12; }
+    .highlight-cell { color: #4ade80 !important; font-weight: 600; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn 0.4s ease forwards; }
+
+    @media (max-width: 600px) {
+      .step-title { font-size: 20px; }
+      #content-area { padding: 0 14px 60px; }
+      .sim-row { flex-direction: column; align-items: flex-start; }
+      #toc-nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="scroll-progress-track"><div id="scroll-progress-bar"></div></div>
+
+  <header id="header">
+    <div class="header-left">
+      <a href="index.html" class="header-back">< back</a>
+      <div>
+        <div class="header-title">STEP — Policy Evaluation</div>
+        <div class="header-sub">sequential testing for efficient policy comparison</div>
+      </div>
+    </div>
+  </header>
+
+  <nav id="toc-nav"></nav>
+
+  <div id="content-area">
+
+    <!-- Section 0: The Problem -->
+    <section class="step-section" id="section-0">
+      <div class="step-icon">🤖</div>
+      <h2 class="step-title">The Problem</h2>
+      <div class="step-subtitle">Why comparing robot policies is harder than it looks</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a1a2e;color:#d4d4ff">statistics</span>
+        <span class="tag" style="background:#2e1a1a;color:#ffd4d4">robotics</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">You've trained two robot manipulation policies. You run each one 50 times. Policy A succeeds 25 times (50%). Policy B succeeds 29 times (58%).</p>
+          <p class="para"><strong>Is Policy B actually better?</strong></p>
+          <p class="para">Your gut says "probably, it scored 4 more." But here's the uncomfortable truth: with only 50 trials, <strong>random variation alone</strong> could easily produce a 4-success gap between two identical policies. You might be looking at noise, not signal.</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-problem" width="780" height="320"></canvas>
+          <div class="diagram-label">The same policy run 50 times can produce wildly different success counts due to stochastic environments</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para">Robot policy evaluation is uniquely painful:</p>
+          <ul style="margin: 0 0 18px 20px; color: #b8b5c4; font-family: 'Crimson Pro', serif; font-size: 17px; line-height: 2;">
+            <li><strong>Each trial is expensive</strong> — requires manual scene setup, reset, and human supervision</li>
+            <li><strong>Environments are stochastic</strong> — even deterministic policies produce varying results due to randomized initial conditions and real-world physics</li>
+            <li><strong>Sample sizes are tiny</strong> — typically 10–50 rollouts per policy, not thousands</li>
+            <li><strong>Reproducibility matters</strong> — would another researcher reach the same conclusion?</li>
+          </ul>
+          <p class="para">We need statistical tools to separate signal from noise. This is the problem that <strong>STEP</strong> (Sequential Testing for Efficient Policy comparison) solves.</p>
+        </div>
+        <div class="insight-box">The central question: how unlikely is it that <em>pure randomness</em> produced the apparent win of Policy B over Policy A? This is exactly what hypothesis testing answers.</div>
+      </div>
+    </section>
+
+    <!-- Section 1: Batch Testing -->
+    <section class="step-section" id="section-1">
+      <div class="step-icon">📊</div>
+      <h2 class="step-title">Batch Testing: Barnard's Test</h2>
+      <div class="step-subtitle">The classical approach — commit upfront, test once</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#2a1a2e;color:#d4aaff">batch</span>
+        <span class="tag" style="background:#1a1a2e;color:#d4d4ff">statistics</span>
+        <span class="tag" style="background:#2e2a1a;color:#ffeed4">testing</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">The simplest rigorous approach: <strong>Barnard's exact test</strong>. You decide in advance how many rollouts to collect, run them all, then test <em>once</em>.</p>
+          <p class="para">The setup is a 2&times;2 contingency table:</p>
+        </div>
+        <div class="results-table" style="max-width: 400px; margin: 16px auto;">
+          <table style="width:100%; border-collapse:collapse;">
+            <tr><th style="border:1px solid #1e2838; padding:8px; background:#0e1018; color:#f59e0b;"></th><th style="border:1px solid #1e2838; padding:8px; background:#0e1018; color:#f59e0b;">Success</th><th style="border:1px solid #1e2838; padding:8px; background:#0e1018; color:#f59e0b;">Failure</th></tr>
+            <tr><td style="border:1px solid #1e2838; padding:8px; color:#b8b5c4; font-weight:600;">Policy A</td><td style="border:1px solid #1e2838; padding:8px; color:#b8b5c4;">25</td><td style="border:1px solid #1e2838; padding:8px; color:#b8b5c4;">25</td></tr>
+            <tr><td style="border:1px solid #1e2838; padding:8px; color:#b8b5c4; font-weight:600;">Policy B</td><td style="border:1px solid #1e2838; padding:8px; color:#b8b5c4;">29</td><td style="border:1px solid #1e2838; padding:8px; color:#b8b5c4;">21</td></tr>
+          </table>
+        </div>
+        <div class="explanation-text">
+          <p class="para">The <strong>null hypothesis H₀</strong>: Policy B is <em>not</em> better than Policy A (their true success rates satisfy p₁ ≤ p₀). The <strong>alternative H₁</strong>: Policy B is genuinely better (p₁ > p₀).</p>
+          <p class="para">Barnard's test computes the p-value: the probability of seeing a gap <em>at least this large</em> if the null hypothesis were true. If p &lt; 0.05, we reject H₀ with 95% confidence.</p>
+        </div>
+        <div class="code-wrapper">
+          <div class="code-toggle open" onclick="toggleCode(this)">
+            <span>Barnard's exact test in Python</span>
+            <span class="toggle-arrow open">&#9660;</span>
+          </div>
+          <div class="code-block"><span style="color:#a78bfa">from</span> scipy.stats <span style="color:#a78bfa">import</span> barnard_exact
+
+<span style="color:#a78bfa">def</span> <span style="color:#f59e0b">is_b_better</span>(succ_a, succ_b, n, confidence=<span style="color:#4ade80">0.95</span>):
+    result = barnard_exact(
+        [[succ_a, succ_b],
+         [n - succ_a, n - succ_b]],
+        alternative=<span style="color:#fcd34d">"less"</span>,
+    )
+    <span style="color:#a78bfa">return</span> result.pvalue &lt; <span style="color:#4ade80">1.0</span> - confidence
+
+<span style="color:#666"># Our running example:</span>
+is_b_better(<span style="color:#4ade80">25</span>, <span style="color:#4ade80">29</span>, <span style="color:#4ade80">50</span>)  <span style="color:#666"># → False! Not significant.</span></div>
+        </div>
+        <div class="sim-panel">
+          <div class="sim-title">Try it: Batch significance calculator</div>
+          <div class="sim-row">
+            <span class="sim-label">Rollouts per policy</span>
+            <input class="sim-input" id="batch-n" type="number" value="50" min="5" max="500">
+          </div>
+          <div class="sim-row">
+            <span class="sim-label">Policy A successes</span>
+            <input class="sim-input" id="batch-a" type="number" value="25" min="0" max="500">
+          </div>
+          <div class="sim-row">
+            <span class="sim-label">Policy B successes</span>
+            <input class="sim-input" id="batch-b" type="number" value="29" min="0" max="500">
+          </div>
+          <div class="sim-row">
+            <button class="sim-btn" onclick="runBatchTest()">Run Barnard's Test</button>
+          </div>
+          <div id="batch-result" class="sim-result neutral" style="display:none;"></div>
+        </div>
+        <div class="explanation-text">
+          <p class="para">With our example (25 vs 29 out of 50), <strong>Barnard's test fails to conclude B is better</strong>. The signal-to-noise ratio is too low. You'd need a larger gap or more trials.</p>
+        </div>
+        <div class="quiz-box">
+          <div class="quiz-question">What happens if Barnard's test is inconclusive and you decide to run 20 more trials per policy, then test again?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer">This is <strong>p-hacking</strong> (data dredging). By testing at multiple stopping points, you inflate the false positive rate beyond the claimed 5%. The batch approach strictly requires that you commit to a sample size upfront and test exactly once. If you peek and keep going, your statistical guarantees are void.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: The P-Hacking Trap -->
+    <section class="step-section" id="section-2">
+      <div class="step-icon">⚠️</div>
+      <h2 class="step-title">The P-Hacking Trap</h2>
+      <div class="step-subtitle">Why you can't just 'collect more data until it works'</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#2e1a1a;color:#ff6b6b">phacking</span>
+        <span class="tag" style="background:#1a1a2e;color:#d4d4ff">statistics</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">Imagine this tempting workflow: run 20 trials each, test. Not significant? Run 10 more, test again. Still nothing? Another 10. Keep going until you get p &lt; 0.05 or give up.</p>
+          <p class="para">This is <strong>p-hacking</strong>, and it completely breaks your statistical guarantees. The more times you peek at your data and test, the higher the chance of a false positive — even when the two policies are identical.</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-phacking" width="780" height="300"></canvas>
+          <div class="diagram-label">False positive rate inflates with repeated testing — the more you peek, the more you fool yourself</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para"><strong>The paradox of batch testing:</strong> The number of rollouts you <em>need</em> depends on the true performance gap between policies. A 30-percentage-point gap needs ~20 trials. A 5-point gap might need 500+. But <strong>you don't know the gap before running the experiment</strong> — that's what you're trying to measure!</p>
+          <p class="para">So you're stuck: commit to a number upfront (possibly way too few or wastefully many), or peek and break your statistics.</p>
+        </div>
+        <div class="insight-box">This is the fundamental tension that STEP resolves: how do you adaptively decide when you have enough data, without inflating your false positive rate? The answer: sequential testing with rigorous error control built into the stopping rule.</div>
+        <div class="explanation-text">
+          <p class="para">The chart above shows what happens with a naive "sequential Barnard" approach — just running Barnard's test after each new trial pair. The false positive rate (supposed to be &le; 5%) can climb to 15–20% or higher. STEP maintains it at exactly the promised level.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: STEP Core Idea -->
+    <section class="step-section" id="section-3">
+      <div class="step-icon">⚡</div>
+      <h2 class="step-title">STEP: The Core Idea</h2>
+      <div class="step-subtitle">Sequential Testing for Efficient Policy Comparison</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2a1e;color:#f59e0b">step</span>
+        <span class="tag" style="background:#1e2a2e;color:#67e8f9">sequential</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para"><strong>STEP</strong> flips the script. Instead of committing to a fixed number of trials, after <em>each paired trial</em> you make one of three decisions:</p>
+          <ol style="margin: 0 0 18px 20px; color: #b8b5c4; font-family: 'Crimson Pro', serif; font-size: 17px; line-height: 2.2;">
+            <li><strong>Continue</strong> — not enough evidence yet, run another trial pair</li>
+            <li><strong>Reject H₀</strong> — sufficient evidence that Policy B is better</li>
+            <li><strong>Accept H₀</strong> — sufficient evidence that Policy B is <em>not</em> better (or stop at budget)</li>
+          </ol>
+          <p class="para">The key: these decision boundaries are <strong>precomputed offline</strong> via optimization, guaranteeing that the overall false positive rate stays below your chosen threshold (e.g., 5%) regardless of when you stop.</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-regions" width="780" height="420"></canvas>
+          <div class="diagram-label">STEP decision regions: after each trial, check your state (cumulative successes) against precomputed boundaries</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para">The <strong>state</strong> at step n is simple: <code>x_n = (S₀, S₁, n)</code> where S₀ and S₁ are the cumulative success counts for each policy. After each trial pair, both S₀ and S₁ either increment (success) or stay (failure), and n increments by 1.</p>
+          <p class="para">At each point on this discrete lattice, STEP has precomputed whether to continue, reject, or accept. Easy comparisons (big performance gaps) trigger early stopping. Hard comparisons (small gaps) use more of the budget — but never wastefully.</p>
+        </div>
+        <div class="insight-box">STEP is like having a lookup table: after each trial, check your (S₀, S₁, n) coordinates. The table tells you whether to stop or continue. The table was computed to be near-optimal: it stops as early as possible while keeping your error guarantees.</div>
+      </div>
+    </section>
+
+    <!-- Section 4: How STEP Works Inside -->
+    <section class="step-section" id="section-4">
+      <div class="step-icon">🔧</div>
+      <h2 class="step-title">How STEP Works Inside</h2>
+      <div class="step-subtitle">Linear programs and risk budgets</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2a1e;color:#f59e0b">step</span>
+        <span class="tag" style="background:#1a1a2e;color:#d4d4ff">statistics</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">STEP precomputes its decision rule by solving a sequence of <strong>linear programs</strong> — one for each possible trial count n = 1, 2, ..., N_max.</p>
+          <p class="para">The total false positive budget α* (e.g., 0.05) is split across time steps via a <strong>risk budget</strong> function f(n):</p>
+        </div>
+        <div class="math-block" id="math-budget"></div>
+        <div class="explanation-text">
+          <p class="para">In practice, a uniform budget works well: <code>f(n) = α*/N_max</code> for all n. Each time step gets an equal share of the false-positive allowance.</p>
+          <p class="para">At each step n, STEP solves:</p>
+        </div>
+        <div class="math-block" id="math-lp"></div>
+        <div class="explanation-text">
+          <p class="para">In plain English: <strong>maximize the rejection region</strong> (maximize statistical power — the ability to detect a real difference) while ensuring that the probability of a false rejection, under <em>any</em> null hypothesis, stays within the allocated budget.</p>
+          <p class="para">The matrix <strong>P_n</strong> encodes the probability of reaching each state under each possible null hypothesis. The constraint ensures that no matter what the true success rates are (as long as p₁ ≤ p₀), the total rejection probability stays below α*.</p>
+        </div>
+        <div class="code-wrapper">
+          <div class="code-toggle open" onclick="toggleCode(this)">
+            <span>STEP precomputation (pseudocode)</span>
+            <span class="toggle-arrow open">&#9660;</span>
+          </div>
+          <div class="code-block"><span style="color:#666"># Offline precomputation — done once before any trials</span>
+<span style="color:#a78bfa">for</span> n <span style="color:#a78bfa">in</span> <span style="color:#f59e0b">range</span>(<span style="color:#4ade80">1</span>, N_max + <span style="color:#4ade80">1</span>):
+    P_n = propagate(P_{n-1}, decisions_{n-1})  <span style="color:#666"># forward evolution</span>
+    w_n = solve_LP(P_n, risk_budget)           <span style="color:#666"># maximize rejection region</span>
+    decisions_n = extract_regions(w_n)         <span style="color:#666"># continue / reject / accept</span>
+
+<span style="color:#666"># At runtime — dead simple:</span>
+<span style="color:#a78bfa">for</span> each trial pair:
+    update (S_0, S_1, n)
+    <span style="color:#a78bfa">if</span> (S_0, S_1, n) <span style="color:#a78bfa">in</span> reject_region:  <span style="color:#f59e0b">STOP</span> → B is better
+    <span style="color:#a78bfa">if</span> (S_0, S_1, n) <span style="color:#a78bfa">in</span> accept_region:  <span style="color:#f59e0b">STOP</span> → no difference
+    <span style="color:#a78bfa">else</span>: <span style="color:#f59e0b">CONTINUE</span></div>
+        </div>
+        <div class="explanation-text">
+          <p class="para"><strong>Why this beats other methods:</strong> SAVI (Safe Anytime-Valid Inference) is valid for arbitrary N_max but overly conservative in small-sample regimes. Lai's method solves an asymptotic PDE (heat equation) which is ill-posed at small N. STEP solves the <em>finite-sample exact</em> problem, which is what matters when your budget is 50–100 trials.</p>
+        </div>
+        <div class="quiz-box">
+          <div class="quiz-question">Why does STEP use a discrete grid of null hypotheses instead of testing against all possible (p₀, p₁) pairs?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer">The null hypothesis H₀: p₁ ≤ p₀ is <strong>composite</strong> — it contains infinitely many (p₀, p₁) pairs. To make the LP tractable, STEP discretizes this space into M representative points (e.g., intervals of 0.1). The constraint must hold for all M points, ensuring approximate control over the full continuous null. Finer grids give tighter control but increase computation.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 5: Interactive Sequential vs Batch -->
+    <section class="step-section" id="section-5">
+      <div class="step-icon">🎲</div>
+      <h2 class="step-title">Interactive: Sequential vs Batch</h2>
+      <div class="step-subtitle">Watch STEP stop early on easy comparisons</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#2e2e1a;color:#fcd34d">interactive</span>
+        <span class="tag" style="background:#1a2a1e;color:#f59e0b">step</span>
+        <span class="tag" style="background:#1e2a2e;color:#67e8f9">sequential</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">Let's see the difference in action. This simulation draws random binary outcomes for two policies with true success rates you specify, then shows how batch testing and sequential testing compare.</p>
+        </div>
+        <div class="sim-panel">
+          <div class="sim-title">Simulate: Sequential vs Batch policy comparison</div>
+          <div class="sim-row">
+            <span class="sim-label">Policy A true rate</span>
+            <input class="sim-input" id="sim-pa" type="number" value="0.50" min="0" max="1" step="0.05">
+          </div>
+          <div class="sim-row">
+            <span class="sim-label">Policy B true rate</span>
+            <input class="sim-input" id="sim-pb" type="number" value="0.80" min="0" max="1" step="0.05">
+          </div>
+          <div class="sim-row">
+            <span class="sim-label">Max trials (N_max)</span>
+            <input class="sim-input" id="sim-nmax" type="number" value="50" min="10" max="200">
+          </div>
+          <div class="sim-row">
+            <button class="sim-btn" onclick="runSequentialSim()">Run Simulation</button>
+            <button class="sim-btn" style="background:linear-gradient(135deg,#1e293b,#334155);" onclick="runSequentialSim()">Re-roll</button>
+          </div>
+          <div id="seq-result" class="sim-result neutral" style="display:none;"></div>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-sequential" width="780" height="360"></canvas>
+          <div class="diagram-label">Cumulative success difference over trials — green zone = reject H₀ (B is better), red zone = accept H₀</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para"><strong>Try it:</strong> Set both rates to the same value (e.g., 0.50 and 0.50) and watch STEP correctly fail to declare a difference — or occasionally reach the budget. Then set a big gap (e.g., 0.30 vs 0.80) and watch it stop very early.</p>
+          <p class="para">The key practical benefit: <strong>when Policy A scored 2/9 and Policy B scored 8/9, STEP concluded early</strong>, saving 41 × 2 = 82 individual rollouts. That's hours of human effort saved.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 6: Multi-Policy Comparison -->
+    <section class="step-section" id="section-6">
+      <div class="step-icon">📈</div>
+      <h2 class="step-title">Multi-Policy Comparison</h2>
+      <div class="step-subtitle">Compact Letter Display and Bayesian violin plots</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2e2a;color:#a7f3d0">visualization</span>
+        <span class="tag" style="background:#1a1a2e;color:#d4d4ff">statistics</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">What if you have more than two policies? Say you're comparing 5 checkpoints from different training runs. You'd need pairwise comparisons — but with a correction.</p>
+          <p class="para"><strong>Bonferroni correction:</strong> If you're running k pairwise tests at confidence level 95%, each individual test must use confidence level <code>1 - 0.05/k</code> to keep the overall false positive rate at 5%. Conservative, but safe.</p>
+          <p class="para">The results are visualized with two complementary tools:</p>
+        </div>
+        <div class="explanation-text">
+          <p class="para"><strong>1. Compact Letter Display (CLD)</strong></p>
+          <p class="para">Each policy gets one or more letters. The rule: <strong>two policies that share NO letter are statistically separated</strong>. Policies that share at least one letter are <em>not</em> significantly different.</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-cld" width="780" height="220"></canvas>
+          <div class="diagram-label">Compact Letter Display: policies sharing a letter are not significantly different from each other</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para"><strong>2. Bayesian Violin Plots</strong></p>
+          <p class="para">Why not just use confidence intervals? Because <strong>overlapping confidence intervals are misleading</strong> — two intervals can overlap substantially while the policies are still statistically separated by direct hypothesis testing. Violin plots show the full posterior distribution of each policy's success rate, giving a much richer picture.</p>
+          <p class="para">The posterior uses a Beta distribution with uniform prior: <code>Beta(1 + successes, 1 + failures)</code>. CLD letters are overlaid directly on the violin bodies.</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-violins" width="780" height="300"></canvas>
+          <div class="diagram-label">Bayesian violin plots with CLD labels — the full posterior uncertainty, not just point estimates</div>
+        </div>
+        <div class="quiz-box">
+          <div class="quiz-question">Policy X has CLD label "ab" and Policy Y has label "bc". Are they significantly different?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer"><strong>No.</strong> They share the letter "b", so they are NOT significantly different from each other. If X had label "a" and Y had label "b" (no shared letters), then they would be separated.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 7: Real Robot Results -->
+    <section class="step-section" id="section-7">
+      <div class="step-icon">🏆</div>
+      <h2 class="step-title">Real Robot Results</h2>
+      <div class="step-subtitle">STEP on real manipulation tasks</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2a1e;color:#f59e0b">step</span>
+        <span class="tag" style="background:#2e1a1a;color:#ffd4d4">robotics</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">STEP was validated on real-world robot tasks at TRI and in simulation. Here are the results — the number of trials each method needed before reaching a conclusion:</p>
+        </div>
+        <table class="results-table">
+          <tr>
+            <th>Task</th><th>α*</th><th>N_max</th><th>Gap</th><th>SAVI</th><th>Lai</th><th style="color:#4ade80">STEP</th><th>Oracle</th>
+          </tr>
+          <tr>
+            <td style="text-align:left; color:#e0dce8;">FoldRedTowel</td><td>0.05</td><td>50</td><td>36pp</td><td>20</td><td>17</td><td class="highlight-cell">19</td><td>17</td>
+          </tr>
+          <tr>
+            <td style="text-align:left; color:#e0dce8;">CleanUpSpill</td><td>0.05</td><td>50</td><td>52pp</td><td>7</td><td>8</td><td class="highlight-cell">8</td><td>7</td>
+          </tr>
+          <tr>
+            <td style="text-align:left; color:#e0dce8;">CarrotOnPlate</td><td>0.05</td><td>100</td><td>~0pp</td><td colspan="4" style="color:#666;">All methods: Fail to Decide</td>
+          </tr>
+          <tr>
+            <td style="text-align:left; color:#e0dce8;">SpoonOnTowel (sim)</td><td>0.01</td><td>500</td><td>30pp</td><td>33</td><td>36</td><td class="highlight-cell">36</td><td>26</td>
+          </tr>
+          <tr>
+            <td style="text-align:left; color:#e0dce8;">EggplantInBasket (sim)</td><td>0.01</td><td>500</td><td>16pp</td><td>192</td><td>125</td><td class="highlight-cell">131</td><td>128</td>
+          </tr>
+          <tr>
+            <td style="text-align:left; color:#e0dce8;">StackCube (sim)</td><td>0.01</td><td>500</td><td>3pp</td><td>329</td><td>417</td><td class="highlight-cell">225</td><td>135</td>
+          </tr>
+        </table>
+        <div class="explanation-text">
+          <p class="para"><strong>Key findings:</strong></p>
+          <ul style="margin: 0 0 18px 20px; color: #b8b5c4; font-family: 'Crimson Pro', serif; font-size: 17px; line-height: 2;">
+            <li><strong>Easy comparisons</strong> (large gaps like FoldRedTowel, CleanUpSpill): all methods stop early, similar performance</li>
+            <li><strong>Hard comparisons</strong> (tiny gaps like StackCube at 3pp): <strong>STEP saves 104 trials vs SAVI, 192 vs Lai</strong></li>
+            <li><strong>Genuinely ambiguous</strong> (CarrotOnPlate): all methods correctly return "fail to decide" — the gap is too small for the budget</li>
+          </ul>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-savings" width="780" height="280"></canvas>
+          <div class="diagram-label">Multi-task total trials: STEP saves up to 32% of evaluation effort vs state-of-the-art baselines</div>
+        </div>
+        <div class="insight-box">STEP matters most where it matters most: on the hardest comparisons where every trial costs significant effort. Easy comparisons are easy for everyone.</div>
+      </div>
+    </section>
+
+    <!-- Section 8: Practical Playbook -->
+    <section class="step-section" id="section-8">
+      <div class="step-icon">📋</div>
+      <h2 class="step-title">Practical Playbook</h2>
+      <div class="step-subtitle">How to actually use STEP in your workflow</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#2e1a2a;color:#fda4af">practice</span>
+        <span class="tag" style="background:#2e1a1a;color:#ffd4d4">robotics</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para"><strong>Step 1: Install</strong></p>
+        </div>
+        <div class="code-wrapper">
+          <div class="code-toggle open" onclick="toggleCode(this)">
+            <span>Installation & basic usage</span>
+            <span class="toggle-arrow open">&#9660;</span>
+          </div>
+          <div class="code-block">pip install sequentialized_barnard_tests
+
+<span style="color:#a78bfa">from</span> sequentialized_barnard_tests <span style="color:#a78bfa">import</span> Decision, get_mirrored_test, Hypothesis
+
+<span style="color:#666"># Create sequential test (precomputes decision rule)</span>
+test = get_mirrored_test(
+    num_max_rollouts=<span style="color:#4ade80">50</span>,
+    alternative=Hypothesis.P0LessThanP1,
+    alpha=<span style="color:#4ade80">0.05</span>,
+)
+
+<span style="color:#666"># After collecting trial data:</span>
+result = test.run_on_sequence(successes_a, successes_b)
+
+<span style="color:#a78bfa">if</span> result.decision == Decision.AcceptAlternative:
+    <span style="color:#f59e0b">print</span>(<span style="color:#fcd34d">f"B is better! Stopped at trial {result.info['Time']}"</span>)
+<span style="color:#a78bfa">elif</span> result.decision == Decision.AcceptNull:
+    <span style="color:#f59e0b">print</span>(<span style="color:#fcd34d">"No significant difference found"</span>)</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para"><strong>Step 2: Run the experiment right</strong></p>
+          <ol style="margin: 0 0 18px 20px; color: #b8b5c4; font-family: 'Crimson Pro', serif; font-size: 17px; line-height: 2.2;">
+            <li><strong>Define success criteria</strong> — detailed, unambiguous, <em>before</em> running anything</li>
+            <li><strong>Interleave and randomize</strong> — alternate policies in randomized order, blind the evaluator</li>
+            <li><strong>Same initial conditions</strong> — use the same distribution of scene setups for each policy</li>
+            <li><strong>Run within a continuous session</strong> — don't spread across days if conditions might drift</li>
+            <li><strong>Report everything</strong> — trial count, success criteria, initial conditions, stopping reason</li>
+          </ol>
+        </div>
+        <div class="code-wrapper">
+          <div class="code-toggle closed" onclick="toggleCode(this)">
+            <span>Multi-policy comparison with CLD</span>
+            <span class="toggle-arrow">&#9660;</span>
+          </div>
+          <div class="code-block" style="display:none;"><span style="color:#a78bfa">from</span> sequentialized_barnard_tests.tools.plotting <span style="color:#a78bfa">import</span> (
+    compare_success_and_get_cld
+)
+
+cld = compare_success_and_get_cld(
+    model_name_list=[<span style="color:#fcd34d">"Baseline"</span>, <span style="color:#fcd34d">"v2"</span>, <span style="color:#fcd34d">"v3"</span>, <span style="color:#fcd34d">"v4"</span>],
+    success_array_list=[arr_base, arr_v2, arr_v3, arr_v4],
+    global_confidence_level=<span style="color:#4ade80">0.95</span>,
+    max_sample_size_per_model=<span style="color:#4ade80">50</span>,
+    shuffle=<span style="color:#4ade80">True</span>,  <span style="color:#666"># important for multi-task</span>
+    verbose=<span style="color:#4ade80">True</span>,
+)
+<span style="color:#666"># Returns dict: {"Baseline": "a", "v2": "ab", "v3": "b", "v4": "c"}</span></div>
+        </div>
+        <div class="explanation-text">
+          <p class="para"><strong>Step 3: Don't forget the caveats</strong></p>
+          <ul style="margin: 0 0 18px 20px; color: #b8b5c4; font-family: 'Crimson Pro', serif; font-size: 17px; line-height: 2;">
+            <li>STEP handles <strong>binary success/failure only</strong> — not continuous rewards</li>
+            <li>Trials must be <strong>IID</strong> — independently drawn from the same distribution</li>
+            <li>A "fail to decide" does <em>not</em> mean the policies are equal — it means the gap is too small for your trial budget</li>
+            <li>Complement success rates with other metrics: task completion time, partial progress, failure modes</li>
+          </ul>
+        </div>
+        <div class="explanation-text" style="margin-top: 20px;">
+          <p class="para"><strong>References:</strong></p>
+          <ul style="margin: 0 0 18px 20px; color: #7a7e8c; font-family: 'Crimson Pro', serif; font-size: 15px; line-height: 2;">
+            <li>Snyder et al. (2025) — "Is Your Imitation Learning Policy Better than Mine?" <a href="https://arxiv.org/abs/2503.10966" style="color:#f59e0b;">arXiv:2503.10966</a> (RSS 2025)</li>
+            <li>Project page: <a href="https://tri-ml.github.io/step/" style="color:#f59e0b;">tri-ml.github.io/step</a></li>
+            <li>Python package: <code>pip install sequentialized_barnard_tests</code></li>
+            <li>TRI Blog: <a href="https://medium.com/toyotaresearch/statistical-thinking-for-robot-policy-evaluation-from-rigorous-a-b-testing-to-effective-0ae886fbd68d" style="color:#f59e0b;">Statistical Thinking for Robot Policy Evaluation</a></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 9: Recap & Self-Test -->
+    <section class="step-section" id="section-9">
+      <div class="step-icon">🧪</div>
+      <h2 class="step-title">Recap & Self-Test</h2>
+      <div class="step-subtitle">Lock in your understanding</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a1a2e;color:#d4d4ff">statistics</span>
+        <span class="tag" style="background:#1a2a1e;color:#f59e0b">step</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">Let's make sure the core concepts are solid:</p>
+        </div>
+        <div class="quiz-box">
+          <div class="quiz-question">1. Why is Barnard's test preferred over a chi-squared test for small robot evaluation sample sizes?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer">Barnard's test is an <strong>exact test</strong> — it computes exact probabilities without relying on asymptotic (large-sample) approximations. Chi-squared tests assume the sample is large enough for the normal approximation to hold, which fails when n is 10–50. Barnard's test is valid at any sample size.</div>
+        </div>
+        <div class="quiz-box">
+          <div class="quiz-question">2. STEP controls "Type-I error." What is Type-I error in this context, and why is it worse than Type-II error?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer"><strong>Type-I error</strong> (false positive): concluding Policy B is better when it's actually not. This is dangerous because you'd deploy an inferior policy based on bad evidence. <strong>Type-II error</strong> (false negative): failing to detect a real improvement. This is less harmful — you just miss an opportunity. STEP guarantees Type-I stays below α* while maximizing power (minimizing Type-II).</div>
+        </div>
+        <div class="quiz-box">
+          <div class="quiz-question">3. You're comparing 4 policies with STEP at 95% global confidence. How many pairwise tests do you run, and what confidence level does each use?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer">With 4 policies, there are <strong>C(4,2) = 6 pairwise tests</strong>. Using Bonferroni correction, each test uses confidence level <code>1 - 0.05/6 = 99.17%</code> (or equivalently, α = 0.00833 per test). This ensures the overall family-wise error rate stays at 5%.</div>
+        </div>
+        <div class="quiz-box">
+          <div class="quiz-question">4. Why should trials be interleaved and randomized rather than running all of Policy A first, then all of Policy B?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer">Running all of one policy first introduces <strong>confounding variables</strong>: the experimenter might fatigue, the environment might drift (temperature, lighting, battery charge), or the scene setup might subtly change over a long session. Interleaving ensures both policies face the same conditions. Randomization prevents unconscious bias in the ordering. This is the same principle as randomized controlled trials in medicine.</div>
+        </div>
+        <div class="quiz-box">
+          <div class="quiz-question">5. STEP's decision rule is "precomputed offline." What does this mean practically, and what parameters affect the precomputation?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer">Before any trials run, STEP solves a sequence of linear programs to determine, for every possible state (S₀, S₁, n), whether to continue, reject, or accept. This precomputation depends on: <strong>N_max</strong> (trial budget), <strong>α*</strong> (error tolerance), <strong>M</strong> (discretization resolution of the null hypothesis space), and the <strong>risk budget function</strong> f(n). Once computed, the runtime decision is just a table lookup — trivially fast.</div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+<script>
+/* ── Section metadata for TOC ── */
+const sectionMeta = [
+  { title: "The Problem", icon: "🤖" },
+  { title: "Barnard's Test", icon: "📊" },
+  { title: "P-Hacking Trap", icon: "⚠️" },
+  { title: "STEP Core Idea", icon: "⚡" },
+  { title: "How STEP Works", icon: "🔧" },
+  { title: "Interactive Sim", icon: "🎲" },
+  { title: "Multi-Policy", icon: "📈" },
+  { title: "Real Results", icon: "🏆" },
+  { title: "Playbook", icon: "📋" },
+  { title: "Recap & Test", icon: "🧪" },
+];
+
+/* ── Build TOC nav ── */
+function buildTocNav() {
+  const nav = document.getElementById('toc-nav');
+  sectionMeta.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'toc-dot-row';
+    row.innerHTML = `<span class="toc-label">${s.title}</span><div class="toc-dot"></div>`;
+    row.addEventListener('click', () => {
+      document.getElementById('section-' + i).scrollIntoView({ behavior: 'smooth' });
+    });
+    nav.appendChild(row);
+  });
+}
+
+/* ── Scroll progress bar ── */
+function updateScrollProgress() {
+  const scrollTop = window.scrollY;
+  const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+  const progress = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+  document.getElementById('scroll-progress-bar').style.width = progress + '%';
+}
+
+/* ── TOC highlighting via IntersectionObserver ── */
+function setupTocHighlighting() {
+  const sections = document.querySelectorAll('.step-section');
+  const tocRows = document.querySelectorAll('.toc-dot-row');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const idx = parseInt(entry.target.id.split('-')[1]);
+      if (entry.isIntersecting) {
+        tocRows.forEach(r => r.classList.remove('active'));
+        tocRows[idx].classList.add('active');
+        tocRows[idx].classList.add('visited');
+      }
+    });
+  }, {
+    rootMargin: '-30% 0px -60% 0px',
+    threshold: 0
+  });
+
+  sections.forEach(section => observer.observe(section));
+}
+
+/* ── Canvas diagram rendering via IntersectionObserver (draw once) ── */
+function setupCanvasObservers() {
+  const canvasMap = {
+    'canvas-problem': drawProblemDiagram,
+    'canvas-phacking': drawPhackingDiagram,
+    'canvas-regions': drawRegionsDiagram,
+    'canvas-cld': drawCldDiagram,
+    'canvas-violins': drawViolinDiagram,
+    'canvas-savings': drawSavingsDiagram,
+  };
+
+  const observer = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.id;
+        if (canvasMap[id]) {
+          canvasMap[id]();
+        }
+        obs.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: '100px 0px', threshold: 0 });
+
+  Object.keys(canvasMap).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) observer.observe(el);
+  });
+}
+
+/* ── Math rendering ── */
+function renderMath() {
+  const budget = document.getElementById('math-budget');
+  if (budget && window.katex) {
+    katex.render('\\sum_{n=0}^{N_{\\max}} f(n) = \\alpha^* \\qquad \\text{(e.g., } f(n) = \\alpha^*/N_{\\max} \\text{ uniform)}', budget, { displayMode: true });
+  }
+  const lp = document.getElementById('math-lp');
+  if (lp && window.katex) {
+    katex.render('\\max_{\\mathbf{w}_n} \\; \\mathbf{1}^T \\mathbf{w}_n \\quad \\text{s.t.} \\quad P_n \\mathbf{w}_n \\leq \\left(\\sum_{k=1}^{n} f(k)\\right) \\mathbf{1}, \\quad 0 \\leq \\mathbf{w}_n \\leq 1', lp, { displayMode: true });
+  }
+}
+
+/* ── Interactive toggles ── */
+function toggleQuiz(btn) {
+  const answer = btn.nextElementSibling;
+  answer.classList.toggle('visible');
+  btn.textContent = answer.classList.contains('visible') ? 'Hide answer' : 'Reveal answer';
+}
+
+function toggleCode(el) {
+  const block = el.nextElementSibling;
+  const arrow = el.querySelector('.toggle-arrow');
+  if (block.style.display === 'none') {
+    block.style.display = 'block'; el.classList.remove('closed'); el.classList.add('open'); arrow.classList.add('open');
+  } else {
+    block.style.display = 'none'; el.classList.remove('open'); el.classList.add('closed'); arrow.classList.remove('open');
+  }
+}
+
+/* ── Interactive sims ── */
+function runBatchTest() {
+  const n = parseInt(document.getElementById('batch-n').value);
+  const a = parseInt(document.getElementById('batch-a').value);
+  const b = parseInt(document.getElementById('batch-b').value);
+  const el = document.getElementById('batch-result');
+  el.style.display = 'block';
+
+  // Approximate Barnard's test via normal approximation for the demo
+  const pA = a / n, pB = b / n;
+  const pPool = (a + b) / (2 * n);
+  const se = Math.sqrt(2 * pPool * (1 - pPool) / n);
+  const z = se > 0 ? (pB - pA) / se : 0;
+  const pValue = 1 - normalCDF(z);
+
+  if (pValue < 0.05) {
+    el.className = 'sim-result pass';
+    el.innerHTML = `<strong>Reject H₀</strong> — Policy B is significantly better (p ≈ ${pValue.toFixed(4)}).<br>
+    Success rates: A = ${(pA*100).toFixed(1)}%, B = ${(pB*100).toFixed(1)}%. The gap is large enough to be confident.`;
+  } else {
+    el.className = 'sim-result fail';
+    el.innerHTML = `<strong>Fail to reject H₀</strong> — No significant difference (p ≈ ${pValue.toFixed(4)}).<br>
+    Success rates: A = ${(pA*100).toFixed(1)}%, B = ${(pB*100).toFixed(1)}%. The gap could be noise — you'd need more trials or a larger effect.`;
+  }
+}
+
+function normalCDF(x) {
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429;
+  const p = 0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x) / Math.SQRT2;
+  const t = 1.0 / (1.0 + p * x);
+  const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+  return 0.5 * (1.0 + sign * y);
+}
+
+let simData = null;
+
+function runSequentialSim() {
+  const pA = parseFloat(document.getElementById('sim-pa').value);
+  const pB = parseFloat(document.getElementById('sim-pb').value);
+  const nMax = parseInt(document.getElementById('sim-nmax').value);
+
+  const resultsA = [], resultsB = [];
+  let sA = 0, sB = 0;
+  let stopped = -1, decision = 'continue';
+
+  for (let i = 0; i < nMax; i++) {
+    const rA = Math.random() < pA ? 1 : 0;
+    const rB = Math.random() < pB ? 1 : 0;
+    sA += rA; sB += rB;
+    resultsA.push(sA); resultsB.push(sB);
+
+    // Simplified sequential boundary (approximation of STEP behavior)
+    const n = i + 1;
+    const diff = sB - sA;
+    const threshold = 1.5 * Math.sqrt(n) + 0.8;  // approximate upper boundary
+    const lowerThreshold = -0.8 * Math.sqrt(n) - 1;
+
+    if (stopped < 0) {
+      if (diff > threshold) { stopped = n; decision = 'reject'; }
+      else if (diff < lowerThreshold && n > 10) { stopped = n; decision = 'accept'; }
+    }
+  }
+
+  simData = { resultsA, resultsB, stopped, decision, nMax, pA, pB };
+
+  const el = document.getElementById('seq-result');
+  el.style.display = 'block';
+  if (decision === 'reject') {
+    el.className = 'sim-result pass';
+    el.innerHTML = `<strong>Sequential: Rejected H₀ at trial ${stopped}</strong> — Policy B declared better.<br>
+    Batch would have used all ${nMax} trials. Sequential saved <strong>${nMax - stopped} trial pairs</strong>.<br>
+    Final counts: A = ${sA}/${nMax}, B = ${sB}/${nMax}.`;
+  } else if (decision === 'accept') {
+    el.className = 'sim-result fail';
+    el.innerHTML = `<strong>Sequential: Accepted H₀ at trial ${stopped}</strong> — No significant difference found.<br>
+    Final counts: A = ${sA}/${nMax}, B = ${sB}/${nMax}.`;
+  } else {
+    el.className = 'sim-result neutral';
+    el.innerHTML = `<strong>Sequential: Reached budget (${nMax} trials)</strong> — Fail to decide.<br>
+    Final counts: A = ${sA}/${nMax}, B = ${sB}/${nMax}. The gap may be too small for this budget.`;
+  }
+
+  drawSequentialChart();
+}
+
+/* ── Canvas diagrams ── */
+function getCtx(id, w, h) {
+  const c = document.getElementById(id);
+  if (!c) return null;
+  const dpr = window.devicePixelRatio || 1;
+  c.width = w * dpr; c.height = h * dpr;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return ctx;
+}
+
+function drawBox(ctx, x, y, w, h, fill, stroke, text, textColor, fontSize) {
+  ctx.fillStyle = fill; ctx.strokeStyle = stroke; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, 6); ctx.fill(); ctx.stroke();
+  if (text) {
+    ctx.fillStyle = textColor || '#ccc'; ctx.font = `${fontSize || 12}px IBM Plex Mono, monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const lines = text.split('\n'), lh = (fontSize || 12) + 4;
+    const startY = y + h/2 - ((lines.length - 1) * lh) / 2;
+    lines.forEach((line, i) => ctx.fillText(line, x + w/2, startY + i * lh));
+  }
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color) {
+  ctx.strokeStyle = color || '#f59e0b'; ctx.fillStyle = color || '#f59e0b'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  ctx.beginPath(); ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - 8 * Math.cos(angle - 0.4), y2 - 8 * Math.sin(angle - 0.4));
+  ctx.lineTo(x2 - 8 * Math.cos(angle + 0.4), y2 - 8 * Math.sin(angle + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+function drawProblemDiagram() {
+  const ctx = getCtx('canvas-problem', 780, 320);
+  if (!ctx) return;
+
+  ctx.fillStyle = '#888';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Same policy (p = 0.55), 10 independent runs of 50 trials each', 390, 25);
+
+  // Simulate 10 binomial draws
+  const seed = [27, 30, 25, 32, 28, 24, 31, 26, 29, 33];
+  const barWidth = 50, gap = 22, startX = 55;
+  const maxH = 220, maxVal = 50;
+
+  seed.forEach((val, i) => {
+    const x = startX + i * (barWidth + gap);
+    const h = (val / maxVal) * maxH;
+    const y = 260 - h;
+
+    // Bar
+    const hue = val >= 28 ? '142, 222, 128' : '252, 165, 165';
+    ctx.fillStyle = `rgba(${hue}, 0.5)`;
+    ctx.beginPath(); ctx.roundRect(x, y, barWidth, h, [4, 4, 0, 0]); ctx.fill();
+    ctx.strokeStyle = `rgba(${hue}, 0.8)`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Value label
+    ctx.fillStyle = '#e0dce8';
+    ctx.font = 'bold 13px IBM Plex Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(val, x + barWidth/2, y - 8);
+
+    // Run label
+    ctx.fillStyle = '#555';
+    ctx.font = '10px IBM Plex Mono, monospace';
+    ctx.fillText(`Run ${i+1}`, x + barWidth/2, 278);
+  });
+
+  // Reference line at 27.5 (true expected)
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = '#f59e0b';
+  ctx.lineWidth = 1;
+  const refY = 260 - (27.5 / maxVal) * maxH;
+  ctx.beginPath(); ctx.moveTo(40, refY); ctx.lineTo(740, refY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#f59e0b';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('E[success] = 27.5', 645, refY - 8);
+
+  // Spread annotation
+  ctx.fillStyle = '#666';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Range: 24 to 33 — a 9-success spread from pure noise!', 390, 305);
+}
+
+function drawPhackingDiagram() {
+  const ctx = getCtx('canvas-phacking', 780, 300);
+  if (!ctx) return;
+
+  const ax = 80, ay = 250, aw = 620, ah = 200;
+
+  // Axes
+  ctx.strokeStyle = '#2a2a3a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(ax, ay - ah); ctx.lineTo(ax, ay); ctx.lineTo(ax + aw, ay); ctx.stroke();
+
+  // Y-axis
+  ctx.fillStyle = '#666'; ctx.font = '10px IBM Plex Mono, monospace'; ctx.textAlign = 'right';
+  [0, 5, 10, 15, 20].forEach(v => {
+    const y = ay - (v / 20) * ah;
+    ctx.fillText(v + '%', ax - 10, y + 4);
+    ctx.strokeStyle = '#1a1a24'; ctx.beginPath(); ctx.moveTo(ax, y); ctx.lineTo(ax + aw, y); ctx.stroke();
+  });
+
+  ctx.fillStyle = '#666'; ctx.font = '10px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+  ctx.fillText('False Positive Rate (%)', ax - 50, ay - ah/2);
+
+  // X-axis
+  const peeks = [1, 2, 3, 5, 10, 20];
+  const xPos = peeks.map((_, i) => ax + 30 + i * (aw - 60) / (peeks.length - 1));
+  peeks.forEach((p, i) => {
+    ctx.fillStyle = '#666';
+    ctx.fillText(p.toString(), xPos[i], ay + 18);
+  });
+  ctx.fillText('Number of peeks at the data', ax + aw/2, ay + 36);
+
+  // Naive sequential Barnard (inflating FPR)
+  const naiveFPR = [5, 7.5, 9.5, 13, 16.5, 19.5];
+  ctx.strokeStyle = '#ff6b6b'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  naiveFPR.forEach((v, i) => {
+    const x = xPos[i], y = ay - (v / 20) * ah;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  naiveFPR.forEach((v, i) => {
+    ctx.fillStyle = '#ff6b6b'; ctx.beginPath();
+    ctx.arc(xPos[i], ay - (v / 20) * ah, 4, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // STEP line (flat at 5%)
+  ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  peeks.forEach((_, i) => {
+    const x = xPos[i], y = ay - (5 / 20) * ah;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // 5% reference
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1;
+  const refY = ay - (5 / 20) * ah;
+  ctx.beginPath(); ctx.moveTo(ax, refY); ctx.lineTo(ax + aw, refY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#f59e0b'; ctx.font = '10px IBM Plex Mono, monospace'; ctx.textAlign = 'left';
+  ctx.fillText('α* = 5% (promised)', ax + aw + 5, refY + 4);
+
+  // Legend
+  ctx.fillStyle = '#ff6b6b'; ctx.fillRect(550, 45, 16, 3); ctx.font = '11px IBM Plex Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('Naive repeated testing', 572, 49);
+  ctx.fillStyle = '#4ade80'; ctx.fillRect(550, 65, 16, 3); ctx.fillText('STEP (controlled)', 572, 69);
+}
+
+function drawRegionsDiagram() {
+  const ctx = getCtx('canvas-regions', 780, 420);
+  if (!ctx) return;
+
+  const ox = 100, oy = 380, w = 600, h = 340;
+
+  // Axes
+  ctx.strokeStyle = '#3a3a5a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + w, oy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox, oy - h); ctx.stroke();
+
+  ctx.fillStyle = '#888'; ctx.font = '11px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+  ctx.fillText('Trial number (n)', ox + w/2, oy + 30);
+  ctx.save(); ctx.translate(ox - 45, oy - h/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('S_B − S_A (cumulative success diff)', 0, 0);
+  ctx.restore();
+
+  // X-axis labels
+  for (let n = 0; n <= 50; n += 10) {
+    const x = ox + (n / 50) * w;
+    ctx.fillStyle = '#555'; ctx.font = '10px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+    ctx.fillText(n.toString(), x, oy + 14);
+  }
+
+  // Y-axis labels
+  for (let d = -10; d <= 15; d += 5) {
+    const y = oy - ((d + 10) / 25) * h;
+    ctx.fillStyle = '#555'; ctx.font = '10px IBM Plex Mono, monospace'; ctx.textAlign = 'right';
+    ctx.fillText(d.toString(), ox - 10, y + 4);
+    ctx.strokeStyle = '#1a1a20'; ctx.beginPath(); ctx.moveTo(ox, y); ctx.lineTo(ox + w, y); ctx.stroke();
+  }
+
+  // Reject region (upper) — green fill
+  ctx.fillStyle = 'rgba(74, 222, 128, 0.08)';
+  ctx.beginPath();
+  ctx.moveTo(ox, oy - h);
+  for (let n = 0; n <= 50; n++) {
+    const threshold = 1.5 * Math.sqrt(n) + 2;
+    const x = ox + (n / 50) * w;
+    const y = oy - ((threshold + 10) / 25) * h;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(ox + w, oy - h); ctx.closePath(); ctx.fill();
+
+  // Upper boundary curve
+  ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let n = 1; n <= 50; n++) {
+    const threshold = 1.5 * Math.sqrt(n) + 2;
+    const x = ox + (n / 50) * w;
+    const y = oy - ((threshold + 10) / 25) * h;
+    if (n === 1) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Accept region (lower) — red fill
+  ctx.fillStyle = 'rgba(252, 165, 165, 0.06)';
+  ctx.beginPath();
+  ctx.moveTo(ox + (10/50)*w, oy);
+  for (let n = 10; n <= 50; n++) {
+    const threshold = -0.8 * Math.sqrt(n) - 1;
+    const x = ox + (n / 50) * w;
+    const y = oy - ((threshold + 10) / 25) * h;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(ox + w, oy); ctx.closePath(); ctx.fill();
+
+  // Lower boundary curve
+  ctx.strokeStyle = '#fca5a5'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let n = 10; n <= 50; n++) {
+    const threshold = -0.8 * Math.sqrt(n) - 1;
+    const x = ox + (n / 50) * w;
+    const y = oy - ((threshold + 10) / 25) * h;
+    if (n === 10) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Example random walk (successful early stop)
+  ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2;
+  const walk = [0]; let cum = 0;
+  const rng = [1,0,1,1,0,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1];
+  for (let i = 0; i < 20; i++) { cum += (rng[i] ? 1 : 0) - 0.4; walk.push(cum); }
+  ctx.beginPath();
+  walk.forEach((v, i) => {
+    const x = ox + (i / 50) * w;
+    const y = oy - ((v + 10) / 25) * h;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Stop marker
+  const stopX = ox + (walk.length - 1) / 50 * w;
+  const stopY = oy - ((walk[walk.length-1] + 10) / 25) * h;
+  ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(stopX, stopY, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f59e0b'; ctx.font = '11px IBM Plex Mono, monospace'; ctx.textAlign = 'left';
+  ctx.fillText('STOP: B is better', stopX + 10, stopY - 5);
+  ctx.fillText(`(trial ${walk.length - 1})`, stopX + 10, stopY + 10);
+
+  // Region labels
+  ctx.fillStyle = '#4ade80'; ctx.font = 'bold 12px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+  ctx.fillText('REJECT H₀', ox + w * 0.7, oy - h + 25);
+  ctx.fillStyle = '#888'; ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.fillText('(B is better)', ox + w * 0.7, oy - h + 40);
+
+  ctx.fillStyle = '#fca5a5'; ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.fillText('ACCEPT H₀', ox + w * 0.75, oy - 25);
+  ctx.fillStyle = '#888'; ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.fillText('(no difference)', ox + w * 0.75, oy - 10);
+
+  ctx.fillStyle = '#666'; ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.fillText('CONTINUE', ox + w * 0.35, oy - h/2);
+}
+
+function drawSequentialChart() {
+  if (!simData) return;
+  const ctx = getCtx('canvas-sequential', 780, 360);
+  if (!ctx) return;
+
+  const { resultsA, resultsB, stopped, decision, nMax } = simData;
+  const ox = 80, oy = 310, w = 620, h = 260;
+
+  // Axes
+  ctx.strokeStyle = '#2a2a3a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + w, oy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ox, oy - h); ctx.lineTo(ox, oy); ctx.stroke();
+
+  ctx.fillStyle = '#888'; ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Trial number', ox + w/2, oy + 28);
+
+  // Compute diff series and range
+  const diffs = resultsB.map((b, i) => b - resultsA[i]);
+  const maxDiff = Math.max(...diffs, 5);
+  const minDiff = Math.min(...diffs, -5);
+  const range = Math.max(maxDiff - minDiff, 10);
+  const zeroY = oy - ((-minDiff + 1) / (range + 2)) * h;
+
+  // Zero line
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = '#3a3a5a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(ox, zeroY); ctx.lineTo(ox + w, zeroY); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Upper boundary (reject)
+  ctx.fillStyle = 'rgba(74, 222, 128, 0.06)';
+  ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let n = 1; n <= nMax; n++) {
+    const threshold = 1.5 * Math.sqrt(n) + 0.8;
+    const x = ox + (n / nMax) * w;
+    const y = zeroY - (threshold / (range + 2)) * h;
+    if (n === 1) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Lower boundary (accept)
+  ctx.strokeStyle = '#fca5a5'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let n = 10; n <= nMax; n++) {
+    const threshold = -0.8 * Math.sqrt(n) - 1;
+    const x = ox + (n / nMax) * w;
+    const y = zeroY - (threshold / (range + 2)) * h;
+    if (n === 10) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Diff line
+  ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(ox, zeroY);
+  diffs.forEach((d, i) => {
+    const x = ox + ((i + 1) / nMax) * w;
+    const y = zeroY - (d / (range + 2)) * h;
+    ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Stop marker
+  if (stopped > 0) {
+    const sx = ox + (stopped / nMax) * w;
+    const sy = zeroY - (diffs[stopped - 1] / (range + 2)) * h;
+    ctx.fillStyle = decision === 'reject' ? '#4ade80' : '#fca5a5';
+    ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = decision === 'reject' ? '#4ade80' : '#fca5a5';
+    ctx.font = 'bold 11px IBM Plex Mono, monospace'; ctx.textAlign = 'left';
+    ctx.fillText(`STOP @ ${stopped}`, sx + 10, sy - 5);
+  }
+}
+
+function drawCldDiagram() {
+  const ctx = getCtx('canvas-cld', 780, 220);
+  if (!ctx) return;
+
+  const policies = [
+    { name: 'Baseline', rate: 0.42, letter: 'a', color: '#fca5a5' },
+    { name: 'v2', rate: 0.56, letter: 'ab', color: '#fcd34d' },
+    { name: 'v3', rate: 0.71, letter: 'b', color: '#a7f3d0' },
+    { name: 'v4', rate: 0.88, letter: 'c', color: '#4ade80' },
+  ];
+
+  const barW = 100, gap = 60, startX = 100;
+
+  policies.forEach((p, i) => {
+    const x = startX + i * (barW + gap);
+    const h = p.rate * 150;
+    const y = 170 - h;
+
+    // Bar
+    ctx.fillStyle = p.color + '44';
+    ctx.beginPath(); ctx.roundRect(x, y, barW, h, [6, 6, 0, 0]); ctx.fill();
+    ctx.strokeStyle = p.color; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // Rate label
+    ctx.fillStyle = '#e0dce8'; ctx.font = 'bold 14px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+    ctx.fillText((p.rate * 100).toFixed(0) + '%', x + barW/2, y - 25);
+
+    // CLD letter
+    ctx.fillStyle = '#f59e0b'; ctx.font = 'bold 16px IBM Plex Mono, monospace';
+    ctx.fillText(p.letter, x + barW/2, y - 8);
+
+    // Name
+    ctx.fillStyle = '#888'; ctx.font = '11px IBM Plex Mono, monospace';
+    ctx.fillText(p.name, x + barW/2, 190);
+  });
+
+  // Annotations
+  ctx.fillStyle = '#555'; ctx.font = '10px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+  ctx.fillText('Baseline ("a") and v3 ("b") share no letter → significantly different', 390, 210);
+  ctx.fillText('v2 ("ab") shares letters with both → not separated from either', 390, 222);
+}
+
+function drawViolinDiagram() {
+  const ctx = getCtx('canvas-violins', 780, 300);
+  if (!ctx) return;
+
+  const policies = [
+    { name: 'Baseline', successes: 21, trials: 50, letter: 'a', color: '#fca5a5' },
+    { name: 'v2', successes: 28, trials: 50, letter: 'ab', color: '#fcd34d' },
+    { name: 'v3', successes: 36, trials: 50, letter: 'b', color: '#a7f3d0' },
+    { name: 'v4', successes: 44, trials: 50, letter: 'c', color: '#4ade80' },
+  ];
+
+  const cx = [140, 310, 480, 650];
+  const violinH = 200, violinTop = 40;
+
+  // Y-axis
+  ctx.strokeStyle = '#2a2a3a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(60, violinTop); ctx.lineTo(60, violinTop + violinH); ctx.stroke();
+  for (let p = 0; p <= 100; p += 20) {
+    const y = violinTop + violinH - (p / 100) * violinH;
+    ctx.fillStyle = '#555'; ctx.font = '10px IBM Plex Mono, monospace'; ctx.textAlign = 'right';
+    ctx.fillText(p + '%', 52, y + 4);
+    ctx.strokeStyle = '#1a1a20'; ctx.beginPath(); ctx.moveTo(60, y); ctx.lineTo(740, y); ctx.stroke();
+  }
+
+  policies.forEach((p, i) => {
+    const alpha = p.successes + 1, beta = p.trials - p.successes + 1;
+    const mean = alpha / (alpha + beta);
+
+    // Draw violin shape using Beta distribution approximation
+    const points = [];
+    for (let t = 0; t <= 1; t += 0.005) {
+      // Approximate Beta PDF
+      const logPdf = (alpha - 1) * Math.log(t + 1e-10) + (beta - 1) * Math.log(1 - t + 1e-10);
+      const pdf = Math.exp(logPdf);
+      points.push({ t, pdf });
+    }
+    const maxPdf = Math.max(...points.map(p => p.pdf));
+
+    // Draw violin body
+    ctx.fillStyle = p.color + '22';
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    points.forEach((pt, j) => {
+      const y = violinTop + violinH - pt.t * violinH;
+      const w = (pt.pdf / maxPdf) * 35;
+      if (j === 0) ctx.moveTo(cx[i] - w, y);
+      else ctx.lineTo(cx[i] - w, y);
+    });
+    points.reverse().forEach(pt => {
+      const y = violinTop + violinH - pt.t * violinH;
+      const w = (pt.pdf / maxPdf) * 35;
+      ctx.lineTo(cx[i] + w, y);
+    });
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    // Mean line
+    const meanY = violinTop + violinH - mean * violinH;
+    ctx.strokeStyle = p.color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(cx[i] - 20, meanY); ctx.lineTo(cx[i] + 20, meanY); ctx.stroke();
+
+    // CLD letter
+    ctx.fillStyle = '#f59e0b'; ctx.font = 'bold 14px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+    ctx.fillText(p.letter, cx[i], violinTop + violinH + 20);
+
+    // Name
+    ctx.fillStyle = '#888'; ctx.font = '10px IBM Plex Mono, monospace';
+    ctx.fillText(p.name, cx[i], violinTop + violinH + 35);
+
+    // Success count
+    ctx.fillStyle = '#555'; ctx.font = '9px IBM Plex Mono, monospace';
+    ctx.fillText(`${p.successes}/${p.trials}`, cx[i], violinTop + violinH + 48);
+  });
+
+  ctx.fillStyle = '#888'; ctx.font = '11px IBM Plex Mono, monospace'; ctx.textAlign = 'left';
+  ctx.fillText('Success Rate →', 5, violinTop + violinH/2);
+}
+
+function drawSavingsDiagram() {
+  const ctx = getCtx('canvas-savings', 780, 280);
+  if (!ctx) return;
+
+  const methods = [
+    { name: 'SAVI', trials: 554, color: '#a78bfa' },
+    { name: 'Lai', trials: 578, color: '#67e8f9' },
+    { name: 'STEP', trials: 392, color: '#f59e0b' },
+    { name: 'Oracle', trials: 289, color: '#4ade80' },
+  ];
+
+  const maxTrials = 600;
+  const barH = 36, gap = 18, startY = 40, labelW = 80, barArea = 580;
+
+  ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+  ctx.fillText('Multi-task total trials (SpoonOnTowel + EggplantInBasket + StackCube)', 390, 22);
+
+  methods.forEach((m, i) => {
+    const y = startY + i * (barH + gap);
+    const w = (m.trials / maxTrials) * barArea;
+
+    // Label
+    ctx.fillStyle = m.color; ctx.font = '12px IBM Plex Mono, monospace'; ctx.textAlign = 'right';
+    ctx.fillText(m.name, labelW, y + barH/2 + 4);
+
+    // Bar
+    ctx.fillStyle = m.color + '33';
+    ctx.beginPath(); ctx.roundRect(labelW + 20, y, w, barH, 4); ctx.fill();
+    ctx.strokeStyle = m.color; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // Value
+    ctx.fillStyle = m.color; ctx.font = 'bold 13px IBM Plex Mono, monospace'; ctx.textAlign = 'left';
+    ctx.fillText(m.trials.toString() + ' trials', labelW + 24 + w, y + barH/2 + 5);
+  });
+
+  // Savings annotation
+  const stepY = startY + 2 * (barH + gap);
+  const saviY = startY;
+  ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(labelW + 20 + (392/maxTrials)*barArea, stepY + barH/2);
+  ctx.lineTo(labelW + 20 + (554/maxTrials)*barArea, saviY + barH/2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = '#f59e0b'; ctx.font = 'bold 11px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+  const midX = labelW + 20 + ((392 + 554)/2/maxTrials)*barArea;
+  ctx.fillText('−29% vs SAVI', midX + 50, stepY - 5);
+  ctx.fillText('−32% vs Lai', midX + 50, stepY + 10);
+}
+
+/* ── Init ── */
+buildTocNav();
+
+window.addEventListener('scroll', updateScrollProgress, { passive: true });
+
+// Wait for KaTeX to load, then render math
+function initMath() {
+  if (window.katex) {
+    renderMath();
+  } else {
+    setTimeout(initMath, 100);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initMath();
+  setupTocHighlighting();
+  setupCanvasObservers();
+});
+</script>
+</body>
+</html>
