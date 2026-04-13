@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EMA Signal Filter — Servo Noise in Teleoperation</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: #080a0e;
+      color: #c8c5d0;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #080a0e; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a3a4a; }
+
+    #scroll-progress-track {
+      position: fixed; top: 0; left: 0; width: 100%; height: 3px;
+      background: #1a1a24; z-index: 1000;
+    }
+    #scroll-progress-bar {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #0e4a5a, #06b6d4, #67e8f9);
+      transition: width 0.1s linear;
+    }
+
+    #header {
+      position: sticky; top: 3px; z-index: 999;
+      padding: 16px 24px;
+      border-bottom: 1px solid #1a1a24;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0; background: #0a0c12;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header-back { color: #666; text-decoration: none; font-size: 12px; transition: color 0.2s; }
+    .header-back:hover { color: #06b6d4; }
+    .header-title { font-size: 14px; font-weight: 600; color: #e0dce8; letter-spacing: 0.02em; }
+    .header-sub { font-size: 11px; color: #666; margin-top: 1px; }
+
+    #toc-nav {
+      position: fixed; right: 16px; top: 50%; transform: translateY(-50%);
+      z-index: 998; display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
+    }
+    .toc-dot-row {
+      display: flex; align-items: center; gap: 8px; cursor: pointer;
+    }
+    .toc-label {
+      font-size: 10px; color: #444; white-space: nowrap;
+      opacity: 0; transition: opacity 0.2s; pointer-events: none;
+    }
+    .toc-dot-row:hover .toc-label,
+    .toc-dot-row.active .toc-label { opacity: 1; }
+    .toc-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #1e1e2e; transition: all 0.3s;
+      flex-shrink: 0;
+    }
+    .toc-dot-row.active .toc-dot {
+      background: #06b6d4; width: 10px; height: 10px;
+      box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+    }
+    .toc-dot-row.visited .toc-dot { background: #0e4a5a; }
+
+    #content-area { padding: 0 24px 80px; }
+
+    .step-section {
+      max-width: 840px; margin: 0 auto;
+      padding: 60px 0 40px;
+    }
+    .step-section + .step-section { border-top: 1px solid #1a1a24; }
+
+    .step-icon { font-size: 32px; margin-bottom: 8px; }
+    .step-title {
+      font-size: 26px; font-weight: 600; color: #ece8f4;
+      margin: 0 0 6px 0; letter-spacing: -0.02em;
+    }
+    .step-subtitle { font-size: 15px; color: #7a7888; font-family: 'Crimson Pro', serif; font-style: italic; }
+    .tags-row { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+    .tag {
+      display: inline-block; padding: 2px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase;
+    }
+
+    .explanation-text {
+      font-family: 'Crimson Pro', Georgia, serif;
+      font-size: 17px; line-height: 1.85; color: #b8b5c4; letter-spacing: 0.01em;
+    }
+    .explanation-text strong { color: #e0dce8; font-weight: 600; }
+    .explanation-text code {
+      font-family: 'IBM Plex Mono', monospace; font-size: 14px;
+      background: #14161e; padding: 2px 6px; border-radius: 3px; color: #06b6d4;
+    }
+    .explanation-text .para { margin-bottom: 18px; margin-top: 0; }
+
+    .math-block {
+      background: #0c0e14; border: 1px solid #1e2838; border-radius: 8px;
+      padding: 16px 20px; margin: 16px 0; text-align: center; overflow-x: auto;
+    }
+
+    .insight-box {
+      background: linear-gradient(135deg, #081518, #0a1518);
+      border-left: 3px solid #06b6d4; border-radius: 0 8px 8px 0;
+      padding: 14px 18px; margin: 16px 0;
+      font-family: 'Crimson Pro', serif; font-size: 16px; color: #67e8f9; line-height: 1.7;
+    }
+    .insight-box::before { content: "Key Insight \2014 "; font-weight: 600; color: #06b6d4; }
+
+    .quiz-box {
+      background: #0e1018; border: 1px solid #2a2a4a; border-radius: 10px;
+      padding: 18px; margin: 20px 0;
+    }
+    .quiz-question {
+      font-family: 'Crimson Pro', serif; font-size: 16px; color: #ddd; margin-bottom: 12px;
+    }
+    .quiz-question::before { content: "Test yourself: "; font-weight: 600; color: #06b6d4; }
+    .quiz-reveal {
+      background: #1a1a2e; border: 1px solid #2a2a4a; color: #c8c5d0;
+      padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.2s;
+    }
+    .quiz-reveal:hover { background: #22223a; border-color: #4a4a6a; }
+    .quiz-answer {
+      display: none; margin-top: 12px; padding: 12px 16px; background: #10122a;
+      border-radius: 6px; font-family: 'Crimson Pro', serif; font-size: 15px;
+      color: #a0a4b0; line-height: 1.7;
+    }
+    .quiz-answer.visible { display: block; animation: fadeIn 0.3s ease; }
+
+    .diagram-container {
+      background: #06080c; border: 1px solid #1e1e2e; border-radius: 10px;
+      margin: 20px 0; overflow: hidden;
+    }
+    .diagram-container canvas { display: block; width: 100%; height: auto; }
+    .diagram-label {
+      padding: 8px 14px; font-size: 11px; color: #555;
+      border-top: 1px solid #1e1e2e; text-align: center;
+    }
+
+    .sim-panel {
+      background: #0c0e14; border: 1px solid #1e2838; border-radius: 10px;
+      padding: 20px; margin: 20px 0;
+    }
+    .sim-title {
+      font-size: 13px; font-weight: 600; color: #06b6d4; text-transform: uppercase;
+      letter-spacing: 0.08em; margin-bottom: 14px;
+    }
+    .sim-row { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+    .sim-label { font-size: 12px; color: #888; min-width: 120px; }
+    .sim-value { font-size: 13px; color: #67e8f9; font-weight: 600; min-width: 50px; }
+    .sim-slider {
+      -webkit-appearance: none; appearance: none;
+      width: 220px; height: 6px; border-radius: 3px;
+      background: #1e2838; outline: none;
+    }
+    .sim-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #06b6d4; cursor: pointer;
+      box-shadow: 0 0 6px rgba(6, 182, 212, 0.4);
+    }
+    .sim-slider::-moz-range-thumb {
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #06b6d4; cursor: pointer; border: none;
+    }
+    .sim-btn {
+      background: linear-gradient(135deg, #0e4a5a, #0891b2);
+      border: none; color: #ecfeff; padding: 8px 18px; border-radius: 6px;
+      cursor: pointer; font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+      font-weight: 600; transition: all 0.2s;
+    }
+    .sim-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(6,182,212,0.25); }
+
+    .results-table {
+      width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 12px;
+    }
+    .results-table th, .results-table td {
+      border: 1px solid #1e2838; padding: 8px 12px; text-align: center;
+    }
+    .results-table th { background: #0e1018; color: #06b6d4; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .results-table td { color: #b8b5c4; }
+    .results-table tr:nth-child(even) td { background: #0a0c12; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 600px) {
+      .step-title { font-size: 20px; }
+      #content-area { padding: 0 14px 60px; }
+      .sim-row { flex-direction: column; align-items: flex-start; }
+      .sim-slider { width: 100%; }
+      #toc-nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="scroll-progress-track"><div id="scroll-progress-bar"></div></div>
+
+  <header id="header">
+    <div class="header-left">
+      <a href="index.html" class="header-back">&lt; back</a>
+      <div>
+        <div class="header-title">EMA Signal Filter</div>
+        <div class="header-sub">taming servo noise in cross-robot teleoperation</div>
+      </div>
+    </div>
+  </header>
+
+  <nav id="toc-nav"></nav>
+
+  <div id="content-area">
+
+    <!-- Section 0: The Problem -->
+    <section class="step-section" id="section-0">
+      <div class="step-icon">📡</div>
+      <h2 class="step-title">The Problem</h2>
+      <div class="step-subtitle">How invisible encoder noise becomes visible robot jitter</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2a2e;color:#67e8f9">signal processing</span>
+        <span class="tag" style="background:#2e1a1a;color:#ffd4d4">robotics</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">Servo encoders have inherent noise of <strong>&plusmn;1&ndash;2 counts per reading</strong>. At 12-bit resolution (4096 counts/rev), that's &plusmn;0.09&deg; &mdash; completely invisible on the arm itself.</p>
+          <p class="para">In teleoperation between dissimilar robots, a <strong>conversion layer</strong> scales joint values from the leader's space into the follower's space. When the follower has finer-grained motors or different units, scale factors of 800&ndash;1100&times; are common. This turns invisible encoder noise into a real problem:</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-amplification" width="780" height="340"></canvas>
+          <div class="diagram-label">Noise amplification through the teleop pipeline &mdash; the conversion layer acts as a noise multiplier</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para">At a typical <strong>100Hz</strong> control rate, every noisy reading becomes a new position command. The result: <strong>constant vibration</strong> during precise tasks where the operator holds the leader arm still.</p>
+        </div>
+        <div class="insight-box">The noise is invisible where it originates (the leader's encoder) but devastating where it lands (the follower's end-effector). The conversion scaling acts as a noise amplifier.</div>
+      </div>
+    </section>
+
+    <!-- Section 1: The EMA Solution -->
+    <section class="step-section" id="section-1">
+      <div class="step-icon">🧮</div>
+      <h2 class="step-title">The EMA Filter</h2>
+      <div class="step-subtitle">Exponential moving average &mdash; one multiply-add, one float of state</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2a2e;color:#67e8f9">filter</span>
+        <span class="tag" style="background:#2e2a1a;color:#ffeed4">math</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">An <strong>exponential moving average</strong> smooths a noisy signal by blending each new reading with the previous smoothed value:</p>
+        </div>
+        <div class="math-block" id="math-ema"></div>
+        <div class="explanation-text">
+          <p class="para"><strong>&alpha;</strong> controls the responsiveness/smoothness trade-off. At &alpha;=1 the raw signal passes through unchanged. At &alpha;=0.1, each output is 90% memory and 10% new reading &mdash; strong smoothing.</p>
+          <p class="para">The 95% settling time (how long to reach 95% of a step input):</p>
+        </div>
+        <div class="math-block" id="math-settling"></div>
+        <div class="explanation-text">
+          <p class="para">The EMA requires <strong>one float of state</strong> per channel and <strong>one multiply-add per sample</strong>. No buffers, no FFT, no windowing. It's a first-order IIR filter with cutoff frequency <em>f<sub>c</sub> = &alpha; &middot; f<sub>s</sub> / (2&pi;)</em> &mdash; at &alpha;=0.1 and 100Hz, that's ~1.6Hz, which passes smooth operator intent and rejects high-frequency encoder noise.</p>
+        </div>
+        <div class="insight-box">The filter should be applied <strong>after</strong> the conversion layer, in the follower's joint space. Filtering before conversion would be in the wrong coordinate frame &mdash; the scaling factors would re-amplify any residual noise.</div>
+      </div>
+    </section>
+
+    <!-- Section 2: Interactive EMA Playground -->
+    <section class="step-section" id="section-2">
+      <div class="step-icon">🎛️</div>
+      <h2 class="step-title">EMA Playground</h2>
+      <div class="step-subtitle">Adjust &alpha; and watch the noise vanish</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2e1a;color:#4ade80">interactive</span>
+        <span class="tag" style="background:#1a2a2e;color:#67e8f9">filter</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="sim-panel">
+          <div class="sim-title">Live EMA Filter Demo</div>
+          <div class="sim-row">
+            <span class="sim-label">&alpha; (alpha)</span>
+            <input class="sim-slider" id="ema-alpha" type="range" min="1" max="100" value="10">
+            <span class="sim-value" id="ema-alpha-val">0.10</span>
+          </div>
+          <div class="sim-row">
+            <span class="sim-label">Noise amplitude</span>
+            <input class="sim-slider" id="ema-noise" type="range" min="1" max="100" value="40">
+            <span class="sim-value" id="ema-noise-val">40</span>
+          </div>
+          <div class="sim-row">
+            <button class="sim-btn" onclick="regenerateNoise()">New noise seed</button>
+          </div>
+          <div class="diagram-container" style="margin-top:14px;">
+            <canvas id="canvas-ema-live" width="780" height="300"></canvas>
+            <div class="diagram-label">
+              <span style="color:#fca5a5">&#9632;</span> raw noisy signal &nbsp;&nbsp;
+              <span style="color:#06b6d4">&#9632;</span> EMA filtered &nbsp;&nbsp;
+              <span style="color:#4ade80;opacity:0.5">&#9632;</span> true signal
+            </div>
+          </div>
+        </div>
+        <div class="explanation-text">
+          <p class="para">Low &alpha; (0.05) produces smooth output that lags behind rapid changes. High &alpha; (0.8+) tracks closely but lets noise through. The sweet spot for teleoperation is <strong>0.1&ndash;0.2</strong>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Tuning Guide -->
+    <section class="step-section" id="section-3">
+      <div class="step-icon">📈</div>
+      <h2 class="step-title">Tuning Guide</h2>
+      <div class="step-subtitle">Step response, settling times, and choosing the right &alpha;</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#2e2a1a;color:#ffeed4">dynamics</span>
+        <span class="tag" style="background:#1a2a2e;color:#67e8f9">tuning</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="diagram-container">
+          <canvas id="canvas-step-response" width="780" height="320"></canvas>
+          <div class="diagram-label">Step response for various &alpha; values &mdash; settling time shown at the 95% threshold</div>
+        </div>
+        <table class="results-table" style="max-width:620px; margin:16px auto;">
+          <tr>
+            <th>&alpha;</th>
+            <th>Behavior</th>
+            <th>95% settling</th>
+            <th>Use case</th>
+          </tr>
+          <tr>
+            <td style="color:#fca5a5; font-weight:600;">1.0</td>
+            <td>No filtering (passthrough)</td>
+            <td>0ms</td>
+            <td>Disable filter</td>
+          </tr>
+          <tr>
+            <td style="color:#fcd34d; font-weight:600;">0.5</td>
+            <td>Light smoothing</td>
+            <td>~50ms</td>
+            <td>Fast teleop, low noise</td>
+          </tr>
+          <tr>
+            <td style="color:#06b6d4; font-weight:600;">0.2</td>
+            <td>Moderate smoothing</td>
+            <td>~120ms</td>
+            <td>General teleoperation</td>
+          </tr>
+          <tr>
+            <td style="color:#4ade80; font-weight:600;">0.1</td>
+            <td>Strong smoothing</td>
+            <td>~230ms</td>
+            <td>Precise tasks, high noise</td>
+          </tr>
+          <tr>
+            <td style="color:#a78bfa; font-weight:600;">0.05</td>
+            <td>Very heavy smoothing</td>
+            <td>~500ms</td>
+            <td>Near-static positioning</td>
+          </tr>
+        </table>
+        <div class="explanation-text">
+          <p class="para">At &alpha;=0.1 and 100Hz the filter averages over roughly the last 10 readings. That's enough to smooth &plusmn;2 count encoder noise without the operator feeling lag on deliberate movements. &alpha;=0.1 eliminated visible jitter during pick-place teleoperation without perceptible delay.</p>
+        </div>
+        <div class="quiz-box">
+          <div class="quiz-question">An operator reports the follower feels "sluggish." The current &alpha; is 0.05. What do you change?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer">&alpha;=0.05 has ~500ms settling time &mdash; too slow for fast tasks. Increase to <strong>&alpha;=0.2</strong> (~120ms settling) for a good balance of smoothness and responsiveness. The right &alpha; depends on the noise level and the task: higher scaling factors or longer lever arms need more smoothing; fast manipulation needs less.</div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+<script>
+const sectionMeta = [
+  { title: "The Problem", icon: "📡" },
+  { title: "EMA Filter", icon: "🧮" },
+  { title: "Playground", icon: "🎛️" },
+  { title: "Tuning Guide", icon: "📈" },
+];
+
+function buildTocNav() {
+  const nav = document.getElementById('toc-nav');
+  sectionMeta.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'toc-dot-row';
+    row.innerHTML = `<span class="toc-label">${s.title}</span><div class="toc-dot"></div>`;
+    row.addEventListener('click', () => {
+      document.getElementById('section-' + i).scrollIntoView({ behavior: 'smooth' });
+    });
+    nav.appendChild(row);
+  });
+}
+
+function updateScrollProgress() {
+  const scrollTop = window.scrollY;
+  const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+  const progress = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+  document.getElementById('scroll-progress-bar').style.width = progress + '%';
+}
+
+function setupTocHighlighting() {
+  const sections = document.querySelectorAll('.step-section');
+  const tocRows = document.querySelectorAll('.toc-dot-row');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const idx = parseInt(entry.target.id.split('-')[1]);
+      if (entry.isIntersecting) {
+        tocRows.forEach(r => r.classList.remove('active'));
+        tocRows[idx].classList.add('active');
+        tocRows[idx].classList.add('visited');
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px', threshold: 0 });
+  sections.forEach(section => observer.observe(section));
+}
+
+function setupCanvasObservers() {
+  const canvasMap = {
+    'canvas-amplification': drawAmplificationDiagram,
+    'canvas-ema-live': drawEmaLive,
+    'canvas-step-response': drawStepResponse,
+  };
+  const observer = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.id;
+        if (canvasMap[id]) canvasMap[id]();
+        if (id !== 'canvas-ema-live') obs.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: '100px 0px', threshold: 0 });
+  Object.keys(canvasMap).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) observer.observe(el);
+  });
+}
+
+function renderMath() {
+  const ema = document.getElementById('math-ema');
+  if (ema && window.katex) {
+    katex.render('\\text{smoothed}[t] = \\alpha \\cdot \\text{raw}[t] \\;+\\; (1 - \\alpha) \\cdot \\text{smoothed}[t-1]', ema, { displayMode: true });
+  }
+  const settling = document.getElementById('math-settling');
+  if (settling && window.katex) {
+    katex.render('T_{95\\%} \\approx \\frac{3}{\\alpha} \\text{ samples} \\;=\\; \\frac{3}{\\alpha \\cdot f_s} \\text{ seconds}', settling, { displayMode: true });
+  }
+}
+
+function toggleQuiz(btn) {
+  const answer = btn.nextElementSibling;
+  answer.classList.toggle('visible');
+  btn.textContent = answer.classList.contains('visible') ? 'Hide answer' : 'Reveal answer';
+}
+
+/* ── Canvas helpers ── */
+function getCtx(id, w, h) {
+  const c = document.getElementById(id);
+  if (!c) return null;
+  const dpr = window.devicePixelRatio || 1;
+  c.width = w * dpr; c.height = h * dpr;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return ctx;
+}
+
+function drawBox(ctx, x, y, w, h, fill, stroke, text, textColor, fontSize) {
+  ctx.fillStyle = fill; ctx.strokeStyle = stroke; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, 6); ctx.fill(); ctx.stroke();
+  if (text) {
+    ctx.fillStyle = textColor || '#ccc'; ctx.font = `${fontSize || 12}px IBM Plex Mono, monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const lines = text.split('\n'), lh = (fontSize || 12) + 4;
+    const startY = y + h/2 - ((lines.length - 1) * lh) / 2;
+    lines.forEach((line, i) => ctx.fillText(line, x + w/2, startY + i * lh));
+  }
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color) {
+  ctx.strokeStyle = color || '#06b6d4'; ctx.fillStyle = color || '#06b6d4'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  ctx.beginPath(); ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - 8 * Math.cos(angle - 0.4), y2 - 8 * Math.sin(angle - 0.4));
+  ctx.lineTo(x2 - 8 * Math.cos(angle + 0.4), y2 - 8 * Math.sin(angle + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+/* ── Noise amplification waterfall ── */
+function drawAmplificationDiagram() {
+  const ctx = getCtx('canvas-amplification', 780, 340);
+  if (!ctx) return;
+
+  const stages = [
+    { label: 'Encoder\nnoise', value: '±1-2 counts', sub: '12-bit / 4096', color: '#4ade80', barH: 20 },
+    { label: 'Angular\nnoise', value: '±0.09°', sub: '= 1/4096 × 360', color: '#67e8f9', barH: 35 },
+    { label: 'After\nscaling', value: '±90-180 mdeg', sub: '×800-1100', color: '#fcd34d', barH: 120 },
+    { label: 'At end-\neffector', value: '±0.6-1.2mm', sub: 'lever arm ×L', color: '#fca5a5', barH: 200 },
+    { label: 'At 100Hz', value: 'constant\nvibration', sub: 'every 10ms', color: '#ff6b6b', barH: 240 },
+  ];
+
+  const startX = 50, gap = 145, barW = 70, baseY = 290;
+
+  ctx.fillStyle = '#888'; ctx.font = 'bold 12px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+  ctx.fillText('Noise amplification: leader encoder → follower end-effector', 390, 22);
+
+  stages.forEach((s, i) => {
+    const x = startX + i * gap;
+    const y = baseY - s.barH;
+
+    ctx.fillStyle = s.color + '33';
+    ctx.beginPath(); ctx.roundRect(x, y, barW, s.barH, [4, 4, 0, 0]); ctx.fill();
+    ctx.strokeStyle = s.color + 'aa'; ctx.lineWidth = 1.5; ctx.stroke();
+
+    ctx.fillStyle = s.color; ctx.font = 'bold 12px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+    const valLines = s.value.split('\n');
+    valLines.forEach((line, li) => ctx.fillText(line, x + barW/2, y - 12 - (valLines.length - 1 - li) * 14));
+
+    ctx.fillStyle = '#ccc'; ctx.font = '11px IBM Plex Mono, monospace';
+    const labelLines = s.label.split('\n');
+    labelLines.forEach((line, li) => ctx.fillText(line, x + barW/2, baseY + 16 + li * 14));
+
+    ctx.fillStyle = '#555'; ctx.font = '10px IBM Plex Mono, monospace';
+    ctx.fillText(s.sub, x + barW/2, baseY + 16 + labelLines.length * 14 + 4);
+
+    if (i < stages.length - 1) {
+      drawArrow(ctx, x + barW + 8, baseY - s.barH/2, x + gap - 8, baseY - stages[i+1].barH/2, '#3a3a5a');
+    }
+  });
+}
+
+/* ── EMA Live Playground ── */
+let noiseData = [];
+let trueSignal = [];
+
+function generateSignalAndNoise() {
+  trueSignal = [];
+  noiseData = [];
+  const n = 200;
+  for (let i = 0; i < n; i++) {
+    let val;
+    if (i < 30) val = 0;
+    else if (i < 50) val = (i - 30) / 20 * 100;
+    else if (i < 90) val = 100;
+    else if (i < 110) val = 100 - (i - 90) / 20 * 60;
+    else if (i < 140) val = 40;
+    else if (i < 155) val = 40 + (i - 140) / 15 * 80;
+    else if (i < 180) val = 120;
+    else val = 120 - (i - 180) / 20 * 120;
+    trueSignal.push(val);
+    noiseData.push((Math.random() - 0.5) * 2);
+  }
+}
+generateSignalAndNoise();
+
+function regenerateNoise() {
+  generateSignalAndNoise();
+  drawEmaLive();
+}
+
+function drawEmaLive() {
+  const ctx = getCtx('canvas-ema-live', 780, 300);
+  if (!ctx) return;
+
+  const alphaSlider = document.getElementById('ema-alpha');
+  const noiseSlider = document.getElementById('ema-noise');
+  const alpha = (alphaSlider ? parseInt(alphaSlider.value) : 10) / 100;
+  const noiseAmp = noiseSlider ? parseInt(noiseSlider.value) : 40;
+
+  document.getElementById('ema-alpha-val').textContent = alpha.toFixed(2);
+  document.getElementById('ema-noise-val').textContent = noiseAmp;
+
+  const n = trueSignal.length;
+  const raw = [], filtered = [];
+  let emaState = null;
+  for (let i = 0; i < n; i++) {
+    const r = trueSignal[i] + noiseData[i] * noiseAmp;
+    raw.push(r);
+    if (emaState === null) { emaState = r; } else { emaState = alpha * r + (1 - alpha) * emaState; }
+    filtered.push(emaState);
+  }
+
+  const ox = 60, oy = 265, w = 690, h = 230;
+  const minV = -60, maxV = 180, range = maxV - minV;
+  function toX(i) { return ox + (i / (n-1)) * w; }
+  function toY(v) { return oy - ((v - minV) / range) * h; }
+
+  ctx.strokeStyle = '#1a1a24'; ctx.lineWidth = 0.5;
+  for (let v = -40; v <= 160; v += 40) {
+    ctx.beginPath(); ctx.moveTo(ox, toY(v)); ctx.lineTo(ox + w, toY(v)); ctx.stroke();
+    ctx.fillStyle = '#444'; ctx.font = '10px IBM Plex Mono, monospace'; ctx.textAlign = 'right';
+    ctx.fillText(v.toString(), ox - 8, toY(v) + 4);
+  }
+
+  ctx.strokeStyle = '#2a2a3a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(ox, oy - h); ctx.lineTo(ox, oy); ctx.lineTo(ox + w, oy); ctx.stroke();
+
+  // True signal
+  ctx.strokeStyle = 'rgba(74, 222, 128, 0.25)'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) { const x = toX(i), y = toY(trueSignal[i]); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+  ctx.stroke();
+
+  // Raw
+  ctx.strokeStyle = 'rgba(252, 165, 165, 0.5)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) { const x = toX(i), y = toY(raw[i]); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+  ctx.stroke();
+
+  // Filtered
+  ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) { const x = toX(i), y = toY(filtered[i]); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+  ctx.stroke();
+
+  ctx.fillStyle = '#06b6d4'; ctx.font = 'bold 13px IBM Plex Mono, monospace'; ctx.textAlign = 'right';
+  ctx.fillText(`α = ${alpha.toFixed(2)}`, ox + w, toY(maxV - 10) + 4);
+  ctx.fillStyle = '#555'; ctx.font = '10px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+  ctx.fillText('samples (100Hz → 2 seconds)', ox + w/2, oy + 20);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const alphaSlider = document.getElementById('ema-alpha');
+  const noiseSlider = document.getElementById('ema-noise');
+  if (alphaSlider) alphaSlider.addEventListener('input', drawEmaLive);
+  if (noiseSlider) noiseSlider.addEventListener('input', drawEmaLive);
+});
+
+/* ── Step Response ── */
+function drawStepResponse() {
+  const ctx = getCtx('canvas-step-response', 780, 320);
+  if (!ctx) return;
+
+  const ox = 70, oy = 270, w = 660, h = 220, nSamples = 60;
+  const alphas = [
+    { a: 0.5, color: '#fcd34d', label: 'α=0.5' },
+    { a: 0.2, color: '#06b6d4', label: 'α=0.2' },
+    { a: 0.1, color: '#4ade80', label: 'α=0.1' },
+    { a: 0.05, color: '#a78bfa', label: 'α=0.05' },
+  ];
+
+  function toX(i) { return ox + (i / nSamples) * w; }
+  function toY(v) { return oy - v * h; }
+
+  ctx.strokeStyle = '#1a1a24'; ctx.lineWidth = 0.5;
+  for (let v = 0; v <= 1; v += 0.25) {
+    ctx.beginPath(); ctx.moveTo(ox, toY(v)); ctx.lineTo(ox + w, toY(v)); ctx.stroke();
+    ctx.fillStyle = '#444'; ctx.font = '10px IBM Plex Mono, monospace'; ctx.textAlign = 'right';
+    ctx.fillText((v * 100).toFixed(0) + '%', ox - 8, toY(v) + 4);
+  }
+
+  ctx.strokeStyle = '#2a2a3a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + w, oy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox, oy - h); ctx.stroke();
+
+  for (let t = 0; t <= 600; t += 100) {
+    const x = toX(t / 10);
+    ctx.fillStyle = '#444'; ctx.font = '10px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+    ctx.fillText(t + 'ms', x, oy + 16);
+  }
+
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(ox, toY(0.95)); ctx.lineTo(ox + w, toY(0.95)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#555'; ctx.font = '10px IBM Plex Mono, monospace'; ctx.textAlign = 'left';
+  ctx.fillText('95%', ox + w + 5, toY(0.95) + 4);
+
+  const stepAt = 5;
+  alphas.forEach((cfg, ci) => {
+    ctx.strokeStyle = cfg.color; ctx.lineWidth = 2;
+    ctx.beginPath();
+    let ema = 0, settledAt = -1;
+    for (let i = 0; i <= nSamples; i++) {
+      const target = i >= stepAt ? 1 : 0;
+      ema = cfg.a * target + (1 - cfg.a) * ema;
+      const x = toX(i), y = toY(ema);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      if (settledAt < 0 && ema >= 0.95 && i >= stepAt) settledAt = i;
+    }
+    ctx.stroke();
+
+    if (settledAt >= 0) {
+      const sx = toX(settledAt);
+      ctx.setLineDash([2, 3]); ctx.strokeStyle = cfg.color + '66'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(sx, oy); ctx.lineTo(sx, toY(0.95)); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = cfg.color; ctx.font = '10px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+      ctx.fillText(`${(settledAt - stepAt) * 10}ms`, sx, oy + 30);
+    }
+
+    ctx.fillStyle = cfg.color; ctx.font = '11px IBM Plex Mono, monospace'; ctx.textAlign = 'left';
+    ctx.fillText(cfg.label, ox + w - 80, toY(0.97) + ci * 16 + 20);
+  });
+
+  ctx.fillStyle = '#888'; ctx.font = 'bold 12px IBM Plex Mono, monospace'; ctx.textAlign = 'center';
+  ctx.fillText('Step response: sudden position change at t=50ms', ox + w/2, 18);
+}
+
+/* ── Init ── */
+buildTocNav();
+window.addEventListener('scroll', updateScrollProgress, { passive: true });
+
+function initMath() {
+  if (window.katex) { renderMath(); } else { setTimeout(initMath, 100); }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initMath();
+  setupTocHighlighting();
+  setupCanvasObservers();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seeing What ACT Sees — GradCAM &amp; Attention Visualization</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0f;
+      color: #c8c5d0;
+      font-family: 'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0a0a0f; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a3a4a; }
+
+    /* ── Scroll progress bar ── */
+    #scroll-progress-track {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: #1a1a24;
+      z-index: 1000;
+    }
+    #scroll-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #1a5a3a, #4ade80, #a3f7bf);
+      width: 0%;
+      transition: width 0.1s linear;
+    }
+
+    /* ── Sticky header ── */
+    #header {
+      position: sticky;
+      top: 3px;
+      z-index: 999;
+      padding: 16px 24px;
+      border-bottom: 1px solid #1a1a24;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #0c0c12;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header-icon { font-size: 18px; }
+    .header-title { font-size: 14px; font-weight: 600; color: #e0dce8; letter-spacing: 0.02em; }
+    .header-sub { font-size: 11px; color: #666; margin-top: 1px; }
+    .header-back { color: #666; text-decoration: none; font-size: 12px; transition: color 0.2s; }
+    .header-back:hover { color: #4ade80; }
+
+    /* ── Floating TOC sidebar ── */
+    #toc-nav {
+      position: fixed;
+      top: 50%;
+      right: 18px;
+      transform: translateY(-50%);
+      z-index: 998;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: flex-end;
+    }
+    .toc-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .toc-label {
+      font-size: 10px;
+      color: #555;
+      font-family: 'IBM Plex Mono', monospace;
+      white-space: nowrap;
+      opacity: 0;
+      transform: translateX(4px);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+    .toc-item:hover .toc-label,
+    .toc-item.active .toc-label {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    .toc-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #1e1e2e;
+      transition: all 0.3s ease;
+      flex-shrink: 0;
+    }
+    .toc-item:hover .toc-dot {
+      transform: scale(1.4);
+      background: #3a5a3a;
+    }
+    .toc-item.active .toc-dot {
+      background: #4ade80;
+      width: 10px;
+      height: 10px;
+      box-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+    }
+    .toc-item.visited .toc-dot {
+      background: #1a5a3a;
+    }
+
+    /* ── Main content area ── */
+    #content-area {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+
+    /* ── Section styling ── */
+    .step-section {
+      padding: 60px 0 40px;
+      scroll-margin-top: 80px;
+    }
+    .step-section + .step-section {
+      border-top: 1px solid #1a1a24;
+    }
+
+    .step-icon { font-size: 32px; margin-bottom: 8px; }
+    .step-title {
+      font-size: 26px;
+      font-weight: 600;
+      color: #ece8f4;
+      margin: 0 0 6px 0;
+      font-family: 'IBM Plex Mono', monospace;
+      letter-spacing: -0.02em;
+    }
+    .step-subtitle {
+      font-size: 15px;
+      color: #7a7888;
+      font-family: 'Crimson Pro', serif;
+      font-style: italic;
+    }
+    .tags-row { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+    .tag {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .explanation-text {
+      font-family: 'Crimson Pro', Georgia, serif;
+      font-size: 17px;
+      line-height: 1.85;
+      color: #b8b5c4;
+      letter-spacing: 0.01em;
+    }
+    .explanation-text strong { color: #e0dce8; font-weight: 600; }
+    .explanation-text code {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 14px;
+      background: #16161e;
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: #4ade80;
+    }
+    .explanation-text .para { margin-bottom: 18px; margin-top: 0; }
+
+    .code-wrapper { margin: 20px 0; }
+    .code-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: #12121a;
+      border: 1px solid #1e1e2e;
+      cursor: pointer;
+      font-size: 12px;
+      color: #666;
+      user-select: none;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .code-toggle.open { border-radius: 8px 8px 0 0; border-bottom: none; }
+    .code-toggle.closed { border-radius: 8px; }
+    .toggle-arrow { transition: transform 0.2s; }
+    .toggle-arrow.open { transform: rotate(180deg); }
+    .code-block {
+      background: #12121a;
+      border: 1px solid #1e1e2e;
+      border-top: 1px solid #1a1a24;
+      border-radius: 0 0 8px 8px;
+      padding: 20px;
+      overflow-x: auto;
+      font-size: 12.5px;
+      line-height: 1.7;
+      white-space: pre;
+      margin-bottom: 0;
+      font-family: 'IBM Plex Mono', monospace;
+      color: #c8c5d0;
+    }
+
+    .math-block {
+      background: #0e1018;
+      border: 1px solid #1e2838;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 16px 0;
+      text-align: center;
+      overflow-x: auto;
+    }
+
+    .insight-box {
+      background: linear-gradient(135deg, #0e1a14, #0e1518);
+      border-left: 3px solid #4ade80;
+      border-radius: 0 8px 8px 0;
+      padding: 14px 18px;
+      margin: 16px 0;
+      font-family: 'Crimson Pro', Georgia, serif;
+      font-size: 16px;
+      color: #a3f7bf;
+      line-height: 1.7;
+    }
+    .insight-box::before { content: "Key Insight \2014 "; font-weight: 600; color: #4ade80; }
+
+    .quiz-box {
+      background: #10101a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 18px;
+      margin: 20px 0;
+    }
+    .quiz-question {
+      font-family: 'Crimson Pro', serif;
+      font-size: 16px;
+      color: #ddd;
+      margin-bottom: 12px;
+    }
+    .quiz-question::before { content: "Test yourself: "; font-weight: 600; color: #a78bfa; }
+    .quiz-reveal {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      color: #c8c5d0;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .quiz-reveal:hover { background: #22223a; border-color: #4a4a6a; }
+    .quiz-answer {
+      display: none;
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: #12122a;
+      border-radius: 6px;
+      font-family: 'Crimson Pro', serif;
+      font-size: 15px;
+      color: #a0a4b0;
+      line-height: 1.7;
+    }
+    .quiz-answer.visible { display: block; animation: fadeIn 0.3s ease; }
+
+    .diagram-container {
+      background: #08080e;
+      border: 1px solid #1e1e2e;
+      border-radius: 10px;
+      margin: 20px 0;
+      overflow: hidden;
+    }
+    .diagram-container canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .diagram-label {
+      padding: 8px 14px;
+      font-size: 11px;
+      color: #555;
+      border-top: 1px solid #1e1e2e;
+      text-align: center;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 900px) {
+      #toc-nav { display: none; }
+    }
+
+    @media (max-width: 600px) {
+      .step-title { font-size: 20px; }
+      #content-area { padding: 0 14px 60px; }
+      #header { padding: 12px 14px; }
+      .step-section { padding: 40px 0 30px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Scroll progress bar -->
+  <div id="scroll-progress-track">
+    <div id="scroll-progress-bar"></div>
+  </div>
+
+  <!-- Sticky header -->
+  <header id="header">
+    <div class="header-left">
+      <a href="index.html" class="header-back">&lt; back</a>
+      <div>
+        <div class="header-title">Seeing What ACT Sees</div>
+        <div class="header-sub">gradcam &amp; attention visualization</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Floating TOC nav -->
+  <nav id="toc-nav"></nav>
+
+  <!-- Main content -->
+  <div id="content-area">
+
+    <!-- Section 0: The Problem -->
+    <section id="section-0" class="step-section">
+      <div class="step-icon">&#x1F50D;</div>
+      <h2 class="step-title">The Problem</h2>
+      <div class="step-subtitle">A trained model is a black box &mdash; unless you pry it open</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2e1a;color:#4ade80">act</span>
+        <span class="tag" style="background:#2e1a2a;color:#ffd4ee">interpretability</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">You've trained an ACT policy. It picks up cubes, stacks them, maybe even does it reliably. But <strong>what is it actually looking at?</strong> When the robot arm moves left, is the model looking at the cube? At the gripper? At a shadow on the table?</p>
+          <p class="para">This matters more than curiosity. If your model is succeeding by looking at the right things, it will generalize. If it's succeeding by coincidence &mdash; a shadow that happens to correlate with the cube position in your training data &mdash; it will break the moment something changes.</p>
+          <p class="para">We have <strong>two tools</strong> to answer this question, and they look at different parts of the ACT architecture:</p>
+          <p class="para"><strong>GradCAM</strong> looks at the <strong>ResNet backbone</strong> (the CNN). It answers: "which pixels in the image caused the strongest feature activations that influenced the action output?"</p>
+          <p class="para"><strong>Attention visualization</strong> looks at the <strong>transformer decoder</strong>. It answers: "when the decoder was deciding what action to take, which spatial positions in the encoder output did it attend to?"</p>
+        </div>
+        <div class="insight-box">GradCAM and attention maps answer different questions about the same model. GradCAM reveals what the CNN extracts. Attention reveals what the transformer uses. A feature the CNN detects but the transformer ignores will show up in GradCAM but not in attention.</div>
+        <div class="diagram-container">
+          <canvas id="canvas-overview" width="780" height="420"></canvas>
+          <div class="diagram-label">Two visualization modes target different parts of the ACT architecture</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 1: The ACT Pipeline Recap -->
+    <section id="section-1" class="step-section">
+      <div class="step-icon">&#x1F504;</div>
+      <h2 class="step-title">The ACT Pipeline</h2>
+      <div class="step-subtitle">Quick recap: image &rarr; features &rarr; tokens &rarr; actions</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2e1a;color:#4ade80">act</span>
+        <span class="tag" style="background:#2e2e1a;color:#ffffd4">architecture</span>
+        <span class="tag" style="background:#1e2a1e;color:#b8f0b8">resnet</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">Before we can understand the visualization, we need to trace the exact path data takes through the model. Let's follow one camera image from raw pixels to action prediction:</p>
+          <p class="para"><strong>Step 1 &mdash; ResNet backbone.</strong> Each camera image (say 480&times;640 RGB) goes through a ResNet-18 CNN. The last convolutional block (<code>layer4</code>) outputs a <strong>feature map</strong>: a 3D tensor of shape <code>[512, 15, 20]</code>. Think of it as 512 "detector channels" over a 15&times;20 spatial grid. Each cell in this grid roughly corresponds to a 32&times;32 patch of the original image.</p>
+          <p class="para"><strong>Step 2 &mdash; Flatten to tokens.</strong> The feature map is reshaped into <code>300</code> tokens (15&times;20 = 300), each of dimension 512. Positional embeddings are added so the transformer knows where each token came from spatially.</p>
+          <p class="para"><strong>Step 3 &mdash; Transformer encoder.</strong> The 300 image tokens (per camera), plus the robot state token and style variable, are fed through the transformer encoder's self-attention layers. The output: contextual embeddings.</p>
+          <p class="para"><strong>Step 4 &mdash; Transformer decoder.</strong> Learned query embeddings (one per action timestep) attend to the encoder output via <strong>cross-attention</strong>. Each query "asks" the encoder output for the information it needs to predict one action in the chunk.</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-pipeline" width="780" height="400"></canvas>
+          <div class="diagram-label">The ACT data flow: image pixels &rarr; CNN feature map &rarr; tokens &rarr; encoder &rarr; decoder &rarr; actions</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para">Our two visualization tools hook into different stages of this pipeline. GradCAM hooks into <strong>Step 1</strong> (the CNN output). Attention visualization hooks into <strong>Step 4</strong> (the decoder's cross-attention). Let's look at each one.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Activations -->
+    <section id="section-2" class="step-section">
+      <div class="step-icon">&#x26A1;</div>
+      <h2 class="step-title">Activations</h2>
+      <div class="step-subtitle">What the CNN detects at each spatial position</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1e2a1e;color:#b8f0b8">resnet</span>
+        <span class="tag" style="background:#2e2a1a;color:#ffeed4">gradcam</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">The ResNet backbone processes your camera image through layers of convolutions. At each layer, it builds increasingly abstract representations. <code>layer1</code> detects edges and corners. <code>layer2</code> detects textures and simple shapes. By the time we reach <code>layer4</code> (the final block), the network is detecting high-level concepts: object parts, spatial relationships, semantic features.</p>
+          <p class="para">The output of <code>layer4</code> is a tensor of shape <code>[1, 512, 15, 20]</code>. The <strong>activations</strong> are simply the values in this tensor. At spatial position (row 5, col 10), channel 217 might have a value of 3.7 &mdash; meaning "feature detector #217 fired strongly at this location."</p>
+          <p class="para">You can think of each of the 512 channels as a different "question" the CNN is asking about the image. Channel 42 might respond to red-ish objects. Channel 198 might respond to edges of rectangular shapes. Channel 401 might respond to the gripper's silhouette. We don't choose what they detect &mdash; the network learns this during training.</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-activations" width="780" height="340"></canvas>
+          <div class="diagram-label">ResNet layer4 activations: 512 learned feature detectors over a 15&times;20 spatial grid</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para">The problem: we have <strong>512 &times; 15 &times; 20 = 153,600</strong> activation values. Which of these actually matter for the action the model predicts? That's where gradients come in.</p>
+        </div>
+        <div class="quiz-box">
+          <div class="quiz-question">Why do we hook into <code>layer4</code> specifically, rather than <code>layer1</code> or <code>layer2</code>?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer">Earlier layers capture low-level features (edges, textures) that are too generic to be interpretable &mdash; almost every part of the image has edges. <code>layer4</code> captures high-level semantic features (objects, parts) that correspond to meaningful concepts. Its spatial resolution (15&times;20) is also coarse enough to produce clean heatmaps rather than noisy pixel-level splotches.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Gradients -->
+    <section id="section-3" class="step-section">
+      <div class="step-icon">&#x1F4C9;</div>
+      <h2 class="step-title">Gradients</h2>
+      <div class="step-subtitle">Which activations the action output is sensitive to</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#2e2a1a;color:#ffeed4">gradcam</span>
+        <span class="tag" style="background:#2e1a1a;color:#ffd4d4">backprop</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">Activations tell you what the CNN <em>sees</em>. But the model might see a hundred things and only <em>care</em> about three of them for its action decision. <strong>Gradients</strong> tell you what the model cares about.</p>
+          <p class="para">Here's the idea. The model computes: image &rarr; activations &rarr; ... (many layers of math) ... &rarr; action output. That entire chain is differentiable. We can ask PyTorch: "if I slightly increased activation value at position (row 5, col 10, channel 217), how much would the action output change?"</p>
+          <p class="para">That's exactly what <code>.backward()</code> computes. It traces the chain of math backwards from the action output to the activations and computes the <strong>partial derivative</strong> of the output with respect to each activation. A large gradient means the output is sensitive to that activation. A near-zero gradient means the model doesn't care about it, no matter how strongly it fired.</p>
+        </div>
+        <div class="math-block" id="math-gradient"></div>
+        <div class="explanation-text">
+          <p class="para">Critically, <strong>this does not modify the model</strong>. No weights are updated. There's no optimizer step. We're just asking a hypothetical: "how sensitive is the output to each internal value?" The model is identical before and after.</p>
+          <p class="para">In normal inference, gradients are disabled (<code>torch.no_grad()</code>) for speed. Our visualizer intentionally leaves them enabled so the computation graph is built and <code>.backward()</code> can flow through it.</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-gradients" width="780" height="300"></canvas>
+          <div class="diagram-label">Forward pass builds the computation graph; backward pass traces sensitivity from output to activations</div>
+        </div>
+        <div class="insight-box">Gradients answer: "if this activation were slightly different, how much would the action change?" Large gradient = high influence. Zero gradient = irrelevant to the decision.</div>
+        <div class="quiz-box">
+          <div class="quiz-question">If an activation has a large value but a near-zero gradient, what does that mean?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer">The CNN strongly detected something at that position (high activation), but the downstream transformer and action head didn't use that information for the action prediction (low gradient). The model sees it but doesn't care about it for this particular decision. For example, the CNN might strongly detect the table surface, but the action doesn't depend on the table &mdash; it depends on the cube.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: GradCAM -->
+    <section id="section-4" class="step-section">
+      <div class="step-icon">&#x1F525;</div>
+      <h2 class="step-title">GradCAM</h2>
+      <div class="step-subtitle">Activations &times; Gradients = what drove the decision</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#2e2a1a;color:#ffeed4">gradcam</span>
+        <span class="tag" style="background:#1e2a1e;color:#b8f0b8">resnet</span>
+        <span class="tag" style="background:#2e1a2a;color:#ffd4ee">visualization</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">Now we combine the two pieces. We have activations (shape <code>[1, 512, 15, 20]</code>) and gradients (same shape). GradCAM combines them in three steps:</p>
+          <p class="para"><strong>1. Compute importance weights.</strong> For each of the 512 channels, average the gradient values over the entire 15&times;20 spatial grid. This gives one number per channel: "how important is this feature detector overall?"</p>
+        </div>
+        <div class="math-block" id="math-weights"></div>
+        <div class="explanation-text">
+          <p class="para"><strong>2. Weighted sum.</strong> Multiply each channel's activation map (15&times;20) by its importance weight, then sum across all 512 channels. This collapses the 512 channels into a single 15&times;20 heatmap.</p>
+        </div>
+        <div class="math-block" id="math-cam"></div>
+        <div class="explanation-text">
+          <p class="para"><strong>3. ReLU and normalize.</strong> Apply ReLU (zero out negatives &mdash; we only care about features with positive influence) and normalize to [0, 1].</p>
+          <p class="para">The result is a <strong>15&times;20 heatmap</strong>. Each cell tells you: "how much did the CNN features at this spatial location drive the action prediction?" We resize this to the original image dimensions and overlay it using a jet colormap.</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-gradcam" width="780" height="380"></canvas>
+          <div class="diagram-label">GradCAM: per-channel importance weights &times; activations &rarr; spatial heatmap</div>
+        </div>
+        <div class="insight-box">A hot spot on the GradCAM heatmap means: "features at this image region were both strongly detected AND strongly influential on the action." Not just seen &mdash; used.</div>
+
+        <div class="code-wrapper">
+          <div class="code-toggle open" onclick="toggleCode(this)">
+            <span>GradCAM core computation</span>
+            <span class="toggle-arrow open">&#9660;</span>
+          </div>
+          <div class="code-block">act = hooks.activations[i]              # [1, 512, 15, 20]
+grad = hooks.gradients[i]              # [1, 512, 15, 20]
+
+# Step 1: importance weight per channel
+weights = grad.mean(dim=(2, 3), keepdim=True)  # [1, 512, 1, 1]
+
+# Step 2: weighted sum across channels
+cam = torch.relu((weights * act).sum(dim=1, keepdim=True))  # [1, 1, 15, 20]
+
+# Step 3: normalize
+cam = cam.squeeze().cpu().numpy()      # [15, 20]
+if cam.max() > 0:
+    cam = cam / cam.max()              # [0, 1]</div>
+        </div>
+
+        <div class="quiz-box">
+          <div class="quiz-question">Why do we average the gradients over the spatial dimensions (step 1) rather than using them pixel-by-pixel?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer">Averaging produces one importance score per channel, which acts as a "global" signal for how important that entire feature detector is. Using per-pixel gradients would create a noisier, harder-to-interpret map. The spatial information already comes from the activations themselves &mdash; the gradient averaging just tells us <em>which channels matter</em>, and the activation values tell us <em>where those channels fire</em>.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 5: The Hook Trick -->
+    <section id="section-5" class="step-section">
+      <div class="step-icon">&#x1FA9D;</div>
+      <h2 class="step-title">The Hook Trick</h2>
+      <div class="step-subtitle">Intercepting internal tensors without modifying the model</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a1a2e;color:#d4d4ff">pytorch</span>
+        <span class="tag" style="background:#2e2a1a;color:#ffeed4">gradcam</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">There's a practical problem: the activations at <code>layer4</code> are <strong>intermediate values</strong>. They exist briefly during the forward pass and are then consumed by the next layer. PyTorch doesn't save them by default. So how do we capture them?</p>
+          <p class="para"><strong>Hooks.</strong> PyTorch lets you attach callback functions to any layer. A <strong>forward hook</strong> fires after a layer's forward pass and receives its output. A <strong>backward hook</strong> fires during <code>.backward()</code> and receives the gradients flowing through that layer.</p>
+        </div>
+        <div class="code-wrapper">
+          <div class="code-toggle open" onclick="toggleCode(this)">
+            <span>Attaching hooks to capture activations and gradients</span>
+            <span class="toggle-arrow open">&#9660;</span>
+          </div>
+          <div class="code-block">def fwd(_mod, _inp, out):       # fires after layer4.forward()
+    act_list.append(out.detach())  # save the feature map
+
+def bwd(_mod, _gi, go):         # fires during .backward()
+    grad_list.insert(0, go[0].detach())  # save gradients (reverse order!)
+
+fh = target_layer.register_forward_hook(fwd)
+bh = target_layer.register_full_backward_hook(bwd)</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para">There's a subtle gotcha with multiple cameras. The ACT model processes each camera image through the backbone <strong>in a loop</strong>:</p>
+        </div>
+        <div class="code-wrapper">
+          <div class="code-toggle open" onclick="toggleCode(this)">
+            <span>Inside ACT's forward pass</span>
+            <span class="toggle-arrow open">&#9660;</span>
+          </div>
+          <div class="code-block">for img in batch["observation.images"]:
+    cam_features = self.backbone(img)["feature_map"]  # hook fires here!</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para">The hook fires once per camera. If you only store a single value (overwriting each time), you get the <strong>last camera's data for all cameras</strong> &mdash; a real bug we hit. The fix: append to a list.</p>
+          <p class="para"><strong>Backward hooks fire in reverse order.</strong> If the forward pass processes [front_cam, wrist_cam], the backward pass processes gradients in reverse: [wrist_cam, front_cam]. So we use <code>insert(0, ...)</code> (prepend) instead of <code>append</code> to keep the lists aligned.</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-hooks" width="780" height="340"></canvas>
+          <div class="diagram-label">Hooks fire per camera: forward in order, backward in reverse &mdash; lists must stay aligned</div>
+        </div>
+        <div class="insight-box">Forward hooks fire in the order the backbone processes cameras. Backward hooks fire in reverse. <code>append</code> for forward, <code>insert(0, ...)</code> for backward keeps them paired correctly.</div>
+      </div>
+    </section>
+
+    <!-- Section 6: Attention Visualization -->
+    <section id="section-6" class="step-section">
+      <div class="step-icon">&#x1F441;</div>
+      <h2 class="step-title">Attention Maps</h2>
+      <div class="step-subtitle">What the transformer decoder attends to</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a1a2e;color:#d4d4ff">transformer</span>
+        <span class="tag" style="background:#2e1a2a;color:#ffd4ee">attention</span>
+        <span class="tag" style="background:#2e1a2a;color:#ffd4ee">cross-attention</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">Attention visualization works completely differently from GradCAM. No backward pass, no gradients. Instead, we look at the attention weights the transformer <strong>already computes</strong> during its normal forward pass.</p>
+          <p class="para">In the ACT decoder, each layer has a <strong>cross-attention</strong> sublayer. This is where the decoder queries (one per action timestep) attend to the encoder output. The attention weights are a matrix that says: "for each decoder query, how much did it attend to each encoder token?"</p>
+          <p class="para">The encoder output is a sequence of tokens. The token layout looks like this:</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-token-layout" width="780" height="200"></canvas>
+          <div class="diagram-label">Encoder output token layout: [latent, (robot_state), *cam0_tokens, *cam1_tokens, ...]</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para">The image tokens from each camera are flattened feature maps. Camera 0 contributes 15&times;20 = 300 tokens, camera 1 contributes another 300. We know the spatial shape of each camera's feature map from the backbone, so we can <strong>reshape</strong> the attention weights back into 2D spatial maps.</p>
+          <p class="para">The steps are:</p>
+          <p class="para"><strong>1.</strong> Hook into the last decoder layer's <code>multihead_attn</code> to capture the cross-attention weight matrix.</p>
+          <p class="para"><strong>2.</strong> Average over attention heads (each head attends to different things &mdash; averaging gives the overall picture).</p>
+          <p class="para"><strong>3.</strong> Average over decoder query positions (all action timesteps combined &mdash; "what does the model attend to overall?").</p>
+          <p class="para"><strong>4.</strong> Slice out each camera's tokens and reshape to (H, W) spatial maps.</p>
+          <p class="para"><strong>5.</strong> Normalize globally across all cameras so they're comparable.</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-attn-reshape" width="780" height="320"></canvas>
+          <div class="diagram-label">Cross-attention weights &rarr; per-camera spatial maps via token slicing and reshaping</div>
+        </div>
+        <div class="insight-box">Attention maps show what the transformer queries are looking at. Unlike GradCAM, this requires no backward pass &mdash; attention weights are a natural byproduct of the forward pass. We just need to grab them.</div>
+        <div class="quiz-box">
+          <div class="quiz-question">Why do we look at the last decoder layer's cross-attention, rather than the first layer or the encoder's self-attention?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer">The last decoder layer produces the final representation that directly drives the action prediction, so its attention pattern is the most decision-relevant. Earlier layers might attend broadly while still gathering context. The encoder's self-attention shows how image tokens relate to each other, not how the action prediction uses them.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 7: Proprioception Border -->
+    <section id="section-7" class="step-section">
+      <div class="step-icon">&#x1F9BE;</div>
+      <h2 class="step-title">Proprioception</h2>
+      <div class="step-subtitle">How much does the model rely on joint state vs. vision?</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#2e1a2a;color:#ffd4ee">attention</span>
+        <span class="tag" style="background:#2a1a2e;color:#d4aaff">proprioception</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">Among the encoder tokens, one is special: the <strong>robot state token</strong> (proprioception). This is the linear projection of the joint positions/velocities. When the decoder cross-attends to the encoder output, some attention goes to image tokens and some goes to this state token.</p>
+          <p class="para">We extract the attention weight on the proprioception token separately. This gives a single number (0 to 1 after normalization) that says: "what fraction of the decoder's attention went to joint state vs. visual information?"</p>
+          <p class="para">This is visualized as a <strong>colored border</strong> around the overlay image. Bright magenta border = the model is leaning heavily on proprioception for this frame. Dim or no border = visual features dominate the decision.</p>
+        </div>
+        <div class="diagram-container">
+          <canvas id="canvas-proprio" width="780" height="280"></canvas>
+          <div class="diagram-label">Proprioception attention value rendered as border intensity: bright = relying on joint state, dim = relying on vision</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para">This can reveal interesting dynamics over an episode. You might see the model rely on vision during the approach phase (need to locate the cube), then switch to proprioception during grasping (need to feel whether the gripper has closed), then back to vision for placement.</p>
+        </div>
+        <div class="quiz-box">
+          <div class="quiz-question">If the proprioception border is consistently bright across all frames of an episode, what might that indicate?</div>
+          <button class="quiz-reveal" onclick="toggleQuiz(this)">Reveal answer</button>
+          <div class="quiz-answer">The model is primarily relying on joint state rather than visual input to make decisions. This could mean: (1) the task can be solved largely through proprioception (e.g., a fixed pick location), (2) the visual features aren't discriminative enough for the model to rely on, or (3) the cameras aren't providing useful viewpoints. It's a signal to investigate whether the model would generalize to different object positions.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 8: GradCAM vs Attention -->
+    <section id="section-8" class="step-section">
+      <div class="step-icon">&#x2696;</div>
+      <h2 class="step-title">GradCAM vs. Attention</h2>
+      <div class="step-subtitle">Two lenses on the same model &mdash; when to use which</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#2e2a1a;color:#ffeed4">gradcam</span>
+        <span class="tag" style="background:#2e1a2a;color:#ffd4ee">attention</span>
+        <span class="tag" style="background:#2e1a2a;color:#ffd4ee">comparison</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="diagram-container">
+          <canvas id="canvas-comparison" width="780" height="400"></canvas>
+          <div class="diagram-label">GradCAM vs. Attention: different questions, different answers, complementary insights</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para"><strong>GradCAM</strong> tells you what the CNN backbone extracts that matters for the action. It's backward-pass-based, so it shows true causal influence &mdash; "changing these pixels would change the action." But it only sees the backbone. If the transformer ignores a strongly-activated feature, GradCAM still highlights it.</p>
+          <p class="para"><strong>Attention maps</strong> tell you what the transformer decoder queries for. It's forward-pass-only, so it's fast and doesn't require gradient computation. But attention weights are not necessarily causal &mdash; a token can have high attention weight without actually influencing the output (if the value vectors carry redundant information).</p>
+          <p class="para"><strong>When they agree:</strong> both highlight the same image region &rarr; strong evidence that region drives the action.</p>
+          <p class="para"><strong>When they disagree:</strong> interesting. GradCAM hot but attention cold means the CNN extracts a feature there that influences the action through some path the attention map doesn't capture (e.g., through the robot state token or encoder self-attention). Attention hot but GradCAM cold means the decoder looks there, but the gradient signal is diluted across many channels.</p>
+        </div>
+        <div class="insight-box">Run both modes on the same episode and compare. Agreement means confidence. Disagreement means something interesting is happening in the model's internal processing.</div>
+      </div>
+    </section>
+
+    <!-- Section 9: Recap -->
+    <section id="section-9" class="step-section">
+      <div class="step-icon">&#x1F3C1;</div>
+      <h2 class="step-title">Recap</h2>
+      <div class="step-subtitle">The full picture in one place</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2e1a;color:#4ade80">summary</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para"><strong>Activations</strong> = what the CNN detects. 512 feature detectors fire at different spatial locations. This is the raw output of the ResNet backbone.</p>
+          <p class="para"><strong>Gradients</strong> = what the action output is sensitive to. Computed by backpropagation. Large gradient means that activation influenced the action.</p>
+          <p class="para"><strong>GradCAM</strong> = activations &times; gradients, collapsed to a spatial heatmap. Shows which image regions drove the action through the CNN pathway. Requires a backward pass but doesn't modify the model.</p>
+          <p class="para"><strong>Attention maps</strong> = cross-attention weights from the decoder's last layer, reshaped back to spatial maps. Shows what the transformer queries for when making action predictions. Forward-pass only.</p>
+          <p class="para"><strong>Proprioception attention</strong> = how much the decoder attends to the robot state token vs. image tokens. Visualized as border intensity.</p>
+          <p class="para"><strong>Hooks</strong> = PyTorch callbacks that intercept intermediate tensors. Forward hooks capture activations (one per camera, in order). Backward hooks capture gradients (one per camera, in reverse order &mdash; use <code>insert(0, ...)</code>).</p>
+        </div>
+        <div class="code-wrapper">
+          <div class="code-toggle open" onclick="toggleCode(this)">
+            <span>Running the visualizer</span>
+            <span class="toggle-arrow open">&#9660;</span>
+          </div>
+          <div class="code-block"># GradCAM mode (what CNN features drive actions)
+uv run python operation_utils/gradcam_policy_visualizer.py \
+  --model Servo7/your-model --dataset Servo7/your-dataset \
+  --episode 0 --mode gradcam
+
+# Attention mode (what the transformer decoder attends to)
+uv run python operation_utils/gradcam_policy_visualizer.py \
+  --model Servo7/your-model --dataset Servo7/your-dataset \
+  --episode 0 --mode attention</div>
+        </div>
+        <div class="explanation-text">
+          <p class="para"><strong>Further reading:</strong></p>
+          <ul style="margin: 0 0 18px 20px; color: #b8b5c4; font-family: 'Crimson Pro', serif; font-size: 17px; line-height: 2;">
+            <li>Grad-CAM: Visual Explanations from Deep Networks (Selvaraju et al., 2017)</li>
+            <li>Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware (Zhao et al., 2023) &mdash; ACT</li>
+            <li>villekuosmanen/physical-AI-interpretability &mdash; attention visualization for ACT</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+<script>
+/* ── Interactive functions ── */
+function toggleQuiz(btn) {
+  const answer = btn.nextElementSibling;
+  answer.classList.toggle('visible');
+  btn.textContent = answer.classList.contains('visible') ? 'Hide answer' : 'Reveal answer';
+}
+
+function toggleCode(el) {
+  const block = el.nextElementSibling;
+  const arrow = el.querySelector('.toggle-arrow');
+  if (block.style.display === 'none') {
+    block.style.display = 'block';
+    el.classList.remove('closed');
+    el.classList.add('open');
+    arrow.classList.add('open');
+  } else {
+    block.style.display = 'none';
+    el.classList.remove('open');
+    el.classList.add('closed');
+    arrow.classList.remove('open');
+  }
+}
+
+/* ── KaTeX math rendering ── */
+function renderMath() {
+  const g = document.getElementById('math-gradient');
+  if (g && window.katex) {
+    katex.render('\\frac{\\partial \\, \\text{actions}}{\\partial \\, \\text{activation}_{c,i,j}} \\;=\\; \\text{"how sensitive is the output to this value?"}', g, { displayMode: true });
+  }
+  const w = document.getElementById('math-weights');
+  if (w && window.katex) {
+    katex.render('\\alpha_c = \\frac{1}{H \\times W} \\sum_{i}\\sum_{j} \\frac{\\partial \\, \\text{actions}}{\\partial \\, A_{c,i,j}}', w, { displayMode: true });
+  }
+  const c = document.getElementById('math-cam');
+  if (c && window.katex) {
+    katex.render('\\text{GradCAM}(i,j) = \\text{ReLU}\\!\\left(\\sum_{c} \\alpha_c \\cdot A_{c,i,j}\\right)', c, { displayMode: true });
+  }
+}
+
+/* ── Canvas helpers ── */
+function getCtx(id, w, h) {
+  const c = document.getElementById(id);
+  if (!c) return null;
+  const dpr = window.devicePixelRatio || 1;
+  c.width = w * dpr;
+  c.height = h * dpr;
+  c.style.width = w + 'px';
+  c.style.height = h + 'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return ctx;
+}
+
+function drawBox(ctx, x, y, w, h, fill, stroke, text, textColor, fontSize) {
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 6);
+  ctx.fill();
+  ctx.stroke();
+  if (text) {
+    ctx.fillStyle = textColor || '#ccc';
+    ctx.font = (fontSize || 12) + 'px IBM Plex Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const lines = text.split('\n');
+    const lh = (fontSize || 12) + 4;
+    const startY = y + h/2 - ((lines.length - 1) * lh) / 2;
+    lines.forEach(function(line, i) {
+      ctx.fillText(line, x + w/2, startY + i * lh);
+    });
+  }
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color) {
+  ctx.strokeStyle = color || '#4ade80';
+  ctx.fillStyle = color || '#4ade80';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  var angle = Math.atan2(y2 - y1, x2 - x1);
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - 8 * Math.cos(angle - 0.4), y2 - 8 * Math.sin(angle - 0.4));
+  ctx.lineTo(x2 - 8 * Math.cos(angle + 0.4), y2 - 8 * Math.sin(angle + 0.4));
+  ctx.closePath();
+  ctx.fill();
+}
+
+/* ── Diagram: Section 0 - Overview ── */
+function drawOverviewDiagram() {
+  var ctx = getCtx('canvas-overview', 780, 420);
+  if (!ctx) return;
+
+  // ACT architecture outline
+  ctx.strokeStyle = '#2a4a6a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(20, 15, 740, 390, 10);
+  ctx.stroke();
+  ctx.fillStyle = '#4da6ff';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('ACT Policy', 390, 32);
+
+  // Camera images
+  drawBox(ctx, 40, 55, 100, 55, '#1a1a2e', '#3a3a5a', '', '#d4d4ff', 10);
+  ctx.fillStyle = '#3a3a6a';
+  ctx.fillRect(50, 63, 35, 25);
+  ctx.fillRect(92, 63, 35, 25);
+  ctx.fillStyle = '#6a6aaa';
+  ctx.fillRect(53, 66, 29, 19);
+  ctx.fillRect(95, 66, 29, 19);
+  ctx.fillStyle = '#888';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Camera images', 90, 103);
+
+  // ResNet backbone
+  drawBox(ctx, 45, 120, 90, 45, '#1e2a1e', '#3a6a3a', 'ResNet-18\nBackbone', '#4ade80', 11);
+  drawArrow(ctx, 90, 110, 90, 118, '#4ade80');
+
+  // GradCAM target highlight
+  ctx.setLineDash([5, 3]);
+  ctx.strokeStyle = '#ff9b4a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(38, 114, 104, 58, 8);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ff9b4a';
+  ctx.font = 'bold 10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('GradCAM hooks here', 150, 140);
+
+  // Feature map
+  drawBox(ctx, 45, 185, 90, 35, '#1a2e2e', '#3a5a5a', '512\u00d715\u00d720', '#4adeac', 10);
+  drawArrow(ctx, 90, 165, 90, 183, '#4ade80');
+
+  // Robot state
+  drawBox(ctx, 180, 55, 90, 40, '#2e1a1a', '#5a3a3a', 'Joint State\n14 floats', '#ffd4d4', 10);
+  drawBox(ctx, 185, 108, 80, 28, '#2e1a2a', '#5a3a4a', 'Linear\u2192512', '#ffd4ee', 9);
+  drawArrow(ctx, 225, 95, 225, 106, '#ffd4d4');
+
+  // Encoder
+  drawBox(ctx, 40, 245, 280, 55, '#0e1220', '#2a4a6a', '', '#e0dce8', 11);
+  ctx.fillStyle = '#4da6ff';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Transformer Encoder', 180, 267);
+  ctx.fillStyle = '#7a8a9a';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.fillText('Self-Attention + FFN', 180, 283);
+
+  drawArrow(ctx, 90, 220, 120, 243, '#4adeac');
+  drawArrow(ctx, 225, 136, 200, 243, '#ffd4ee');
+
+  // Decoder
+  drawBox(ctx, 380, 170, 330, 80, '#0e1220', '#2a4a6a', '', '#e0dce8', 11);
+  ctx.fillStyle = '#4da6ff';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Transformer Decoder', 545, 195);
+  ctx.fillStyle = '#7a8a9a';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.fillText('Self-Attn + Cross-Attn + FFN', 545, 213);
+  ctx.fillStyle = '#555';
+  ctx.font = '9px IBM Plex Mono, monospace';
+  ctx.fillText('(DETR-style, no causal mask)', 545, 232);
+
+  // Attention target highlight
+  ctx.setLineDash([5, 3]);
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(373, 163, 344, 94, 8);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('Attention hooks here', 420, 280);
+
+  // Encoder to decoder connection
+  drawArrow(ctx, 320, 272, 378, 220, '#4da6ff');
+  ctx.fillStyle = '#555';
+  ctx.font = '9px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('cross-attn', 348, 236);
+
+  // Learned queries
+  drawBox(ctx, 600, 80, 100, 40, '#2a1a2e', '#5a3a6a', 'Learned\nQueries', '#d4aaff', 10);
+  drawArrow(ctx, 650, 120, 600, 168, '#d4aaff');
+
+  // Actions output
+  drawBox(ctx, 430, 310, 230, 40, '#0e1a14', '#2a6a3a', 'Predicted Action Chunk', '#4ade80', 12);
+  drawArrow(ctx, 545, 250, 545, 308, '#4ade80');
+
+  // Two output labels
+  drawBox(ctx, 40, 345, 150, 50, '#2e2a1a', '#6a5a3a', 'GradCAM\nHeatmap', '#ff9b4a', 11);
+  drawBox(ctx, 580, 345, 150, 50, '#2a1a3e', '#5a3a7a', 'Attention\nHeatmap', '#a78bfa', 11);
+
+  ctx.setLineDash([4, 3]);
+  ctx.strokeStyle = '#ff9b4a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(90, 165);
+  ctx.quadraticCurveTo(40, 320, 115, 343);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.setLineDash([4, 3]);
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(545, 250);
+  ctx.quadraticCurveTo(680, 310, 655, 343);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+/* ── Diagram: Section 1 - Pipeline ── */
+function drawPipelineDiagram() {
+  var ctx = getCtx('canvas-pipeline', 780, 400);
+  if (!ctx) return;
+
+  // Step 1: Image
+  drawBox(ctx, 20, 30, 100, 70, '#1a1a2e', '#3a3a5a', '', '#d4d4ff', 10);
+  ctx.fillStyle = '#3a3a6a';
+  ctx.fillRect(35, 42, 70, 45);
+  ctx.fillStyle = '#5a5a8a';
+  ctx.fillRect(38, 45, 64, 39);
+  ctx.fillStyle = '#888';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('480\u00d7640 RGB', 70, 115);
+
+  ctx.fillStyle = '#555';
+  ctx.font = 'bold 10px IBM Plex Mono, monospace';
+  ctx.fillText('Step 1', 70, 20);
+
+  // Arrow
+  drawArrow(ctx, 120, 65, 160, 65, '#4ade80');
+
+  // Step 2: ResNet
+  drawBox(ctx, 160, 30, 110, 70, '#1e2a1e', '#3a6a3a', 'ResNet-18\nlayer4', '#4ade80', 12);
+  ctx.fillStyle = '#555';
+  ctx.font = 'bold 10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Step 1', 215, 20);
+
+  drawArrow(ctx, 270, 65, 310, 65, '#4ade80');
+
+  // Step 3: Feature map
+  drawBox(ctx, 310, 25, 120, 80, '#1a2e2e', '#3a5a5a', '', '#4adeac', 10);
+
+  // Draw small grid to represent feature map
+  var gx = 325, gy = 35;
+  for (var r = 0; r < 4; r++) {
+    for (var c = 0; c < 5; c++) {
+      var alpha = 0.2 + Math.random() * 0.6;
+      ctx.fillStyle = 'rgba(74, 222, 128, ' + alpha + ')';
+      ctx.fillRect(gx + c * 18, gy + r * 13, 16, 11);
+    }
+  }
+  ctx.fillStyle = '#4adeac';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('[512, 15, 20]', 370, 115);
+  ctx.fillStyle = '#555';
+  ctx.font = 'bold 10px IBM Plex Mono, monospace';
+  ctx.fillText('Step 2', 370, 20);
+
+  drawArrow(ctx, 430, 65, 465, 65, '#4ade80');
+
+  // Step 4: Flatten to tokens
+  drawBox(ctx, 465, 30, 110, 70, '#2a2a1a', '#5a5a3a', 'Flatten\n+ pos embed', '#ffeed4', 11);
+  ctx.fillStyle = '#4adeac';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('300 tokens', 520, 115);
+  ctx.fillStyle = '#555';
+  ctx.font = 'bold 10px IBM Plex Mono, monospace';
+  ctx.fillText('Step 2', 520, 20);
+
+  drawArrow(ctx, 575, 65, 610, 65, '#4ade80');
+
+  // Step 5: Encoder
+  drawBox(ctx, 610, 20, 150, 90, '#0e1220', '#2a4a6a', 'Transformer\nEncoder\n(self-attn)', '#e0dce8', 11);
+  ctx.fillStyle = '#555';
+  ctx.font = 'bold 10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Step 3', 685, 10);
+
+  // Robot state input
+  drawBox(ctx, 640, 135, 90, 30, '#2e1a1a', '#5a3a3a', 'Joint State', '#ffd4d4', 10);
+  drawArrow(ctx, 685, 135, 685, 112, '#ffd4d4');
+
+  // Encoder output arrow down
+  drawArrow(ctx, 685, 110, 685, 195, '#4da6ff');
+  ctx.fillStyle = '#555';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('contextual', 694, 155);
+  ctx.fillText('embeddings', 694, 168);
+
+  // Decoder
+  drawBox(ctx, 310, 200, 300, 80, '#0e1220', '#2a4a6a', 'Transformer Decoder\nCross-Attn + Self-Attn + FFN', '#e0dce8', 12);
+  ctx.fillStyle = '#555';
+  ctx.font = 'bold 10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Step 4', 460, 190);
+
+  drawArrow(ctx, 685, 195, 612, 200, '#4da6ff');
+
+  // Learned queries
+  drawBox(ctx, 100, 210, 100, 45, '#2a1a2e', '#5a3a6a', 'Learned\nQueries', '#d4aaff', 10);
+  drawArrow(ctx, 200, 232, 308, 232, '#d4aaff');
+
+  // Actions
+  drawBox(ctx, 370, 320, 200, 45, '#0e1a14', '#2a6a3a', 'Action Chunk\na\u2081, a\u2082, ..., a\u2099', '#4ade80', 12);
+  drawArrow(ctx, 460, 280, 460, 318, '#4ade80');
+
+  // Highlight GradCAM region
+  ctx.setLineDash([5, 3]);
+  ctx.strokeStyle = '#ff9b4a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(155, 23, 290, 100, 8);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ff9b4a';
+  ctx.font = 'bold 10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('GradCAM hooks into CNN output', 170, 140);
+
+  // Highlight Attention region
+  ctx.setLineDash([5, 3]);
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(305, 195, 310, 90, 8);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('Attention hooks into decoder cross-attn', 315, 300);
+}
+
+/* ── Diagram: Section 2 - Activations ── */
+function drawActivationsDiagram() {
+  var ctx = getCtx('canvas-activations', 780, 340);
+  if (!ctx) return;
+
+  // Input image
+  drawBox(ctx, 20, 40, 120, 80, '#1a1a2e', '#3a3a5a', 'Camera\nImage', '#d4d4ff', 12);
+
+  drawArrow(ctx, 140, 80, 175, 80, '#4ade80');
+
+  // ResNet
+  drawBox(ctx, 175, 50, 100, 60, '#1e2a1e', '#3a6a3a', 'ResNet\nlayer4', '#4ade80', 11);
+
+  drawArrow(ctx, 275, 80, 310, 80, '#4ade80');
+
+  // Feature map visualization - multiple channels
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Feature Map: [512, 15, 20]', 520, 25);
+
+  var channels = [
+    { label: 'Ch 0', xoff: 310, color: '#4ade80' },
+    { label: 'Ch 1', xoff: 390, color: '#4da6ff' },
+    { label: 'Ch 2', xoff: 470, color: '#ff9b4a' },
+    { label: '...', xoff: 545, color: null },
+    { label: 'Ch 511', xoff: 600, color: '#a78bfa' },
+  ];
+
+  channels.forEach(function(ch) {
+    if (ch.color === null) {
+      ctx.fillStyle = '#555';
+      ctx.font = '16px IBM Plex Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('...', ch.xoff + 30, 90);
+      return;
+    }
+    // Draw a mini grid
+    for (var r = 0; r < 5; r++) {
+      for (var c = 0; c < 6; c++) {
+        var val = Math.random();
+        ctx.fillStyle = ch.color.replace(')', ', ' + (val * 0.7 + 0.1) + ')').replace('rgb', 'rgba').replace('#', '');
+        // Convert hex to rgba
+        var hex = ch.color;
+        var rr = parseInt(hex.slice(1,3), 16);
+        var gg = parseInt(hex.slice(3,5), 16);
+        var bb = parseInt(hex.slice(5,7), 16);
+        ctx.fillStyle = 'rgba(' + rr + ',' + gg + ',' + bb + ',' + (val * 0.7 + 0.15) + ')';
+        ctx.fillRect(ch.xoff + c * 12, 40 + r * 12, 10, 10);
+      }
+    }
+    ctx.fillStyle = '#666';
+    ctx.font = '9px IBM Plex Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(ch.label, ch.xoff + 35, 110);
+  });
+
+  // Explanation below
+  ctx.fillStyle = '#888';
+  ctx.font = '12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('Each channel = a learned feature detector', 310, 140);
+
+  // Example detectors
+  var detectors = [
+    { y: 170, label: 'Ch 42: responds to red objects', color: '#ff6b6b' },
+    { y: 195, label: 'Ch 198: responds to rectangular edges', color: '#4da6ff' },
+    { y: 220, label: 'Ch 401: responds to gripper silhouette', color: '#a78bfa' },
+  ];
+
+  detectors.forEach(function(d) {
+    // Small activation visualization
+    for (var r = 0; r < 3; r++) {
+      for (var c = 0; c < 4; c++) {
+        var v = Math.random();
+        var hex = d.color;
+        var rr = parseInt(hex.slice(1,3), 16);
+        var gg = parseInt(hex.slice(3,5), 16);
+        var bb = parseInt(hex.slice(5,7), 16);
+        ctx.fillStyle = 'rgba(' + rr + ',' + gg + ',' + bb + ',' + (v * 0.6 + 0.1) + ')';
+        ctx.fillRect(40 + c * 14, d.y, 12, 12);
+      }
+    }
+    ctx.fillStyle = '#b8b5c4';
+    ctx.font = '12px IBM Plex Mono, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(d.label, 110, d.y + 20);
+  });
+
+  // Big question
+  ctx.fillStyle = '#ffeed4';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('153,600 activation values. Which ones actually matter?', 390, 290);
+  ctx.fillStyle = '#ff9b4a';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.fillText('\u2192 We need gradients to answer this.', 390, 315);
+}
+
+/* ── Diagram: Section 3 - Gradients ── */
+function drawGradientsDiagram() {
+  var ctx = getCtx('canvas-gradients', 780, 300);
+  if (!ctx) return;
+
+  // Forward pass (top)
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Forward Pass (builds computation graph)', 390, 20);
+
+  drawBox(ctx, 30, 35, 100, 40, '#1a1a2e', '#3a3a5a', 'Image', '#d4d4ff', 11);
+  drawArrow(ctx, 130, 55, 165, 55, '#4ade80');
+  drawBox(ctx, 165, 35, 100, 40, '#1e2a1e', '#3a6a3a', 'Backbone', '#4ade80', 11);
+  drawArrow(ctx, 265, 55, 300, 55, '#4ade80');
+  drawBox(ctx, 300, 35, 110, 40, '#2a2a1a', '#5a5a3a', 'Activations', '#ffeed4', 11);
+  drawArrow(ctx, 410, 55, 445, 55, '#4ade80');
+  drawBox(ctx, 445, 35, 110, 40, '#0e1220', '#2a4a6a', 'Transformer', '#e0dce8', 11);
+  drawArrow(ctx, 555, 55, 590, 55, '#4ade80');
+  drawBox(ctx, 590, 35, 100, 40, '#0e1a14', '#2a6a3a', 'Actions', '#4ade80', 11);
+
+  // Backward pass (bottom)
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Backward Pass (.backward() traces sensitivity)', 390, 130);
+
+  drawBox(ctx, 590, 145, 100, 40, '#0e1a14', '#2a6a3a', 'Actions', '#4ade80', 11);
+  drawArrow(ctx, 590, 165, 555, 165, '#ff6b4a');
+  drawBox(ctx, 445, 145, 110, 40, '#0e1220', '#2a4a6a', 'Transformer', '#e0dce8', 11);
+  drawArrow(ctx, 445, 165, 410, 165, '#ff6b4a');
+  drawBox(ctx, 300, 145, 110, 40, '#2e1a1a', '#6a3a3a', 'Gradients', '#ffd4d4', 11);
+
+  // Highlight the pair
+  ctx.setLineDash([4, 3]);
+  ctx.strokeStyle = '#ffeed4';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(294, 28, 122, 54, 6);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.roundRect(294, 138, 122, 54, 6);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Connection between the pair
+  ctx.strokeStyle = '#ffeed4';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(355, 82);
+  ctx.lineTo(355, 138);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = '#ffeed4';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Same shape!', 355, 115);
+
+  // Explanation
+  ctx.fillStyle = '#b8b5c4';
+  ctx.font = '12px Crimson Pro, serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Activations: [1, 512, 15, 20]   \u2190 what was detected', 390, 215);
+  ctx.fillText('Gradients:   [1, 512, 15, 20]   \u2190 how much the output cared', 390, 238);
+
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.fillText('No weights are modified. The model is unchanged.', 390, 275);
+}
+
+/* ── Diagram: Section 4 - GradCAM computation ── */
+function drawGradcamDiagram() {
+  var ctx = getCtx('canvas-gradcam', 780, 380);
+  if (!ctx) return;
+
+  // Step 1: Gradients -> weights
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Step 1: Channel importance', 180, 20);
+
+  // Gradient tensor
+  drawBox(ctx, 30, 35, 100, 60, '#2e1a1a', '#6a3a3a', 'Gradients\n[512, 15, 20]', '#ffd4d4', 10);
+
+  ctx.fillStyle = '#888';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('mean over', 190, 55);
+  ctx.fillText('spatial dims', 190, 70);
+  drawArrow(ctx, 130, 65, 250, 65, '#ffd4d4');
+
+  // Weights
+  drawBox(ctx, 250, 40, 100, 50, '#2e2a1a', '#6a5a3a', 'Weights \u03b1\n[512, 1, 1]', '#ffeed4', 10);
+
+  // Step 2: Weighted sum
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Step 2: Weighted activation sum', 560, 20);
+
+  drawBox(ctx, 420, 35, 100, 60, '#1a2e2e', '#3a5a5a', 'Activations\n[512, 15, 20]', '#4adeac', 10);
+
+  ctx.fillStyle = '#ffeed4';
+  ctx.font = '16px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('\u00d7', 395, 65);
+
+  drawArrow(ctx, 350, 65, 380, 65, '#ffeed4');
+
+  drawArrow(ctx, 520, 65, 560, 65, '#4ade80');
+
+  ctx.fillStyle = '#888';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('sum over', 590, 45);
+  ctx.fillText('512 channels', 590, 58);
+
+  drawArrow(ctx, 620, 65, 660, 65, '#4ade80');
+
+  drawBox(ctx, 660, 40, 100, 50, '#0e1a14', '#2a6a3a', 'Raw map\n[15, 20]', '#4ade80', 10);
+
+  // Step 3: ReLU + normalize -> heatmap
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Step 3: ReLU + Normalize \u2192 Heatmap', 390, 130);
+
+  drawBox(ctx, 160, 145, 100, 40, '#0e1a14', '#2a6a3a', 'Raw map', '#4ade80', 10);
+  drawArrow(ctx, 260, 165, 300, 165, '#4ade80');
+  drawBox(ctx, 300, 145, 80, 40, '#1a1a1a', '#3a3a3a', 'ReLU', '#888', 11);
+  drawArrow(ctx, 380, 165, 420, 165, '#4ade80');
+  drawBox(ctx, 420, 145, 100, 40, '#2a2a1a', '#5a5a3a', 'Normalize\n\u2192 [0, 1]', '#ffeed4', 10);
+  drawArrow(ctx, 520, 165, 560, 165, '#ff9b4a');
+
+  // Final heatmap visualization
+  var hx = 570, hy = 140;
+  for (var r = 0; r < 5; r++) {
+    for (var c = 0; c < 7; c++) {
+      // Create a pattern: hot in center-right
+      var dist = Math.sqrt(Math.pow(r - 2, 2) + Math.pow(c - 4.5, 2));
+      var val = Math.max(0, 1 - dist / 4);
+      val = val + Math.random() * 0.1;
+      val = Math.min(1, Math.max(0, val));
+      // Jet-like colormap: blue -> cyan -> green -> yellow -> red
+      var rr, gg, bb;
+      if (val < 0.25) { rr = 0; gg = Math.floor(val * 4 * 255); bb = 255; }
+      else if (val < 0.5) { rr = 0; gg = 255; bb = Math.floor((0.5 - val) * 4 * 255); }
+      else if (val < 0.75) { rr = Math.floor((val - 0.5) * 4 * 255); gg = 255; bb = 0; }
+      else { rr = 255; gg = Math.floor((1 - val) * 4 * 255); bb = 0; }
+      ctx.fillStyle = 'rgb(' + rr + ',' + gg + ',' + bb + ')';
+      ctx.fillRect(hx + c * 14, hy + r * 12, 12, 10);
+    }
+  }
+  ctx.fillStyle = '#ff9b4a';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('15\u00d720 heatmap', 618, 212);
+
+  // Overlay on image
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Result: overlay on camera image', 390, 240);
+
+  // Original image box
+  drawBox(ctx, 140, 255, 120, 90, '#1a1a2e', '#3a3a5a', '', '#d4d4ff', 10);
+  ctx.fillStyle = '#3a3a6a';
+  ctx.fillRect(155, 268, 90, 60);
+  ctx.fillStyle = '#5a5a8a';
+  ctx.fillRect(158, 271, 84, 54);
+  ctx.fillStyle = '#888';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Original', 200, 355);
+
+  ctx.fillStyle = '#888';
+  ctx.font = '18px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('+', 300, 305);
+
+  // Heatmap box (resized)
+  drawBox(ctx, 330, 255, 120, 90, '#08080e', '#1e1e2e', '', '#4ade80', 10);
+  for (var r = 0; r < 6; r++) {
+    for (var c = 0; c < 9; c++) {
+      var dist = Math.sqrt(Math.pow(r - 3, 2) + Math.pow(c - 6, 2));
+      var val = Math.max(0, 1 - dist / 5);
+      val = val + Math.random() * 0.08;
+      val = Math.min(1, Math.max(0, val));
+      var rr2, gg2, bb2;
+      if (val < 0.25) { rr2 = 0; gg2 = Math.floor(val * 4 * 255); bb2 = 255; }
+      else if (val < 0.5) { rr2 = 0; gg2 = 255; bb2 = Math.floor((0.5 - val) * 4 * 255); }
+      else if (val < 0.75) { rr2 = Math.floor((val - 0.5) * 4 * 255); gg2 = 255; bb2 = 0; }
+      else { rr2 = 255; gg2 = Math.floor((1 - val) * 4 * 255); bb2 = 0; }
+      ctx.fillStyle = 'rgb(' + rr2 + ',' + gg2 + ',' + bb2 + ')';
+      ctx.fillRect(342 + c * 11, 268 + r * 11, 9, 9);
+    }
+  }
+  ctx.fillStyle = '#888';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Heatmap (resized)', 390, 355);
+
+  ctx.fillStyle = '#888';
+  ctx.font = '18px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('=', 490, 305);
+
+  // Overlay result
+  drawBox(ctx, 520, 255, 120, 90, '#08080e', '#1e1e2e', '', '#4ade80', 10);
+  ctx.fillStyle = '#3a3a6a';
+  ctx.fillRect(535, 268, 90, 60);
+  // Semi-transparent heatmap on top
+  for (var r = 0; r < 6; r++) {
+    for (var c = 0; c < 9; c++) {
+      var dist = Math.sqrt(Math.pow(r - 3, 2) + Math.pow(c - 6, 2));
+      var val = Math.max(0, 1 - dist / 5);
+      if (val > 0.1) {
+        var rr3, gg3, bb3;
+        if (val < 0.25) { rr3 = 0; gg3 = Math.floor(val * 4 * 255); bb3 = 255; }
+        else if (val < 0.5) { rr3 = 0; gg3 = 255; bb3 = Math.floor((0.5 - val) * 4 * 255); }
+        else if (val < 0.75) { rr3 = Math.floor((val - 0.5) * 4 * 255); gg3 = 255; bb3 = 0; }
+        else { rr3 = 255; gg3 = Math.floor((1 - val) * 4 * 255); bb3 = 0; }
+        ctx.fillStyle = 'rgba(' + rr3 + ',' + gg3 + ',' + bb3 + ', 0.5)';
+        ctx.fillRect(535 + c * 10, 268 + r * 10, 10, 10);
+      }
+    }
+  }
+  ctx.fillStyle = '#ff9b4a';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('GradCAM overlay', 580, 355);
+}
+
+/* ── Diagram: Section 5 - Hooks ── */
+function drawHooksDiagram() {
+  var ctx = getCtx('canvas-hooks', 780, 340);
+  if (!ctx) return;
+
+  // Forward pass
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Forward Pass: hooks fire per camera, in order', 390, 20);
+
+  drawBox(ctx, 30, 40, 100, 40, '#1a1a2e', '#3a3a5a', 'Front cam', '#d4d4ff', 11);
+  drawArrow(ctx, 130, 60, 165, 60, '#4ade80');
+  drawBox(ctx, 165, 40, 100, 40, '#1e2a1e', '#3a6a3a', 'Backbone', '#4ade80', 11);
+  drawArrow(ctx, 265, 60, 300, 60, '#4ade80');
+
+  // Hook captures
+  drawBox(ctx, 300, 40, 130, 40, '#2a2a1a', '#5a5a3a', 'act_list.append()', '#ffeed4', 9);
+  ctx.fillStyle = '#ff9b4a';
+  ctx.font = 'bold 9px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('hook fires!', 310, 35);
+
+  // Result list state after front cam
+  drawBox(ctx, 480, 40, 180, 40, '#0e1a14', '#2a4a3a', 'act_list = [front_act]', '#4ade80', 9);
+  drawArrow(ctx, 430, 60, 478, 60, '#ffeed4');
+
+  // Second camera
+  drawBox(ctx, 30, 110, 100, 40, '#1a1a2e', '#3a3a5a', 'Wrist cam', '#d4d4ff', 11);
+  drawArrow(ctx, 130, 130, 165, 130, '#4ade80');
+  drawBox(ctx, 165, 110, 100, 40, '#1e2a1e', '#3a6a3a', 'Backbone', '#4ade80', 11);
+  drawArrow(ctx, 265, 130, 300, 130, '#4ade80');
+  drawBox(ctx, 300, 110, 130, 40, '#2a2a1a', '#5a5a3a', 'act_list.append()', '#ffeed4', 9);
+  ctx.fillStyle = '#ff9b4a';
+  ctx.font = 'bold 9px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('hook fires!', 310, 105);
+
+  drawBox(ctx, 480, 110, 280, 40, '#0e1a14', '#2a4a3a', 'act_list = [front_act, wrist_act]', '#4ade80', 9);
+  drawArrow(ctx, 430, 130, 478, 130, '#ffeed4');
+
+  // Backward pass
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Backward Pass: hooks fire in REVERSE order', 390, 185);
+
+  // Wrist first in backward
+  drawBox(ctx, 30, 205, 100, 40, '#2e1a1a', '#5a3a3a', 'Wrist grad', '#ffd4d4', 11);
+  drawArrow(ctx, 130, 225, 165, 225, '#ff6b4a');
+  drawBox(ctx, 165, 205, 140, 40, '#2a2a1a', '#5a5a3a', 'grad_list.insert(0,)', '#ffeed4', 9);
+  ctx.fillStyle = '#ff6b4a';
+  ctx.font = 'bold 9px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('fires first!', 170, 200);
+
+  drawBox(ctx, 360, 205, 180, 40, '#1a1a1e', '#3a3a4a', 'grad_list = [wrist_grad]', '#ffd4d4', 9);
+  drawArrow(ctx, 305, 225, 358, 225, '#ffeed4');
+
+  // Front second in backward
+  drawBox(ctx, 30, 270, 100, 40, '#2e1a1a', '#5a3a3a', 'Front grad', '#ffd4d4', 11);
+  drawArrow(ctx, 130, 290, 165, 290, '#ff6b4a');
+  drawBox(ctx, 165, 270, 140, 40, '#2a2a1a', '#5a5a3a', 'grad_list.insert(0,)', '#ffeed4', 9);
+  ctx.fillStyle = '#ff6b4a';
+  ctx.font = 'bold 9px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('fires second!', 170, 265);
+
+  drawBox(ctx, 360, 270, 280, 40, '#1a1a1e', '#3a3a4a', 'grad_list = [front_grad, wrist_grad]', '#ffd4d4', 9);
+  drawArrow(ctx, 305, 290, 358, 290, '#ffeed4');
+
+  // Check mark showing alignment
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('\u2713 Both lists aligned: [front, wrist]', 540, 325);
+}
+
+/* ── Diagram: Section 6 - Token layout ── */
+function drawTokenLayoutDiagram() {
+  var ctx = getCtx('canvas-token-layout', 780, 200);
+  if (!ctx) return;
+
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Encoder Output Token Sequence', 390, 20);
+
+  var x = 20, y = 45, h = 50;
+
+  // Latent token
+  drawBox(ctx, x, y, 60, h, '#2a1a2e', '#5a3a6a', 'Latent', '#d4aaff', 10);
+  x += 65;
+
+  // Robot state
+  drawBox(ctx, x, y, 75, h, '#2e1a1a', '#5a3a3a', 'Robot\nState', '#ffd4d4', 10);
+  x += 80;
+
+  // Camera 0 tokens
+  drawBox(ctx, x, y, 240, h, '#1e2a1e', '#3a6a3a', 'Camera 0 image tokens (300)', '#4ade80', 10);
+
+  // Small grid inside
+  for (var i = 0; i < 15; i++) {
+    var alpha = 0.2 + Math.random() * 0.5;
+    ctx.fillStyle = 'rgba(74, 222, 128, ' + alpha + ')';
+    ctx.fillRect(x + 10 + i * 15, y + 30, 12, 10);
+  }
+  ctx.fillStyle = '#666';
+  ctx.font = '8px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('15\u00d720 = 300', x + 120, y + 48);
+  x += 245;
+
+  // Camera 1 tokens
+  drawBox(ctx, x, y, 240, h, '#1a2e2e', '#3a5a5a', 'Camera 1 image tokens (300)', '#4adeac', 10);
+  for (var i = 0; i < 15; i++) {
+    var alpha = 0.2 + Math.random() * 0.5;
+    ctx.fillStyle = 'rgba(74, 222, 172, ' + alpha + ')';
+    ctx.fillRect(x + 10 + i * 15, y + 30, 12, 10);
+  }
+  ctx.fillStyle = '#666';
+  ctx.font = '8px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('15\u00d720 = 300', x + 120, y + 48);
+
+  // Brackets and labels below
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1;
+
+  // Non-image prefix bracket
+  ctx.beginPath();
+  ctx.moveTo(20, 105);
+  ctx.lineTo(20, 112);
+  ctx.lineTo(157, 112);
+  ctx.lineTo(157, 105);
+  ctx.stroke();
+  ctx.fillStyle = '#888';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('n_prefix tokens (skip these)', 88, 128);
+
+  // Image tokens bracket
+  ctx.beginPath();
+  ctx.moveTo(165, 105);
+  ctx.lineTo(165, 112);
+  ctx.lineTo(750, 112);
+  ctx.lineTo(750, 105);
+  ctx.stroke();
+  ctx.fillStyle = '#4ade80';
+  ctx.fillText('image tokens \u2192 slice per camera \u2192 reshape to (H, W)', 458, 128);
+
+  // Attention weight annotation
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Cross-attention weights tell us: how much did each decoder query attend to each of these tokens?', 390, 160);
+
+  // Proprio annotation
+  ctx.fillStyle = '#ffd4d4';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('\u2190 proprio attention', 168, 175);
+}
+
+/* ── Diagram: Section 6 - Attention reshape ── */
+function drawAttnReshapeDiagram() {
+  var ctx = getCtx('canvas-attn-reshape', 780, 320);
+  if (!ctx) return;
+
+  // Step 1: Raw attention matrix
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('1. Cross-Attention Weights', 130, 20);
+
+  // Matrix visualization
+  var mx = 30, my = 35, cellSize = 8;
+  for (var r = 0; r < 10; r++) {
+    for (var c = 0; c < 30; c++) {
+      var val;
+      // Make image tokens have varying attention
+      if (c < 2) val = 0.1 + Math.random() * 0.2; // prefix tokens
+      else val = Math.random() * 0.8;
+      ctx.fillStyle = 'rgba(167, 139, 250, ' + (val * 0.8 + 0.1) + ')';
+      ctx.fillRect(mx + c * (cellSize + 1), my + r * (cellSize + 1), cellSize, cellSize);
+    }
+  }
+
+  ctx.fillStyle = '#666';
+  ctx.font = '9px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('decoder queries \u2193', mx - 5, my + 105);
+  ctx.textAlign = 'center';
+  ctx.fillText('encoder tokens \u2192', mx + 140, my - 5);
+
+  // Step 2: Average over heads + queries
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('2. Average over heads & queries', 480, 20);
+
+  // 1D attention vector
+  var vx = 340, vy = 50;
+  for (var c = 0; c < 30; c++) {
+    var val;
+    if (c < 2) val = 0.15;
+    else if (c > 15 && c < 22) val = 0.5 + Math.random() * 0.3;
+    else val = 0.1 + Math.random() * 0.3;
+    ctx.fillStyle = 'rgba(167, 139, 250, ' + (val * 0.8 + 0.15) + ')';
+    ctx.fillRect(vx + c * 12, vy, 10, 20);
+  }
+
+  ctx.fillStyle = '#666';
+  ctx.font = '9px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('per-token attention (1D)', 520, vy + 38);
+
+  // Arrow down
+  drawArrow(ctx, 520, vy + 50, 520, vy + 75, '#a78bfa');
+
+  // Step 3: Slice and reshape
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('3. Slice per camera & reshape to (H, W)', 390, 140);
+
+  // Camera 0 attention map
+  var c0x = 140, c0y = 160;
+  drawBox(ctx, c0x - 5, c0y - 5, 115, 95, '#08080e', '#1e1e2e', '', '', 10);
+  for (var r = 0; r < 5; r++) {
+    for (var c = 0; c < 7; c++) {
+      var dist = Math.sqrt(Math.pow(r - 2, 2) + Math.pow(c - 3, 2));
+      var val = Math.max(0, 1 - dist / 4) + Math.random() * 0.1;
+      val = Math.min(1, val);
+      ctx.fillStyle = 'rgba(167, 139, 250, ' + (val * 0.7 + 0.1) + ')';
+      ctx.fillRect(c0x + c * 15, c0y + r * 15, 13, 13);
+    }
+  }
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Camera 0 (15\u00d720)', c0x + 52, c0y + 95);
+
+  // Camera 1 attention map
+  var c1x = 420, c1y = 160;
+  drawBox(ctx, c1x - 5, c1y - 5, 115, 95, '#08080e', '#1e1e2e', '', '', 10);
+  for (var r = 0; r < 5; r++) {
+    for (var c = 0; c < 7; c++) {
+      var dist = Math.sqrt(Math.pow(r - 1, 2) + Math.pow(c - 5, 2));
+      var val = Math.max(0, 1 - dist / 3.5) + Math.random() * 0.1;
+      val = Math.min(1, val);
+      ctx.fillStyle = 'rgba(74, 222, 172, ' + (val * 0.7 + 0.1) + ')';
+      ctx.fillRect(c1x + c * 15, c1y + r * 15, 13, 13);
+    }
+  }
+  ctx.fillStyle = '#4adeac';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Camera 1 (15\u00d720)', c1x + 52, c1y + 95);
+
+  // 4. Normalize
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('4. Global normalization across cameras', 390, 278);
+
+  ctx.fillStyle = '#888';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.fillText('All maps + proprioception normalized to [0, 1] together \u2192 comparable across cameras', 390, 302);
+}
+
+/* ── Diagram: Section 7 - Proprioception ── */
+function drawProprioDiagram() {
+  var ctx = getCtx('canvas-proprio', 780, 280);
+  if (!ctx) return;
+
+  // Three example frames with different proprio values
+  var frames = [
+    { label: 'Approach', proprio: 0.1, description: 'Vision-dominated' },
+    { label: 'Grasping', proprio: 0.7, description: 'Proprio-dominated' },
+    { label: 'Placement', proprio: 0.3, description: 'Mixed' },
+  ];
+
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Proprioception attention over an episode', 390, 20);
+
+  frames.forEach(function(f, i) {
+    var fx = 50 + i * 250;
+    var fy = 45;
+
+    // Frame label
+    ctx.fillStyle = '#888';
+    ctx.font = 'bold 11px IBM Plex Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.label, fx + 70, fy - 5);
+
+    // Image placeholder
+    ctx.fillStyle = '#3a3a6a';
+    ctx.fillRect(fx + 10, fy + 5, 120, 80);
+
+    // Heatmap overlay
+    for (var r = 0; r < 6; r++) {
+      for (var c = 0; c < 9; c++) {
+        var val = 0.2 + Math.random() * 0.5;
+        var rr, gg, bb;
+        if (val < 0.5) { rr = 0; gg = Math.floor(val * 2 * 255); bb = 255; }
+        else { rr = Math.floor((val - 0.5) * 2 * 255); gg = 255; bb = 0; }
+        ctx.fillStyle = 'rgba(' + rr + ',' + gg + ',' + bb + ', 0.35)';
+        ctx.fillRect(fx + 10 + c * 13.3, fy + 5 + r * 13.3, 13.3, 13.3);
+      }
+    }
+
+    // Proprioception border
+    var intensity = Math.floor(255 * f.proprio);
+    ctx.strokeStyle = 'rgb(' + intensity + ', 0, ' + intensity + ')';
+    ctx.lineWidth = f.proprio > 0.05 ? 6 : 1;
+    ctx.strokeRect(fx + 10, fy + 5, 120, 80);
+
+    // Proprio value text
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px IBM Plex Mono, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('Proprio: ' + f.proprio.toFixed(2), fx + 15, fy + 20);
+
+    // Description
+    ctx.fillStyle = f.proprio > 0.5 ? '#d4aaff' : '#4ade80';
+    ctx.font = '11px IBM Plex Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.description, fx + 70, fy + 105);
+  });
+
+  // Timeline bar
+  var by = 180;
+  ctx.fillStyle = '#1a1a24';
+  ctx.fillRect(50, by, 680, 20);
+
+  // Gradient: green (low proprio) -> purple (high proprio)
+  for (var x = 0; x < 680; x++) {
+    var t = x / 680;
+    var proprio;
+    if (t < 0.3) proprio = 0.1;
+    else if (t < 0.5) proprio = 0.1 + (t - 0.3) / 0.2 * 0.6;
+    else if (t < 0.7) proprio = 0.7 - (t - 0.5) / 0.2 * 0.4;
+    else proprio = 0.3;
+    var rr = Math.floor(proprio * 200);
+    var bb = Math.floor(proprio * 200);
+    var gg = Math.floor((1 - proprio) * 150);
+    ctx.fillStyle = 'rgb(' + rr + ',' + gg + ',' + bb + ')';
+    ctx.fillRect(50 + x, by, 1, 20);
+  }
+
+  // Labels
+  ctx.fillStyle = '#888';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Approach', 130, by + 36);
+  ctx.fillText('Grasp', 350, by + 36);
+  ctx.fillText('Transport', 520, by + 36);
+  ctx.fillText('Place', 650, by + 36);
+
+  ctx.fillStyle = '#666';
+  ctx.font = '10px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('bright magenta = high proprioception reliance | dim = vision-dominated', 390, by + 58);
+}
+
+/* ── Diagram: Section 8 - Comparison ── */
+function drawComparisonDiagram() {
+  var ctx = getCtx('canvas-comparison', 780, 400);
+  if (!ctx) return;
+
+  // Two columns
+  var lx = 30, rx = 410;
+
+  // GradCAM column
+  ctx.fillStyle = '#ff9b4a';
+  ctx.font = 'bold 13px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('GradCAM', lx + 170, 25);
+
+  drawBox(ctx, lx, 40, 340, 30, '#2e2a1a', '#6a5a3a', 'Looks at: ResNet backbone (CNN)', '#ffeed4', 11);
+  drawBox(ctx, lx, 80, 340, 30, '#2e2a1a', '#6a5a3a', 'Method: backward pass (gradients)', '#ffeed4', 11);
+  drawBox(ctx, lx, 120, 340, 30, '#2e2a1a', '#6a5a3a', 'Shows: what CNN features drive actions', '#ffeed4', 11);
+
+  // Pros
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('Strengths:', lx + 10, 175);
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.fillStyle = '#b8b5c4';
+  ctx.fillText('\u2022 True causal influence', lx + 10, 195);
+  ctx.fillText('\u2022 Shows pixel-level importance', lx + 10, 213);
+  ctx.fillText('\u2022 Well-understood theory', lx + 10, 231);
+
+  // Cons
+  ctx.fillStyle = '#ff6b6b';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.fillText('Limitations:', lx + 10, 260);
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.fillStyle = '#b8b5c4';
+  ctx.fillText('\u2022 Only sees CNN, not transformer', lx + 10, 280);
+  ctx.fillText('\u2022 Requires backward pass (slower)', lx + 10, 298);
+  ctx.fillText('\u2022 Coarse spatial resolution', lx + 10, 316);
+
+  // Attention column
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 13px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Attention Maps', rx + 170, 25);
+
+  drawBox(ctx, rx, 40, 340, 30, '#2a1a3e', '#5a3a7a', 'Looks at: Transformer decoder', '#d4aaff', 11);
+  drawBox(ctx, rx, 80, 340, 30, '#2a1a3e', '#5a3a7a', 'Method: forward pass only', '#d4aaff', 11);
+  drawBox(ctx, rx, 120, 340, 30, '#2a1a3e', '#5a3a7a', 'Shows: what tokens decoder queries for', '#d4aaff', 11);
+
+  // Pros
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('Strengths:', rx + 10, 175);
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.fillStyle = '#b8b5c4';
+  ctx.fillText('\u2022 Fast (no backward pass)', rx + 10, 195);
+  ctx.fillText('\u2022 Shows proprio vs. vision split', rx + 10, 213);
+  ctx.fillText('\u2022 Directly interpretable', rx + 10, 231);
+
+  // Cons
+  ctx.fillStyle = '#ff6b6b';
+  ctx.font = 'bold 11px IBM Plex Mono, monospace';
+  ctx.fillText('Limitations:', rx + 10, 260);
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.fillStyle = '#b8b5c4';
+  ctx.fillText('\u2022 Not strictly causal', rx + 10, 280);
+  ctx.fillText('\u2022 Only last decoder layer', rx + 10, 298);
+  ctx.fillText('\u2022 Averaged over heads', rx + 10, 316);
+
+  // Divider
+  ctx.strokeStyle = '#2a2a3a';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(390, 35);
+  ctx.lineTo(390, 330);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Bottom summary
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 12px IBM Plex Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Agreement = confidence    |    Disagreement = investigate', 390, 365);
+
+  ctx.fillStyle = '#888';
+  ctx.font = '11px IBM Plex Mono, monospace';
+  ctx.fillText('Run both on the same episode for the fullest picture', 390, 388);
+}
+
+/* ── Section metadata for TOC ── */
+var sectionMeta = [
+  { id: 'section-0', title: 'The Problem' },
+  { id: 'section-1', title: 'ACT Pipeline' },
+  { id: 'section-2', title: 'Activations' },
+  { id: 'section-3', title: 'Gradients' },
+  { id: 'section-4', title: 'GradCAM' },
+  { id: 'section-5', title: 'Hook Trick' },
+  { id: 'section-6', title: 'Attention Maps' },
+  { id: 'section-7', title: 'Proprioception' },
+  { id: 'section-8', title: 'GradCAM vs Attn' },
+  { id: 'section-9', title: 'Recap' },
+];
+
+/* ── Canvas draw function mapping ── */
+var diagramDrawers = {
+  0: drawOverviewDiagram,
+  1: drawPipelineDiagram,
+  2: drawActivationsDiagram,
+  3: drawGradientsDiagram,
+  4: drawGradcamDiagram,
+  5: drawHooksDiagram,
+  6: function() { drawTokenLayoutDiagram(); drawAttnReshapeDiagram(); },
+  7: drawProprioDiagram,
+  8: drawComparisonDiagram,
+};
+
+/* ── Build TOC ── */
+function buildTOC() {
+  var nav = document.getElementById('toc-nav');
+  sectionMeta.forEach(function(s, i) {
+    var item = document.createElement('a');
+    item.className = 'toc-item';
+    item.href = '#' + s.id;
+    item.dataset.index = i;
+    item.innerHTML = '<span class="toc-label">' + s.title + '</span><span class="toc-dot"></span>';
+    item.addEventListener('click', function(e) {
+      e.preventDefault();
+      document.getElementById(s.id).scrollIntoView({ behavior: 'smooth' });
+    });
+    nav.appendChild(item);
+  });
+}
+
+/* ── Scroll progress bar ── */
+function updateScrollProgress() {
+  var scrollTop = window.scrollY;
+  var docHeight = document.documentElement.scrollHeight - window.innerHeight;
+  var progress = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+  document.getElementById('scroll-progress-bar').style.width = progress + '%';
+}
+
+/* ── TOC highlight via IntersectionObserver ── */
+function setupTOCHighlight() {
+  var sections = sectionMeta.map(function(s) { return document.getElementById(s.id); });
+  var tocItems = document.querySelectorAll('.toc-item');
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        var idx = sections.indexOf(entry.target);
+        if (idx >= 0) {
+          tocItems.forEach(function(item, i) {
+            item.classList.remove('active');
+            if (i < idx) item.classList.add('visited');
+          });
+          tocItems[idx].classList.add('active');
+        }
+      }
+    });
+  }, {
+    rootMargin: '-20% 0px -60% 0px',
+    threshold: 0
+  });
+
+  sections.forEach(function(section) {
+    if (section) observer.observe(section);
+  });
+}
+
+/* ── Canvas IntersectionObserver: draw once when visible ── */
+function setupCanvasObservers() {
+  var canvasEntries = [
+    { id: 'canvas-overview', sectionIdx: 0 },
+    { id: 'canvas-pipeline', sectionIdx: 1 },
+    { id: 'canvas-activations', sectionIdx: 2 },
+    { id: 'canvas-gradients', sectionIdx: 3 },
+    { id: 'canvas-gradcam', sectionIdx: 4 },
+    { id: 'canvas-hooks', sectionIdx: 5 },
+    { id: 'canvas-token-layout', sectionIdx: 6 },
+    { id: 'canvas-attn-reshape', sectionIdx: 6 },
+    { id: 'canvas-proprio', sectionIdx: 7 },
+    { id: 'canvas-comparison', sectionIdx: 8 },
+  ];
+
+  var drawn = {};
+  var observer = new IntersectionObserver(function(entries, obs) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        var canvasId = entry.target.id;
+        var match = canvasEntries.find(function(c) { return c.id === canvasId; });
+        if (match && diagramDrawers[match.sectionIdx] && !drawn[match.sectionIdx]) {
+          diagramDrawers[match.sectionIdx]();
+          drawn[match.sectionIdx] = true;
+        }
+        obs.unobserve(entry.target);
+      }
+    });
+  }, {
+    rootMargin: '200px 0px 200px 0px',
+    threshold: 0
+  });
+
+  canvasEntries.forEach(function(c) {
+    var el = document.getElementById(c.id);
+    if (el) observer.observe(el);
+  });
+}
+
+/* ── Init ── */
+document.addEventListener('DOMContentLoaded', function() {
+  buildTOC();
+  setupTOCHighlight();
+  setupCanvasObservers();
+  updateScrollProgress();
+  window.addEventListener('scroll', updateScrollProgress, { passive: true });
+
+  if (window.katex) {
+    renderMath();
+  } else {
+    var checkKatex = setInterval(function() {
+      if (window.katex) {
+        clearInterval(checkKatex);
+        renderMath();
+      }
+    }, 100);
+  }
+});
+</script>
+</body>
+</html>
