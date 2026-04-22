@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hannover Messe 2026 — Company Learnings</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0d0d;
+      --card: #141414;
+      --card-hover: #1a1a1a;
+      --border: #242424;
+      --text: #f0f0f0;
+      --muted: #8a8a8a;
+      --dim: #555;
+      --accent: #ff8a3d;
+      --accent-soft: rgba(255, 138, 61, 0.12);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      font-size: 16px;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 60px 32px 120px;
+    }
+
+    .back {
+      display: inline-block;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      margin-bottom: 40px;
+      transition: color 0.15s;
+    }
+    .back:hover { color: var(--accent); }
+
+    header.page-head {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 32px;
+      margin-bottom: 48px;
+    }
+
+    .eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--accent);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    header.page-head h1 {
+      font-size: 2.8rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      margin-bottom: 16px;
+    }
+
+    header.page-head .meta {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--dim);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    /* Executive summary */
+    .summary {
+      background: linear-gradient(180deg, var(--accent-soft) 0%, rgba(255,138,61,0.04) 100%);
+      border: 1px solid var(--accent);
+      border-radius: 10px;
+      padding: 32px 36px;
+      margin-bottom: 56px;
+    }
+    .summary h3 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 14px;
+      letter-spacing: -0.01em;
+    }
+    .summary h4 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--accent);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin-top: 28px;
+      margin-bottom: 14px;
+    }
+    .summary p { margin-bottom: 12px; color: #e4e4e4; }
+    .summary ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .summary ul li {
+      position: relative;
+      padding: 8px 0 8px 26px;
+      color: #e4e4e4;
+      border-bottom: 1px solid rgba(255,138,61,0.12);
+    }
+    .summary ul li:last-child { border-bottom: none; }
+    .summary ul li::before {
+      content: '›';
+      position: absolute;
+      left: 4px;
+      top: 8px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .summary ul.ctas li::before {
+      content: '☐';
+      font-size: 0.95rem;
+      top: 7px;
+    }
+    .summary ul.avoid li::before {
+      content: '✕';
+      color: #ff5c5c;
+    }
+    .summary .ref {
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.05em;
+      margin-left: 6px;
+    }
+
+    /* General remarks */
+    .remarks {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      padding: 24px 28px;
+      margin-bottom: 56px;
+    }
+    .remarks p { margin-bottom: 14px; color: #d8d8d8; }
+    .remarks p:last-child { margin-bottom: 0; }
+    .remark-list {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 14px 0;
+    }
+    .remark-list li {
+      position: relative;
+      padding: 6px 0 6px 20px;
+      color: #d8d8d8;
+    }
+    .remark-list li::before {
+      content: '›';
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Timeline */
+    .timeline {
+      position: relative;
+      padding-left: 28px;
+    }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 8px;
+      top: 12px;
+      bottom: 12px;
+      width: 1px;
+      background: var(--border);
+    }
+
+    .event {
+      position: relative;
+      margin-bottom: 56px;
+    }
+    .event:last-child { margin-bottom: 0; }
+
+    .event::before {
+      content: '';
+      position: absolute;
+      left: -28px;
+      top: 8px;
+      width: 17px;
+      height: 17px;
+      border-radius: 50%;
+      background: var(--bg);
+      border: 2px solid var(--accent);
+    }
+
+    .event-index {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--dim);
+      letter-spacing: 0.12em;
+      margin-bottom: 6px;
+    }
+
+    .event h2 {
+      font-size: 1.6rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 14px;
+    }
+
+    .event .body p { margin-bottom: 14px; color: #d8d8d8; }
+    .event .body p:last-child { margin-bottom: 0; }
+
+    .callout {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+    .callout .label { color: var(--dim); }
+    .callout .value { color: var(--text); }
+    .callout.flag { border-color: var(--accent); color: var(--accent); }
+
+    .media-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .media-grid figure {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      transition: border-color 0.15s;
+    }
+    .media-grid figure:hover { border-color: var(--accent); }
+    .media-grid img, .media-grid video {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .media-grid figcaption {
+      padding: 8px 12px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a class="back" href="index.html">← R&amp;D index</a>
+
+    <header class="page-head">
+      <div class="eyebrow">Company Learnings · Conference Notes</div>
+      <h1>Hannover Messe 2026</h1>
+      <div class="meta">Chronological field notes. Summary + action items will land at the top once the week wraps.</div>
+    </header>
+
+    <div class="summary">
+      <h3>TL;DR</h3>
+      <p>One day on the floor at Hannover Messe. The fair is saturated with cobot vendors, Chinese hardware (some serious, most not), European integrators, and Unitree humanoids as booth props. The useful signal sits in three buckets: <strong>hardware leads we can actually buy from</strong>, <strong>software/partnership plays</strong>, and <strong>sales framing we can borrow</strong>. The rest is noise.</p>
+      <p><strong>Hardware shortlist that came out of it:</strong> <strong>UR via Theo Drijfhout (6 wk)</strong>, <strong>Rokae via Jäger-Engineering (8 wk, ~€150k, CE)</strong>, and <strong>RobCo (~5% below UR, modular, collab-friendly)</strong>. BÄR Automation can custom-build anything but the 4-month lead time is a killer.</p>
+
+      <h4>Sales insights worth stealing</h4>
+      <ul>
+        <li><strong>"Customers talk about price last, because the solution is needed."</strong> Frame every call around the need and the outcome, let price be the last thing on the table. <span class="ref">(Erhan Kuş, COBRO · Event 05)</span></li>
+        <li><strong>Find verticals with structural demand.</strong> Aviation has a 10+ year backlog and a labor shortage, automation is a need, not a pitch. Triangulate our pipeline against sectors like this. <span class="ref">(Common Sense Robotics · Event 08)</span></li>
+      </ul>
+
+      <h4>Calls to action</h4>
+      <ul class="ctas">
+        <li><strong>Check ABB's new cobot</strong> (launched today), could reshape our cobot comparison. <span class="ref">(Event 05)</span></li>
+        <li><strong>Follow up with Theo Drijfhout</strong> on UR hardware, 6-week lead time is our shortest path. <span class="ref">(Event 16)</span></li>
+        <li><strong>Set up a meeting with Jonathan Jäger</strong> (Rokae/Jäger-Engineering), 8 weeks, ~€150k, CE-ready. <span class="ref">(Event 12)</span></li>
+        <li><strong>Meeting with Marc Krause at RobCo</strong> on the partnership angle. <span class="ref">(Event 14)</span></li>
+        <li><strong>Warm message to Herman Bruyninckx</strong> (Common Sense Robotics), keep the channel open, they want integration partners like us. <span class="ref">(Event 08)</span></li>
+        <li><strong>Warm message to Eris Sako</strong> (Duatic), peer-to-peer, no procurement push (they're hiring-oriented). <span class="ref">(Event 15)</span></li>
+        <li><strong>Explore the Wandelbots → Gessmann channel</strong> if we want a hook into Gessmann. <span class="ref">(Event 07)</span></li>
+      </ul>
+
+      <h4>Vendors to avoid</h4>
+      <ul class="avoid">
+        <li><strong>MOKA (Wuhu Moka Robot Technology)</strong>, no trust signal. <span class="ref">(Event 11)</span></li>
+        <li><strong>Huayan Robotics / Agilebot</strong>, same pattern. <span class="ref">(Event 13)</span></li>
+        <li><strong>Elite Robotics</strong>, booth unmanned twice, soft red flag for procurement. <span class="ref">(Event 04)</span></li>
+      </ul>
+    </div>
+
+    <div class="section-label">Timeline</div>
+
+    <div class="timeline">
+
+      <!-- Event 1 -->
+      <article class="event">
+        <div class="event-index">Event 01 · Arrival</div>
+        <h2>Autonomous hotel check-in</h2>
+        <div class="body">
+          <p>Checked into the hotel without any human intervention. Self-service kiosk / app flow handled the whole loop: identity, key issuance, room assignment. No front-desk staff involved.</p>
+          <p>
+            <span class="callout"><span class="label">Room rate</span><span class="value">~$180 / night</span></span>
+            <span class="callout flag">Pricey</span>
+            <span class="callout"><span class="label">Round-trip travel</span><span class="value">~$200</span></span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <img src="hannover-messe-assets/hotel.jpeg" alt="The hotel exterior" loading="lazy">
+            <figcaption>The hotel</figcaption>
+          </figure>
+          <figure>
+            <video src="hannover-messe-assets/hotel-room.mp4" controls preload="metadata"></video>
+            <figcaption>Inside the hotel room</figcaption>
+          </figure>
+          <figure>
+            <img src="hannover-messe-assets/tickets-round-trip.jpeg" alt="Round trip tickets, approximately $200" loading="lazy">
+            <figcaption>Round-trip tickets (~$200)</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 2 -->
+      <article class="event">
+        <div class="event-index">Event 02 · Competitor scouting</div>
+        <h2>Lentil Robotics GmbH</h2>
+        <div class="body">
+          <p>Spoke with the Lentil Robotics team at their booth. Roughly the same space as us, but their focus is the <strong>beverage industry</strong>. Company is very young, they started about <strong>two weeks ago</strong>.</p>
+          <p>They also flagged <strong>R3 Robotics</strong> as another player in the space, focusing on <strong>battery disassembly</strong>. Worth following up on.</p>
+          <p>
+            <span class="callout"><span class="label">Vertical</span><span class="value">Beverage</span></span>
+            <span class="callout"><span class="label">Founded</span><span class="value">~2 weeks ago</span></span>
+            <span class="callout"><span class="label">Entity</span><span class="value">GmbH (Germany)</span></span>
+            <span class="callout"><span class="label">Web</span><span class="value">lentilrobotics.com</span></span>
+            <span class="callout"><span class="label">Also mentioned</span><span class="value">R3 Robotics · battery disassembly</span></span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <img src="hannover-messe-assets/lentil-robotics/business-card.jpeg" alt="Lentil Robotics GmbH business card" loading="lazy">
+            <figcaption>Lentil Robotics GmbH, business card</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 3 -->
+      <article class="event">
+        <div class="event-index">Event 03 · University booth</div>
+        <h2>KIT-style university demo, hierarchical control</h2>
+        <div class="body">
+          <p>Another university booth. Hierarchical control setup, nothing novel, academically standard stuff. What was more interesting than the research itself was the <strong>hardware choice</strong>.</p>
+          <p>They were running on a <strong>Universal Robots</strong> arm with a <strong>Robotiq parallel gripper</strong>. Worth flagging because <strong>this exact gripper showed up at booth after booth across the fair</strong>. Starting to look like the de-facto default end-effector in this ecosystem.</p>
+          <p>
+            <span class="callout"><span class="label">Research</span><span class="value">Hierarchical control (standard)</span></span>
+            <span class="callout"><span class="label">Arm</span><span class="value">Universal Robots (UR)</span></span>
+            <span class="callout flag">Gripper seen everywhere: Robotiq</span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <img src="hannover-messe-assets/uni/ur-robotiq-gripper.jpeg" alt="UR arm with Robotiq parallel gripper at university booth" loading="lazy">
+            <figcaption>UR arm + Robotiq gripper, the combo seen at most booths</figcaption>
+          </figure>
+          <figure>
+            <video src="hannover-messe-assets/uni/ur-robotiq-demo.mp4" controls preload="metadata"></video>
+            <figcaption>Demo clip from the booth</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 4 -->
+      <article class="event">
+        <div class="event-index">Event 04 · Vendor check</div>
+        <h2>Elite Robotics, empty booth</h2>
+        <div class="body">
+          <p>Elite Robotics, a vendor we'd previously considered buying hardware from, had a stand at the fair. Swung by <strong>twice</strong>. Both times, <strong>nobody was manning the booth</strong>.</p>
+          <p>The stand itself also looked <strong>noticeably cheap</strong> next to the surrounding robotics booths, much smaller production value than neighbors. Reads as a weak signal on the company's current momentum, or at least their willingness to invest in presence at this level of show.</p>
+          <p>
+            <span class="callout"><span class="label">Vendor</span><span class="value">Elite Robotics</span></span>
+            <span class="callout"><span class="label">Visits</span><span class="value">2× unmanned</span></span>
+            <span class="callout flag">Soft red flag for procurement</span>
+          </p>
+        </div>
+      </article>
+
+      <!-- Event 5 -->
+      <article class="event">
+        <div class="event-index">Event 05 · Integrator conversation</div>
+        <h2>COBRO Robot Technologies, Erhan Kuş</h2>
+        <div class="body">
+          <p>Long chat with <strong>Erhan Kuş, Founder &amp; GM of COBRO Robot Technologies</strong> (Turkish robotics integrator, Istanbul-based, in the Türkiye pavilion). <em>Note: folder was labeled "corba" but the actual company is COBRO.</em></p>
+          <p>Their demo was the cleanest we saw all day: <strong>ABB arm with a Schmalz multi-cup vacuum gripper</strong> picking cardboard boxes. Motion was smooth, cycle looked production-ready, not a toy demo.</p>
+          <p><strong>Product tip he dropped:</strong> <strong>ABB is releasing a new cobot today.</strong> Worth checking out ASAP, could reshape the cobot comparison for us.</p>
+          <p><strong>Sales insight he shared:</strong> when pricing their solution, <em>customers talk about price last</em>, because the solution is genuinely needed. That's a strong signal about how to frame our own sales conversations: lead with the need and the outcome, let price be the last thing on the table.</p>
+          <p><strong>Market read from him:</strong> the <strong>growth of automation is going slower than he expected</strong>. Worth triangulating against what we're seeing in our own pipeline.</p>
+          <p>
+            <span class="callout"><span class="label">Company</span><span class="value">COBRO Robot Technologies</span></span>
+            <span class="callout"><span class="label">Contact</span><span class="value">Erhan Kuş, Founder &amp; GM</span></span>
+            <span class="callout"><span class="label">Email</span><span class="value">erhan.kus@cobro.com.tr</span></span>
+            <span class="callout"><span class="label">Web</span><span class="value">cobro.com.tr</span></span>
+            <span class="callout"><span class="label">Demo stack</span><span class="value">ABB arm + Schmalz vacuum gripper</span></span>
+            <span class="callout flag">CTA: Check ABB's new cobot announced today</span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <img src="hannover-messe-assets/cobro/business-card.jpeg" alt="COBRO Robot Technologies business card, Erhan Kuş" loading="lazy">
+            <figcaption>Erhan Kuş, COBRO Robot Technologies</figcaption>
+          </figure>
+          <figure>
+            <img src="hannover-messe-assets/cobro/abb-suction-demo.jpeg" alt="ABB arm with Schmalz vacuum gripper picking a cardboard box" loading="lazy">
+            <figcaption>ABB arm + Schmalz vacuum gripper</figcaption>
+          </figure>
+          <figure>
+            <video src="hannover-messe-assets/cobro/abb-suction-demo.mp4" controls preload="metadata"></video>
+            <figcaption>Suction-pick demo in motion</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 6 -->
+      <article class="event">
+        <div class="event-index">Event 06 · Custom integrator</div>
+        <h2>BÄR Automation GmbH, Rainer Herbrik</h2>
+        <div class="body">
+          <p>Spoke with <strong>Rainer Herbrik, Key Account Management / Vertriebsingenieur at BÄR Automation GmbH</strong> (Gemmingen, Germany, tagline <em>"Sondermaschinen und Automationseinrichtungen"</em>, i.e. custom machines and automation systems). <em>Note: folder was labeled "bar" but the actual company is BÄR, with the umlaut.</em></p>
+          <p>Strongest match so far for building hardware to our spec. <strong>They can actually build every robot configuration we've been asking around for</strong>, the full system the way we want it. And I'm fairly confident they've been <strong>acquired by Agile Robots</strong>, which would explain the range of arms on their booth.</p>
+          <p>The catch: <strong>nothing is in stock, and lead time is ~4 months</strong>. So the capability is there, but the delivery timeline would push any project meaningfully out.</p>
+          <p>
+            <span class="callout"><span class="label">Company</span><span class="value">BÄR Automation GmbH</span></span>
+            <span class="callout"><span class="label">Contact</span><span class="value">Rainer Herbrik (B.Eng.)</span></span>
+            <span class="callout"><span class="label">Email</span><span class="value">rainer.herbrik@baer-automation.de</span></span>
+            <span class="callout"><span class="label">Location</span><span class="value">Gemmingen, DE</span></span>
+            <span class="callout"><span class="label">Parent?</span><span class="value">Likely acquired by Agile Robots</span></span>
+            <span class="callout flag">Lead time: ~4 months, nothing in stock</span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <img src="hannover-messe-assets/baer/booth.jpeg" alt="BÄR Automation booth with dual-arm robot cell" loading="lazy">
+            <figcaption>BÄR booth, dual-arm robot cell (with the signature bear plushies)</figcaption>
+          </figure>
+          <figure>
+            <img src="hannover-messe-assets/baer/business-card.jpeg" alt="BÄR Automation business card, Rainer Herbrik" loading="lazy">
+            <figcaption>Rainer Herbrik, BÄR Automation GmbH</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 7 -->
+      <article class="event">
+        <div class="event-index">Event 07 · Software / orchestration</div>
+        <h2>Wandelbots, André Kühnert</h2>
+        <div class="body">
+          <p>Talked to <strong>André Kühnert, Technical Expert – AI &amp; Robotics at Wandelbots</strong>. This is a software play, not hardware. Could be genuinely interesting for us.</p>
+          <p>From how André described it, <strong>the stack is essentially what Atlas is to us, but leaning more heavily on the orchestration layer</strong>. Their demo made that obvious: one control plane driving a KUKA arm, a Techman arm, and a Gessmann mobile base, all on the same setup. Multi-vendor orchestration is clearly the pitch.</p>
+          <p><strong>Channel opportunity:</strong> Wandelbots is already <strong>working with Gessmann</strong>. If we want a warm introduction / commercial hook into Gessmann, going in <em>through Wandelbots</em> is probably the fastest path.</p>
+          <p>
+            <span class="callout"><span class="label">Company</span><span class="value">Wandelbots</span></span>
+            <span class="callout"><span class="label">Contact</span><span class="value">André Kühnert</span></span>
+            <span class="callout"><span class="label">Role</span><span class="value">Technical Expert – AI &amp; Robotics</span></span>
+            <span class="callout"><span class="label">Product</span><span class="value">NOVA (multi-vendor orchestration)</span></span>
+            <span class="callout flag">Hook: Wandelbots ↔ Gessmann partnership</span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <img src="hannover-messe-assets/wandelbots/booth-gessmann-kuka-tm.jpeg" alt="Wandelbots booth: Gessmann mobile base with KUKA and Techman arms" loading="lazy">
+            <figcaption>Wandelbots NOVA driving Gessmann base + KUKA + Techman</figcaption>
+          </figure>
+          <figure>
+            <img src="hannover-messe-assets/wandelbots/andre-badge.jpeg" alt="André Kühnert's Wandelbots badge" loading="lazy">
+            <figcaption>André Kühnert, Technical Expert – AI &amp; Robotics</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 8 -->
+      <article class="event">
+        <div class="event-index">Event 08 · VLA for manufacturing</div>
+        <h2>Common Sense Robotics, Prof. Herman Bruyninckx</h2>
+        <div class="body">
+          <p><strong>Common Sense Robotics</strong> is building <strong>VLA (vision-language-action) models for manufacturing</strong>. Serious team: <strong>CEO brings 10 years in the aviation industry</strong>, <strong>CTO is Prof. Herman Bruyninckx, KU Leuven</strong>. Genuinely heavyweight.</p>
+          <p><strong>Their go-to-market is sharp.</strong> They've identified that the aviation industry is sitting on a <strong>10+ year backlog</strong> while simultaneously hitting a <strong>labor shortage</strong>. Their pitch is: use our VLA + robots to automate into that gap. Demand is structural, not a nice-to-have, which makes the sales conversation a lot easier.</p>
+          <p>Had a good chat with <strong>Herman, the CTO, at the booth</strong>. Key point: <strong>he does not want to own the integration layer</strong>. He is explicitly looking for partners like us, companies who actually talk to the end customer and can own delivery. That's a clean handshake between what they build and what we do.</p>
+          <p><strong>Follow-up:</strong> simple message to Herman, say it was great to meet him and that it's good to find more serious people working in this space. No pitch yet, just keep the channel open.</p>
+          <p>
+            <span class="callout"><span class="label">Company</span><span class="value">Common Sense Robotics</span></span>
+            <span class="callout"><span class="label">Product</span><span class="value">VLA models for manufacturing</span></span>
+            <span class="callout"><span class="label">CEO</span><span class="value">10 yrs aviation industry</span></span>
+            <span class="callout"><span class="label">CTO</span><span class="value">Prof. Herman Bruyninckx, KU Leuven</span></span>
+            <span class="callout"><span class="label">Target market</span><span class="value">Aviation, 10yr backlog + labor gap</span></span>
+            <span class="callout flag">CTA: Message Herman to keep channel open</span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <img src="hannover-messe-assets/common-sense-robotics/herman-badge.jpeg" alt="Herman Bruyninckx's Common Sense Robotics badge" loading="lazy">
+            <figcaption>Prof. Dr. ir. hc Herman Bruyninckx, CTO</figcaption>
+          </figure>
+          <figure>
+            <video src="hannover-messe-assets/common-sense-robotics/demo.mp4" controls preload="metadata"></video>
+            <figcaption>Common Sense Robotics demo</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 9 -->
+      <article class="event">
+        <div class="event-index">Event 09 · Micro-assembly angle</div>
+        <h2>Micro-i, micro-assembly line</h2>
+        <div class="body">
+          <p>Walked past a stand showing a <strong>micro-assembly line powered by robotic arms</strong>. Brand on the cell was <strong>Micro-i</strong>.</p>
+          <p>This is worth flagging as a <strong>sales angle to pursue</strong>. The value add here is not abstract, these robots are <em>visibly</em> doing work that would otherwise need a skilled operator at a bench, at scale, and repeatably. Exactly the kind of application where the ROI conversation writes itself and where "we need this" lands before "what does it cost" even comes up (tying back to Erhan's insight from Event 05).</p>
+          <p>
+            <span class="callout"><span class="label">Brand</span><span class="value">Micro-i</span></span>
+            <span class="callout"><span class="label">Application</span><span class="value">Micro-assembly line</span></span>
+            <span class="callout flag">CTA: Explore micro-assembly as a sales angle</span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <video src="hannover-messe-assets/micro-i/assembly-line.mp4" controls preload="metadata"></video>
+            <figcaption>Micro-i assembly line in motion</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 10 -->
+      <article class="event">
+        <div class="event-index">Event 10 · Slick manufacturing demo</div>
+        <h2>Another very cool manufacturing line</h2>
+        <div class="body">
+          <p>Walked past another <strong>really well-executed manufacturing line demo</strong>. Cell ran smoothly, nice cycle, clearly putting real engineering behind the show. Didn't grab the vendor name at the booth (no card, no clear branding captured), so this is logged as a visual reference for now, track down the company later from the video if we want to follow up.</p>
+          <p>
+            <span class="callout"><span class="label">Vendor</span><span class="value">Unknown (ID from video)</span></span>
+            <span class="callout"><span class="label">Reason logged</span><span class="value">Quality of execution</span></span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <video src="hannover-messe-assets/manufacturing-line/line.mp4" controls preload="metadata"></video>
+            <figcaption>Manufacturing line demo (vendor TBD)</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 11 -->
+      <article class="event">
+        <div class="event-index">Event 11 · Vendor to avoid</div>
+        <h2>MOKA (Wuhu Moka Robot Technology)</h2>
+        <div class="body">
+          <p><strong>Wuhu Moka Robot Technology Co., Ltd.</strong>, a Chinese industrial robot vendor (Hall 26, B16, <em>mokarobot.com</em>). Full catalog on display, everything from small cobots through to large industrial arms and a humanoid in the lineup.</p>
+          <p>Conversation did <strong>not inspire confidence</strong>. Fits exactly the pattern flagged in the general remarks: pure Chinese vendor with a broad catalog and claims that don't hold up under scrutiny. <strong>Recommendation: avoid.</strong></p>
+          <p>
+            <span class="callout"><span class="label">Company</span><span class="value">Wuhu Moka Robot Technology Co., Ltd.</span></span>
+            <span class="callout"><span class="label">Booth</span><span class="value">Hall 26, B16</span></span>
+            <span class="callout"><span class="label">Web</span><span class="value">mokarobot.com</span></span>
+            <span class="callout flag">Do not engage</span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <img src="hannover-messe-assets/moka/booth.jpeg" alt="MOKA booth, Wuhu Moka Robot Technology" loading="lazy">
+            <figcaption>MOKA booth, full industrial arm lineup</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 12 -->
+      <article class="event">
+        <div class="event-index">Event 12 · Viable hardware, hot lead</div>
+        <h2>Rokae, via Jonathan Jäger (Jäger-Engineering GmbH)</h2>
+        <div class="body">
+          <p>Spoke with <strong>Jonathan Jäger, Head of Sales at Jäger-Engineering GmbH</strong> (Königsfeld, DE). Jäger-Engineering appears to be the <strong>German partner / distributor</strong> channel for <strong>Rokae</strong> arms. Rokae is a Chinese robotics company, but the variant Jonathan is selling is <strong>a German-paired arm that ships with full CE certification</strong>, which materially changes how we'd think about procurement vs. the pure-Chinese vendors.</p>
+          <p>Crucially, <strong>they have what we need</strong>. Concrete numbers from the conversation:</p>
+          <p>
+            <span class="callout"><span class="label">Lead time</span><span class="value">8 weeks</span></span>
+            <span class="callout"><span class="label">Price</span><span class="value">~€150k</span></span>
+            <span class="callout"><span class="label">CE</span><span class="value">Yes (German variant)</span></span>
+          </p>
+          <p><strong>Useful industry context he shared:</strong> for CE marking, the body doing the certification for a lot of the robotics players here is <strong>TÜV SÜD</strong>. Worth noting for our own certification path, if we end up needing CE we now know where the pipeline goes.</p>
+          <p>
+            <span class="callout"><span class="label">Company (OEM)</span><span class="value">Rokae</span></span>
+            <span class="callout"><span class="label">German partner</span><span class="value">Jäger-Engineering GmbH</span></span>
+            <span class="callout"><span class="label">Contact</span><span class="value">Jonathan Jäger (M.Sc., Head of Sales)</span></span>
+            <span class="callout"><span class="label">Email</span><span class="value">j.jaeger@jaeger-engineering.de</span></span>
+            <span class="callout"><span class="label">CE body mentioned</span><span class="value">TÜV SÜD</span></span>
+            <span class="callout flag">CTA: Set up a follow-up meeting</span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <img src="hannover-messe-assets/rokae/robotic-togo.jpeg" alt="Rokae arm on mobile base at booth" loading="lazy">
+            <figcaption>Rokae arm on a &ldquo;Robotic-ToGo&rdquo; mobile base</figcaption>
+          </figure>
+          <figure>
+            <img src="hannover-messe-assets/rokae/jaeger-card.jpeg" alt="Jonathan Jäger's business card, Jäger-Engineering GmbH" loading="lazy">
+            <figcaption>Jonathan Jäger, Head of Sales, Jäger-Engineering GmbH</figcaption>
+          </figure>
+          <figure>
+            <video src="hannover-messe-assets/rokae/demo.mp4" controls preload="metadata"></video>
+            <figcaption>Rokae demo at the booth</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 13 -->
+      <article class="event">
+        <div class="event-index">Event 13 · Vendor to avoid</div>
+        <h2>Huayan Robotics (Agilebot)</h2>
+        <div class="body">
+          <p><strong>Guangdong Huayan Robotics Co., Ltd.</strong> (HK-listed, stock code <em>1021.HK</em>), showing their <strong>Agilebot</strong> arm line on the booth. Spoke to <strong>Miao Ke, Global Market VP</strong>.</p>
+          <p><strong>Did not come across as trustworthy.</strong> Same pattern as the other pure-Chinese vendors: broad claims, thin substance, hard to get concrete answers. <strong>Recommendation: avoid.</strong></p>
+          <p>
+            <span class="callout"><span class="label">Company</span><span class="value">Guangdong Huayan Robotics Co., Ltd.</span></span>
+            <span class="callout"><span class="label">Ticker</span><span class="value">1021.HK</span></span>
+            <span class="callout"><span class="label">Product line</span><span class="value">Agilebot</span></span>
+            <span class="callout"><span class="label">Contact (for the record)</span><span class="value">Miao Ke, Global Market VP</span></span>
+            <span class="callout flag">Do not engage</span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <img src="hannover-messe-assets/huayan/card-booth.jpeg" alt="Huayan / Agilebot booth and business card" loading="lazy">
+            <figcaption>Huayan booth (Agilebot arms) with Miao Ke's card</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 14 -->
+      <article class="event">
+        <div class="event-index">Event 14 · UR challenger, collab lead</div>
+        <h2>RobCo, Arjan van Staveren &amp; Marc Krause</h2>
+        <div class="body">
+          <p>Had a solid conversation at the <strong>RobCo</strong> booth (Munich, <em>rob.co</em>). Pitched as a <strong>direct UR challenger</strong>: <strong>~5% cheaper than UR</strong>, with a <strong>modular arm design</strong>. The arm itself looks nice in the flesh.</p>
+          <p><strong>Reliability claims were the most interesting part.</strong> They quote <strong>45,000 hours MTBF</strong> on their arm, and took a direct shot at UR by claiming UR's advertised <strong>35,000 hours MTBF is more realistically closer to 22,000</strong> in the field. Worth pressure-testing that number independently before quoting it anywhere, but it's a sharp competitive narrative if it holds up.</p>
+          <p>Spoke with <strong>Arjan van Staveren, CRO</strong> (Dutch, easy to talk to) and picked up <strong>Marc Krause, Partner Development Manager</strong>'s card too. <strong>They're actively interested in collaborating</strong>.</p>
+          <p>
+            <span class="callout"><span class="label">Company</span><span class="value">RobCo</span></span>
+            <span class="callout"><span class="label">Pricing</span><span class="value">~5% below UR</span></span>
+            <span class="callout"><span class="label">Design</span><span class="value">Modular</span></span>
+            <span class="callout"><span class="label">MTBF (claim)</span><span class="value">45,000 h</span></span>
+            <span class="callout"><span class="label">UR MTBF (their claim)</span><span class="value">~22,000 h in reality</span></span>
+            <span class="callout"><span class="label">CRO</span><span class="value">Arjan van Staveren · arjan.van.staveren@robco.de</span></span>
+            <span class="callout"><span class="label">Partnerships</span><span class="value">Marc Krause · marc.krause@robco.de</span></span>
+            <span class="callout flag">CTA: Meeting with Marc on partnership</span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <img src="hannover-messe-assets/robco/booth-arm.jpeg" alt="RobCo modular arm demo at the booth" loading="lazy">
+            <figcaption>RobCo modular arm at the booth</figcaption>
+          </figure>
+          <figure>
+            <img src="hannover-messe-assets/robco/cards-arjan-marc.jpeg" alt="Business cards from Arjan van Staveren (CRO) and Marc Krause (Partnerships)" loading="lazy">
+            <figcaption>Arjan van Staveren (CRO) &amp; Marc Krause (Partnerships)</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 15 -->
+      <article class="event">
+        <div class="event-index">Event 15 · Actuator research, not quite selling</div>
+        <h2>Duatic AG, Eris Sako</h2>
+        <div class="body">
+          <p>Spoke with <strong>Eris Dhionis Sako, co-founder &amp; CEO of Duatic AG</strong> (Swiss, <em>duatic.com</em>). <strong>ETH Zurich background</strong>, he's the one behind their <strong>novel actuator design</strong>. Genuinely cool tech, visibly different from the cobot crowd.</p>
+          <p>He was <strong>open to collaboration</strong>, but, reading between the lines, <strong>they aren't really in "sell the thing" mode yet</strong>. The booth presence felt much more like a <strong>hiring funnel</strong> than a commercial one, i.e., they were there to meet engineers, not customers. Something to keep in mind when deciding how hard to push a commercial conversation.</p>
+          <p><strong>Follow-up:</strong> send Eris a message, keep it warm, don't push procurement, position it as peers in the space.</p>
+          <p>
+            <span class="callout"><span class="label">Company</span><span class="value">Duatic AG (CH)</span></span>
+            <span class="callout"><span class="label">Contact</span><span class="value">Eris Dhionis Sako, co-founder &amp; CEO</span></span>
+            <span class="callout"><span class="label">Background</span><span class="value">ETH Zurich, actuator design</span></span>
+            <span class="callout"><span class="label">Booth intent</span><span class="value">Hiring &gt; selling</span></span>
+            <span class="callout"><span class="label">Email</span><span class="value">esako@duatic.com</span></span>
+            <span class="callout flag">CTA: Send message to Eris</span>
+          </p>
+        </div>
+        <div class="media-grid">
+          <figure>
+            <img src="hannover-messe-assets/duatic/booth.jpeg" alt="Duatic robot at the Humanoid Robots area" loading="lazy">
+            <figcaption>Duatic robot on display</figcaption>
+          </figure>
+          <figure>
+            <img src="hannover-messe-assets/duatic/eris-card.jpeg" alt="Eris Sako's business card, Duatic AG" loading="lazy">
+            <figcaption>Eris Dhionis Sako, co-founder &amp; CEO, Duatic AG</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Event 16 -->
+      <article class="event">
+        <div class="event-index">Event 16 · UR reseller lead</div>
+        <h2>Teradyne / UR, routed to Theo Drijfhout</h2>
+        <div class="body">
+          <p>Finally got face-time with someone from <strong>Teradyne</strong> (Universal Robots' parent). They didn't handle regional sales themselves, but pointed me at <strong>Theo Drijfhout</strong>, a <strong>UR reseller</strong>, as the right person to actually move on a deal.</p>
+          <p>Made contact with Theo, conversation went well. Concretely: <strong>6-week lead time</strong> on UR hardware through him. This is the shortest lead time on the table so far for a CE-ready arm, worth weighing seriously against the Rokae / RobCo paths.</p>
+          <p>
+            <span class="callout"><span class="label">OEM</span><span class="value">Universal Robots (Teradyne)</span></span>
+            <span class="callout"><span class="label">Channel</span><span class="value">Theo Drijfhout (reseller)</span></span>
+            <span class="callout"><span class="label">Lead time</span><span class="value">6 weeks</span></span>
+            <span class="callout"><span class="label">Status</span><span class="value">Contact made, looking good</span></span>
+            <span class="callout flag">Benchmark against Rokae (8wk) and RobCo</span>
+          </p>
+        </div>
+      </article>
+
+      <!-- More events will be appended below as they are logged -->
+
+    </div>
+
+    <div class="section-label" style="margin-top: 64px;">Cool clips</div>
+    <p style="color: var(--muted); margin-bottom: 20px; font-size: 0.9rem;">Footage that didn't belong to a specific conversation but is worth looking at.</p>
+    <div class="media-grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
+      <figure style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+        <img src="hannover-messe-assets/cool-clips/mir-with-ur.jpeg" alt="MiR mobile base topped with a UR arm picking a crate" loading="lazy" style="width: 100%; display: block;">
+        <figcaption style="padding: 8px 12px; font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--border);">MiR mobile base + UR arm combo</figcaption>
+      </figure>
+      <figure style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+        <img src="hannover-messe-assets/cool-clips/huayan-50kg-lift.jpeg" alt="Huayan cobot lifting a 50kg box" loading="lazy" style="width: 100%; display: block;">
+        <figcaption style="padding: 8px 12px; font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--border);">Huayan cobot lifting 50&nbsp;kg (payload flex)</figcaption>
+      </figure>
+      <figure style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+        <img src="hannover-messe-assets/cool-clips/agile-robots-gemini.jpeg" alt="Agile Robots dual-arm cell running with Gemini" loading="lazy" style="width: 100%; display: block;">
+        <figcaption style="padding: 8px 12px; font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--border);">Agile Robots dual-arm cell &ldquo;with Gemini&rdquo;</figcaption>
+      </figure>
+      <figure style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+        <video src="hannover-messe-assets/cool-clips/clip.mp4" controls preload="metadata" style="width: 100%; display: block;"></video>
+        <figcaption style="padding: 8px 12px; font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--border);">Extra floor clip</figcaption>
+      </figure>
+
+    </div>
+  </div>
+</body>
+</html>
