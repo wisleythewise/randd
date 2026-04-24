@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local-Mode Teleop Data Flow — Dropping the Command Queue</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: #080a0e;
+      color: #c8c5d0;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #080a0e; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a3a4a; }
+
+    #scroll-progress-track {
+      position: fixed; top: 0; left: 0; width: 100%; height: 3px;
+      background: #1a1a24; z-index: 1000;
+    }
+    #scroll-progress-bar {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #0e4a5a, #06b6d4, #67e8f9);
+      transition: width 0.1s linear;
+    }
+
+    #header {
+      position: sticky; top: 3px; z-index: 999;
+      padding: 16px 24px;
+      border-bottom: 1px solid #1a1a24;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0; background: #0a0c12;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header-back { color: #666; text-decoration: none; font-size: 12px; transition: color 0.2s; }
+    .header-back:hover { color: #06b6d4; }
+    .header-title { font-size: 14px; font-weight: 600; color: #e0dce8; letter-spacing: 0.02em; }
+    .header-sub { font-size: 11px; color: #666; margin-top: 1px; }
+
+    #toc-nav {
+      position: fixed; right: 16px; top: 50%; transform: translateY(-50%);
+      z-index: 998; display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
+    }
+    .toc-dot-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .toc-label {
+      font-size: 10px; color: #444; white-space: nowrap;
+      opacity: 0; transition: opacity 0.2s; pointer-events: none;
+    }
+    .toc-dot-row:hover .toc-label,
+    .toc-dot-row.active .toc-label { opacity: 1; }
+    .toc-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #1e1e2e; transition: all 0.3s; flex-shrink: 0;
+    }
+    .toc-dot-row.active .toc-dot {
+      background: #06b6d4; width: 10px; height: 10px;
+      box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+    }
+    .toc-dot-row.visited .toc-dot { background: #0e4a5a; }
+
+    #content-area { padding: 0 24px 80px; }
+
+    .step-section {
+      max-width: 920px; margin: 0 auto;
+      padding: 60px 0 40px;
+    }
+    .step-section + .step-section { border-top: 1px solid #1a1a24; }
+
+    .step-icon { font-size: 32px; margin-bottom: 8px; }
+    .step-title {
+      font-size: 26px; font-weight: 600; color: #ece8f4;
+      margin: 0 0 6px 0; letter-spacing: -0.02em;
+    }
+    .step-subtitle {
+      font-size: 15px; color: #7a7888;
+      font-family: 'Crimson Pro', serif; font-style: italic;
+    }
+    .tags-row { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+    .tag {
+      display: inline-block; padding: 2px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase;
+    }
+
+    .explanation-text {
+      font-family: 'Crimson Pro', Georgia, serif;
+      font-size: 17px; line-height: 1.85; color: #b8b5c4; letter-spacing: 0.01em;
+    }
+    .explanation-text strong { color: #e0dce8; font-weight: 600; }
+    .explanation-text em { color: #d4d0dc; }
+    .explanation-text code {
+      font-family: 'IBM Plex Mono', monospace; font-size: 14px;
+      background: #14161e; padding: 2px 6px; border-radius: 3px; color: #06b6d4;
+    }
+    .explanation-text .para { margin-bottom: 18px; margin-top: 0; }
+    .explanation-text ul, .explanation-text ol {
+      margin: 0 0 18px 22px; padding: 0;
+    }
+    .explanation-text li { margin-bottom: 8px; }
+
+    .insight-box {
+      background: linear-gradient(135deg, #081518, #0a1518);
+      border-left: 3px solid #06b6d4; border-radius: 0 8px 8px 0;
+      padding: 14px 18px; margin: 16px 0;
+      font-family: 'Crimson Pro', serif; font-size: 16px; color: #67e8f9; line-height: 1.7;
+    }
+    .insight-box::before { content: "Key Insight \2014 "; font-weight: 600; color: #06b6d4; }
+    .insight-box strong { color: #a5f3fc; }
+
+    .warn-box {
+      background: linear-gradient(135deg, #1a1208, #180f08);
+      border-left: 3px solid #f59e0b; border-radius: 0 8px 8px 0;
+      padding: 14px 18px; margin: 16px 0;
+      font-family: 'Crimson Pro', serif; font-size: 16px; color: #fcd34d; line-height: 1.7;
+    }
+    .warn-box::before { content: "The Bottleneck \2014 "; font-weight: 600; color: #f59e0b; }
+    .warn-box strong { color: #fde68a; }
+
+    .fix-box {
+      background: linear-gradient(135deg, #0a1510, #0a1810);
+      border-left: 3px solid #4ade80; border-radius: 0 8px 8px 0;
+      padding: 14px 18px; margin: 16px 0;
+      font-family: 'Crimson Pro', serif; font-size: 16px; color: #86efac; line-height: 1.7;
+    }
+    .fix-box::before { content: "The Fix \2014 "; font-weight: 600; color: #4ade80; }
+    .fix-box strong { color: #bbf7d0; }
+
+    pre.code-block {
+      background: #06080c; border: 1px solid #1e2838; border-radius: 8px;
+      padding: 14px 18px; margin: 16px 0; overflow-x: auto;
+      font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.55;
+      color: #c8c5d0;
+    }
+    pre.code-block .kw  { color: #c792ea; }
+    pre.code-block .fn  { color: #82aaff; }
+    pre.code-block .str { color: #c3e88d; }
+    pre.code-block .num { color: #f78c6c; }
+    pre.code-block .cmt { color: #556070; font-style: italic; }
+    pre.code-block .cls { color: #ffcb6b; }
+
+    .thread-table {
+      width: 100%; border-collapse: collapse;
+      margin: 16px 0; font-size: 13px;
+      background: #0c0e14; border: 1px solid #1e2838; border-radius: 8px; overflow: hidden;
+    }
+    .thread-table th, .thread-table td {
+      text-align: left; padding: 11px 14px; vertical-align: top;
+      border-bottom: 1px solid #1e2838;
+    }
+    .thread-table th {
+      background: #0a0c12; color: #06b6d4; font-weight: 600;
+      font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .thread-table tr:last-child td { border-bottom: none; }
+    .thread-table code { color: #67e8f9; background: transparent; padding: 0; font-size: 12.5px; }
+    .thread-table td.desc { color: #9fa0ac; }
+
+    /* Swim-lane diagram */
+    .swim {
+      display: grid;
+      gap: 0;
+      background: #0c0e14; border: 1px solid #1e2838; border-radius: 10px;
+      overflow: hidden; margin: 20px 0;
+      font-size: 13px;
+    }
+    .swim.old { grid-template-columns: 42px 1fr 22px 1fr; }
+    .swim.new { grid-template-columns: 42px 1fr; }
+    .swim-header {
+      padding: 10px 14px; font-weight: 600; color: #e0dce8;
+      font-size: 11px; letter-spacing: 0.3px; text-transform: uppercase;
+      background: #10131c; border-bottom: 1px solid #1e2838;
+    }
+    .swim-header.leader { background: #0f2440; color: #7fa3cc; }
+    .swim-header.follower { background: #2d1b40; color: #c9a3eb; }
+    .swim-header.queue { background: #2d1d0a; color: #d9b088;
+      writing-mode: vertical-rl; transform: rotate(180deg);
+      text-align: center; padding: 10px 4px; font-size: 10px; }
+    .swim-header.step-col { background: #10131c; color: #7a7888;
+      text-align: center; padding: 10px 4px; font-size: 10px; }
+
+    .step-num {
+      padding: 14px 6px; text-align: center;
+      font-family: 'IBM Plex Mono', monospace;
+      color: #555866; font-size: 12px;
+      border-bottom: 1px solid #1a1d28; background: #0a0c12; font-weight: 600;
+    }
+    .swim-cell {
+      padding: 12px 14px; border-bottom: 1px solid #1a1d28;
+      border-left: 1px solid #1a1d28;
+    }
+    .swim-cell.leader { background: rgba(20, 50, 90, 0.12); }
+    .swim-cell.follower { background: rgba(60, 30, 90, 0.12); }
+    .swim-cell.queue {
+      background: rgba(107, 68, 35, 0.18);
+      text-align: center; font-size: 11px; color: #d9b088; padding: 8px 4px;
+    }
+    .swim-cell.empty { background: transparent; opacity: 0.25; }
+    .swim-cell.boundary {
+      background: rgba(180, 110, 40, 0.2);
+      color: #fcd34d; font-family: 'Crimson Pro', serif; font-size: 14px;
+    }
+    .swim-cell .stamp {
+      display: inline-block;
+      font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+      background: rgba(6, 182, 212, 0.15); color: #67e8f9;
+      padding: 2px 7px; border-radius: 3px; margin: 2px 4px 2px 0;
+    }
+    .swim-cell.follower .stamp {
+      background: rgba(167, 139, 250, 0.15); color: #c4b5fd;
+    }
+    .swim-cell .code-inline {
+      font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+      color: #82aaff;
+    }
+    .swim-cell .desc {
+      color: #7f8290; font-size: 12.5px;
+      margin-top: 4px; font-family: 'Crimson Pro', serif; line-height: 1.55;
+    }
+    .swim-cell .cost {
+      display: inline-block;
+      background: rgba(74, 222, 128, 0.12);
+      color: #86efac;
+      font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+      padding: 1px 6px; border-radius: 3px; margin-left: 6px;
+    }
+    .swim-cell .cost.slow { background: rgba(252, 165, 165, 0.12); color: #fca5a5; }
+
+    .legend {
+      display: flex; gap: 16px; margin-top: 10px;
+      font-size: 11px; color: #7f8290; flex-wrap: wrap;
+    }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 2px; }
+
+    .compare {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0;
+    }
+    .compare-card {
+      background: #0c0e14; border: 1px solid #1e2838; border-radius: 8px;
+      padding: 16px 18px;
+    }
+    .compare-card.old { border-top: 3px solid #fca5a5; }
+    .compare-card.new { border-top: 3px solid #86efac; }
+    .compare-card h4 {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; margin: 0 0 10px 0;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .compare-card.old h4 { color: #fca5a5; }
+    .compare-card.new h4 { color: #86efac; }
+    .compare-card ul {
+      margin: 0; padding-left: 18px;
+      font-family: 'Crimson Pro', serif; font-size: 15px;
+      color: #b8b5c4; line-height: 1.65;
+    }
+    .compare-card li { margin-bottom: 6px; }
+    .compare-card code {
+      font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
+      background: #14161e; padding: 1px 5px; border-radius: 3px; color: #67e8f9;
+    }
+
+    .trace-block {
+      background: #06080c; border: 1px solid #1e2838; border-radius: 8px;
+      padding: 14px 18px; margin: 16px 0; overflow-x: auto;
+      font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
+      color: #9fa0ac; line-height: 1.55;
+    }
+    .trace-block .slow { color: #fca5a5; font-weight: 600; }
+
+    @media (max-width: 700px) {
+      .step-title { font-size: 20px; }
+      #content-area { padding: 0 14px 60px; }
+      .compare { grid-template-columns: 1fr; }
+      #toc-nav { display: none; }
+      .swim.old { grid-template-columns: 32px 1fr; }
+      .swim.old .swim-header.queue, .swim.old .swim-header.follower,
+      .swim.old .swim-cell.queue, .swim.old .swim-cell.follower,
+      .swim.old .swim-cell.empty { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="scroll-progress-track"><div id="scroll-progress-bar"></div></div>
+
+  <header id="header">
+    <div class="header-left">
+      <a href="index.html" class="header-back">&lt; back</a>
+      <div>
+        <div class="header-title">Local-Mode Teleop Data Flow</div>
+        <div class="header-sub">from a leader joint to a follower command — and why the command queue had to go</div>
+      </div>
+    </div>
+  </header>
+
+  <nav id="toc-nav"></nav>
+
+  <div id="content-area">
+
+    <!-- Section 0: Setup -->
+    <section class="step-section" id="section-0">
+      <div class="step-icon">🧭</div>
+      <h2 class="step-title">Setup</h2>
+      <div class="step-subtitle">One process, two robots, one teleop loop</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2a2e;color:#67e8f9">architecture</span>
+        <span class="tag" style="background:#2e1a2e;color:#f3a5d7">teleoperation</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">In local mode, the whole system &mdash; <strong>Robot A (leader)</strong>, <strong>Robot B (follower)</strong>, orchestrator, system-state tracker, in-process bus &mdash; lives inside <strong>a single Python process</strong>. Both robots plug into the same machine; there is no network between them.</p>
+          <p class="para">Each robot is represented by a <code>RobotNode</code> that spawns a small family of worker threads via <code>asyncio.to_thread</code>. The orchestrator registers callbacks on the bus so that state updates from one robot turn into commands for the other. Hardware is generic &mdash; the leader might talk over USB-serial, the follower over CAN, or vice versa &mdash; but none of that matters for the control flow.</p>
+          <p class="para">What we want to answer on this page: <em>when the operator moves Robot A, what exactly happens, on which threads, and how long does each step take before Robot B moves?</em></p>
+        </div>
+        <div class="insight-box">Local mode is the simplest possible deployment &mdash; everything shares one process and one memory space. That simplicity is what makes the following observation possible at all: the <strong>entire teleop pipeline runs on one thread</strong>, not the three or four you'd expect from reading the architecture diagram.</div>
+      </div>
+    </section>
+
+    <!-- Section 1: The bus is a function call -->
+    <section class="step-section" id="section-1">
+      <div class="step-icon">📬</div>
+      <h2 class="step-title">The InProcessBus Is a Function Call</h2>
+      <div class="step-subtitle">Not a thread, not a queue &mdash; a <code>for</code> loop over subscribers</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2a2e;color:#67e8f9">concurrency</span>
+        <span class="tag" style="background:#2e2a1a;color:#ffeed4">mental model</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">The single most important piece of the mental model is that the in-process bus has no worker of its own. Its <code>publish()</code> is about ten lines:</p>
+        </div>
+<pre class="code-block"><span class="kw">class</span> <span class="cls">InProcessBus</span>:
+    <span class="kw">def</span> <span class="fn">publish</span>(<span class="kw">self</span>, topic: <span class="cls">str</span>, payload: <span class="cls">bytes</span>) -> <span class="kw">None</span>:
+        <span class="kw">with</span> <span class="kw">self</span>._lock:
+            <span class="kw">self</span>._latest[topic] = payload
+            subscribers = <span class="cls">list</span>(<span class="kw">self</span>._subscribers.get(topic, ()))
+
+        <span class="kw">for</span> callback <span class="kw">in</span> subscribers:
+            <span class="kw">try</span>:
+                callback(payload)            <span class="cmt"># synchronous &mdash; runs on the publisher's thread</span>
+            <span class="kw">except</span> <span class="cls">Exception</span> <span class="kw">as</span> e:
+                <span class="kw">self</span>.logger.error(...)</pre>
+        <div class="explanation-text">
+          <p class="para">There is no message queue, no event loop, no dispatcher. <code>publish()</code> grabs the subscriber list, then calls each callback in a Python <code>for</code> loop. Because Python calls functions synchronously, every subscriber runs on whatever thread called <code>publish()</code>.</p>
+          <p class="para">The practical consequence: when the leader's publisher calls <code>bus.publish("state.leader", ...)</code>, the system-state manager's subscriber runs on the leader's publisher thread. That subscriber fires the orchestrator's registered state-change callback &mdash; still on the leader's publisher thread. That callback calls <code>bus.publish("action.follower", ...)</code>, which invokes the follower's subscriber &mdash; <em>still on the leader's publisher thread</em>. The entire fan-out is a chain of nested function calls on one stack.</p>
+        </div>
+        <div class="insight-box">If you have ever drawn an architecture diagram with boxes labelled "leader publisher", "bus", "orchestrator subscriber", "follower subscriber" and assumed each is a thread, you are wrong by three threads. In local mode, <strong>bus subscribers are not threads</strong> &mdash; they are callbacks invoked on the publisher's thread.</div>
+      </div>
+    </section>
+
+    <!-- Section 2: Thread inventory -->
+    <section class="step-section" id="section-2">
+      <div class="step-icon">🧵</div>
+      <h2 class="step-title">The Threads Involved</h2>
+      <div class="step-subtitle">What actually runs on CPU cores</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2a2e;color:#67e8f9">concurrency</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">Inside the one process, asyncio runs its event loop on the main thread, and each <code>RobotNode</code> spawns a handful of worker threads. The threads that matter for teleop are just these:</p>
+        </div>
+        <table class="thread-table">
+          <thead>
+            <tr>
+              <th style="width:32%">Thread</th>
+              <th>Role in teleop</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>publish_worker_A</code></td>
+              <td class="desc">Reads leader joint positions at the leader's publish rate (e.g., 100&nbsp;Hz) and publishes <code>state.leader</code> to the bus.</td>
+            </tr>
+            <tr>
+              <td><code>publish_worker_B</code></td>
+              <td class="desc">Reads follower joint positions and publishes <code>state.follower</code>. Feeds the orchestrator / recorder's view of the follower, not the command path.</td>
+            </tr>
+            <tr>
+              <td><code>ai_inference_worker</code></td>
+              <td class="desc">Dedicated thread that produces commands when the control mode is AI instead of teleop. Idle during teleop.</td>
+            </tr>
+            <tr>
+              <td>main / asyncio loop</td>
+              <td class="desc">Serves the UI websocket and broadcasts. Not on the hot path.</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="explanation-text">
+          <p class="para">Notice what is <em>not</em> in the table: no "bus thread", no "orchestrator thread", no "subscriber thread". Those components exist as code, not as threads. They run inline on whichever publisher woke them up.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: The old path -->
+    <section class="step-section" id="section-3">
+      <div class="step-icon">🕰️</div>
+      <h2 class="step-title">The Old Path — With a Command Queue</h2>
+      <div class="step-subtitle">How it used to work, and where the 40&nbsp;ms went</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#2e1a1a;color:#fca5a5">before</span>
+        <span class="tag" style="background:#2e2a1a;color:#ffeed4">latency</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">Originally, the follower's bus subscriber did not apply commands directly. It <strong>parsed and queued them</strong>, and a separate rate-paced worker (<code>command_executer</code>) popped the queue on a fixed tick and wrote to hardware. The architecture looked like this:</p>
+        </div>
+
+        <div class="swim old">
+          <div class="swim-header step-col">#</div>
+          <div class="swim-header leader">publish_worker_A (leader)</div>
+          <div class="swim-header queue">QUEUE</div>
+          <div class="swim-header follower">command_executer (follower)</div>
+
+          <div class="step-num">1</div>
+          <div class="swim-cell leader">
+            <div class="code-inline">leader.robot.get_state()</div>
+            <div class="desc">Read joints from leader hardware.</div>
+            <span class="cost">~0.3&ndash;1 ms</span>
+          </div>
+          <div class="swim-cell queue">&mdash;</div>
+          <div class="swim-cell follower empty"></div>
+
+          <div class="step-num">2</div>
+          <div class="swim-cell leader">
+            <div class="code-inline">bus.publish("state.leader", raw)</div>
+            <div class="desc">Iterates subscribers synchronously. SystemStateManager is one of them.</div>
+          </div>
+          <div class="swim-cell queue">&mdash;</div>
+          <div class="swim-cell follower empty"></div>
+
+          <div class="step-num">3</div>
+          <div class="swim-cell leader">
+            <span class="stamp">ssm.leader.deserialized</span>
+            <div class="desc">SystemStateManager's subscriber deserializes and calls <code>update_state("leader", ...)</code>.</div>
+          </div>
+          <div class="swim-cell queue">&mdash;</div>
+          <div class="swim-cell follower empty"></div>
+
+          <div class="step-num">4</div>
+          <div class="swim-cell leader">
+            <span class="stamp">orch.cb_enter</span>
+            <div class="desc">Orchestrator's state-change callback runs. Early-returns unless in teleop mode.</div>
+          </div>
+          <div class="swim-cell queue">&mdash;</div>
+          <div class="swim-cell follower empty"></div>
+
+          <div class="step-num">5</div>
+          <div class="swim-cell leader">
+            <span class="stamp">orch.cb_converted</span>
+            <div class="desc">Joint-space converter maps the leader's pose onto the follower's (reindex, scale, offset).</div>
+          </div>
+          <div class="swim-cell queue">&mdash;</div>
+          <div class="swim-cell follower empty"></div>
+
+          <div class="step-num">6</div>
+          <div class="swim-cell leader">
+            <span class="stamp">orch.cb_pre_serialize</span>
+            <div class="desc">EMA smoother applied. Payload serialized to bytes.</div>
+          </div>
+          <div class="swim-cell queue">&mdash;</div>
+          <div class="swim-cell follower empty"></div>
+
+          <div class="step-num">7</div>
+          <div class="swim-cell leader">
+            <div class="code-inline">bus.publish("action.follower", raw)</div>
+            <div class="desc">Second bus publish. Still on the leader's thread.</div>
+          </div>
+          <div class="swim-cell queue">&mdash;</div>
+          <div class="swim-cell follower empty"></div>
+
+          <div class="step-num">8</div>
+          <div class="swim-cell leader">
+            <span class="stamp">follower.cmd_parsed</span>
+            <span class="stamp">follower.cmd_queued</span>
+            <div class="desc">Follower's <code>_on_command_received</code> deserializes, drops the oldest if full, then <code>queue.put_nowait(state)</code>.</div>
+          </div>
+          <div class="swim-cell queue">&mdash;</div>
+          <div class="swim-cell follower empty"></div>
+
+          <div class="step-num">9</div>
+          <div class="swim-cell leader boundary">
+            leader thread unwinds and loops &raquo;
+          </div>
+          <div class="swim-cell queue" style="background: rgba(180, 110, 40, 0.3); font-weight:600;">&darr;</div>
+          <div class="swim-cell follower boundary">
+            command sits in FIFO (maxsize&nbsp;=&nbsp;5)
+          </div>
+
+          <div class="step-num">10</div>
+          <div class="swim-cell leader empty"></div>
+          <div class="swim-cell queue">&mdash;</div>
+          <div class="swim-cell follower">
+            <span class="stamp">follower.cmd_dequeued</span>
+            <div class="desc"><code>command_executer</code>'s tick fires (every 10&nbsp;ms), pops the oldest item.</div>
+            <span class="cost slow">~40 ms observed p50</span>
+          </div>
+
+          <div class="step-num">11</div>
+          <div class="swim-cell leader empty"></div>
+          <div class="swim-cell queue">&mdash;</div>
+          <div class="swim-cell follower">
+            <div class="code-inline">follower.robot.set_state(state)</div>
+            <div class="desc">Blocking hardware write.</div>
+            <span class="cost">~0.2&ndash;1 ms</span>
+          </div>
+
+          <div class="step-num">12</div>
+          <div class="swim-cell leader empty"></div>
+          <div class="swim-cell queue">&mdash;</div>
+          <div class="swim-cell follower">
+            <span class="stamp">follower.cmd_applied</span>
+            <div class="desc">End-to-end trace record terminates here.</div>
+          </div>
+        </div>
+
+        <div class="legend">
+          <span class="legend-item"><span class="legend-swatch" style="background: rgba(20,50,90,0.6);"></span>leader publisher thread</span>
+          <span class="legend-item"><span class="legend-swatch" style="background: rgba(180,110,40,0.4);"></span>thread boundary (queue)</span>
+          <span class="legend-item"><span class="legend-swatch" style="background: rgba(60,30,90,0.6);"></span>follower executer thread</span>
+        </div>
+
+        <div class="explanation-text" style="margin-top:24px">
+          <p class="para">Steps 1&ndash;8 are consecutive function calls on a single Python stack &mdash; no scheduling, no cross-thread handoff. A representative trace from the profiler looked like this:</p>
+        </div>
+<pre class="trace-block">publish.leader.got_state       &rarr; ssm.leader.deserialized        0.018 ms
+ssm.leader.deserialized        &rarr; sysstate.leader.pre_callback   0.011 ms
+sysstate.leader.pre_callback   &rarr; orch.cb_enter                  0.001 ms
+orch.cb_enter                  &rarr; orch.cb_converted              0.035 ms
+orch.cb_converted              &rarr; orch.cb_pre_serialize          0.012 ms
+orch.cb_pre_serialize          &rarr; follower.cmd_parsed            0.014 ms
+follower.cmd_parsed            &rarr; follower.cmd_queued            0.002 ms
+follower.cmd_queued            &rarr; follower.cmd_dequeued         <span class="slow">40.751 ms   &lt;-- the one slow hop</span>
+follower.cmd_dequeued          &rarr; follower.cmd_applied           0.214 ms</pre>
+        <div class="explanation-text">
+          <p class="para">Every hop except one was measured in <em>microseconds</em>. A single hop &mdash; <code>cmd_queued</code> &rarr; <code>cmd_dequeued</code> &mdash; dominated end-to-end latency. That hop was the only real thread boundary in the pipeline.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: Why 40 ms -->
+    <section class="step-section" id="section-4">
+      <div class="step-icon">🧮</div>
+      <h2 class="step-title">Why 40 ms at Steady State</h2>
+      <div class="step-subtitle">Equal-rate producer + FIFO consumer = stale by a queue-length</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#2e1a1a;color:#fca5a5">backpressure</span>
+        <span class="tag" style="background:#2e2a1a;color:#ffeed4">queueing</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">The queue was a FIFO with <code>maxsize=5</code>, and the consumer popped from the oldest end. Producer and consumer both ticked at 100&nbsp;Hz. Any small scheduling hiccup let the producer get one slot ahead, and nothing in the protocol recovered &mdash; there was no drop-to-newest or drain semantics. Over time the queue settled at roughly 4 in-flight items.</p>
+          <p class="para">Popping the oldest of 4 items, each enqueued ~10&nbsp;ms apart, hands the consumer a command that is already ~40&nbsp;ms stale. The "drop-oldest on full" logic only fired when the queue hit 5, which kept it bounded but did not help freshness &mdash; the consumer was always reading the <em>oldest</em> command, not the newest.</p>
+        </div>
+        <div class="warn-box">A FIFO between two equal-rate producers and consumers doesn't just add latency equal to one tick &mdash; it adds latency proportional to <strong>however deep the queue runs in steady state</strong>. With a 10&nbsp;ms tick and a queue depth of 4, that's 40&nbsp;ms of stale-command delivery, every cycle, forever.</div>
+        <div class="explanation-text">
+          <p class="para">Obvious shapes of fix exist &mdash; a single-slot mailbox, a "drain to newest" consumer, a ring buffer, explicit priority &mdash; but each still adds a thread boundary. The better question is whether the queue needs to be there at all.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 5: The fix -->
+    <section class="step-section" id="section-5">
+      <div class="step-icon">✂️</div>
+      <h2 class="step-title">The Fix — Drop the Queue</h2>
+      <div class="step-subtitle">Apply the command inline on the subscriber thread</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2e1a;color:#86efac">after</span>
+        <span class="tag" style="background:#1a2a2e;color:#67e8f9">simplification</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <p class="para">The queue existed to smooth producer rate against a paced consumer. But since the producer (teleop leader, or AI inference) already runs at exactly the rate at which commands should be applied, the pacing served no purpose &mdash; the queue only added a thread boundary and a steady-state stall.</p>
+          <p class="para">The change: the follower's <code>_on_command_received</code> now writes directly to hardware on the bus-delivered call.</p>
+        </div>
+<pre class="code-block"><span class="cmt"># before</span>
+<span class="kw">def</span> <span class="fn">_on_command_received</span>(<span class="kw">self</span>, payload):
+    state = command_parser(payload)
+    <span class="kw">if</span> <span class="kw">self</span>.command_queue.full():
+        <span class="kw">self</span>.command_queue.get_nowait()   <span class="cmt"># drop oldest</span>
+    <span class="kw">self</span>.command_queue.put_nowait(state)
+
+<span class="cmt"># after</span>
+<span class="kw">def</span> <span class="fn">_on_command_received</span>(<span class="kw">self</span>, payload):
+    state = <span class="cls">RobotState</span>.from_bytes(payload)
+    <span class="kw">self</span>.robot.set_state(state)           <span class="cmt"># apply directly on the subscriber thread</span></pre>
+        <div class="fix-box">What came out: the <code>command_queue</code>, the <code>command_parser</code> indirection, and the rate-paced <code>command_executer</code> thread. What stayed: the producers publish at their native rate (leader tick for teleop, inference tick for AI), and the follower applies whatever arrives.</div>
+        <div class="explanation-text">
+          <p class="para">Two properties are worth calling out explicitly, because they look scary until you remember how the in-process bus works:</p>
+          <ol>
+            <li><strong>The hardware write happens on the publisher's thread.</strong> When the leader's <code>publish_worker_A</code> calls <code>bus.publish("action.follower", ...)</code>, the follower subscriber runs inline on that same thread and does the blocking hardware write. The leader's publish tick now pays the follower's write cost. That's fine &mdash; the write is sub-millisecond, and the leader was already blocked waiting for the subscriber chain to return anyway.</li>
+            <li><strong>There is no built-in rate limit.</strong> If the producer ever produces faster than hardware can consume, hardware writes back up. In practice the producer ticks (teleop leader, AI inference) are <em>slower</em> than the hardware bus, so this is self-limiting. If that ever changes, rate limiting belongs at the producer, not as a separate queue-and-tick on the consumer.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 6: The new path -->
+    <section class="step-section" id="section-6">
+      <div class="step-icon">🚀</div>
+      <h2 class="step-title">The New Path</h2>
+      <div class="step-subtitle">One thread, one Python stack, end to end</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#1a2e1a;color:#86efac">after</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="swim new">
+          <div class="swim-header step-col">#</div>
+          <div class="swim-header leader">publish_worker_A (leader publisher)</div>
+
+          <div class="step-num">1</div>
+          <div class="swim-cell leader">
+            <div class="code-inline">leader.robot.get_state()</div>
+            <div class="desc">Read joints from leader hardware.</div>
+          </div>
+
+          <div class="step-num">2</div>
+          <div class="swim-cell leader">
+            <div class="code-inline">bus.publish("state.leader", raw)</div>
+            <div class="desc">Iterate subscribers. SystemStateManager callback runs inline.</div>
+          </div>
+
+          <div class="step-num">3</div>
+          <div class="swim-cell leader">
+            <div class="code-inline">update_state("leader", ...)</div>
+            <div class="desc">SystemState stores the value, fires the orchestrator's state-change callback.</div>
+          </div>
+
+          <div class="step-num">4</div>
+          <div class="swim-cell leader">
+            <div class="code-inline">orchestrator._on_leader_state_change(...)</div>
+            <div class="desc">Convert leader pose &rarr; follower pose. Apply EMA smoother. Serialize.</div>
+          </div>
+
+          <div class="step-num">5</div>
+          <div class="swim-cell leader">
+            <div class="code-inline">bus.publish("action.follower", raw)</div>
+            <div class="desc">Second publish. Follower's subscriber runs inline.</div>
+          </div>
+
+          <div class="step-num">6</div>
+          <div class="swim-cell leader">
+            <div class="code-inline">follower.robot.set_state(state)</div>
+            <div class="desc">Hardware write. Returns. Stack unwinds all the way back to step&nbsp;1's caller.</div>
+            <span class="cost">~0.2&ndash;1 ms</span>
+          </div>
+        </div>
+
+        <div class="explanation-text" style="margin-top:20px">
+          <p class="para">Every step runs on <code>publish_worker_A</code>, the leader's publish worker. There is no queue, no second thread, no rate-paced consumer. The total wall-clock time from "read leader joint" to "hardware command accepted by follower" is on the order of <strong>~1&nbsp;ms</strong>, bounded mostly by the hardware writes on each end.</p>
+          <p class="para">For AI-driven control, the path is structurally identical: the <code>ai_inference_worker</code> publishes <code>action.follower</code> at its native predict rate, and the follower subscriber applies each command inline on the inference thread. No queue, no executer tick, no rate mismatch.</p>
+        </div>
+
+        <div class="compare">
+          <div class="compare-card old">
+            <h4>Before</h4>
+            <ul>
+              <li>Two threads + FIFO queue between them</li>
+              <li>Subscriber parses &amp; enqueues</li>
+              <li>Rate-paced <code>command_executer</code> dequeues every 10&nbsp;ms</li>
+              <li>Steady-state queue depth ~4 &rArr; commands delivered ~40&nbsp;ms stale</li>
+              <li>Extra code: <code>command_parser</code>, <code>command_executer</code>, queue plumbing</li>
+            </ul>
+          </div>
+          <div class="compare-card new">
+            <h4>After</h4>
+            <ul>
+              <li>One thread, one stack, end to end</li>
+              <li>Subscriber applies command directly to hardware</li>
+              <li>Producers publish at their native rate (leader tick, AI predict)</li>
+              <li>End-to-end latency ~1&nbsp;ms, bounded by hardware writes</li>
+              <li>Deleted: queue, parser, executer thread</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="insight-box">The original design treated the bus as a message-passing system that needed buffers and rate-matching on each end. But the in-process bus is just a function call &mdash; once you see that, the queue is obviously a thread boundary pretending to solve a problem it actually creates. The best fix for a boundary that costs 40&nbsp;ms and provides nothing is to <strong>not have the boundary</strong>.</div>
+      </div>
+    </section>
+
+    <!-- Section 7: Generalization / takeaways -->
+    <section class="step-section" id="section-7">
+      <div class="step-icon">🎯</div>
+      <h2 class="step-title">Takeaways</h2>
+      <div class="step-subtitle">Portable lessons for any publisher/subscriber architecture</div>
+      <div class="tags-row">
+        <span class="tag" style="background:#2e2a1a;color:#ffeed4">principles</span>
+      </div>
+      <div style="margin-top:28px">
+        <div class="explanation-text">
+          <ul>
+            <li><strong>Know what your bus actually does.</strong> An in-process bus that calls subscribers inline is a very different performance object from a networked bus or a queue-backed bus. Draw the call graph, not just the topology &mdash; you'll discover most "nodes" aren't threads at all.</li>
+            <li><strong>A FIFO between equal-rate producer and consumer adds latency, not elasticity.</strong> It settles at some non-zero depth, and the consumer drinks from the oldest end. If both sides run at 100&nbsp;Hz, you get &ldquo;queue depth &times; tick period&rdquo; of free staleness, every cycle.</li>
+            <li><strong>Rate-pacing the consumer when the producer already paces itself is a bug.</strong> The only legitimate job of a consumer-side queue is to absorb producer bursts or consumer stalls. If neither is happening, the queue is dead weight.</li>
+            <li><strong>The cheapest thread is the one you didn't spawn.</strong> Every thread boundary is a place where latency, bugs, and ordering questions live. Inline the work when you can; boundary it when you must.</li>
+          </ul>
+        </div>
+        <div class="insight-box">Remote mode (cross-machine leader/orchestrator/follower) reintroduces real thread boundaries at the network layer &mdash; a networked bus has its own receive thread and its own serialize/deserialize cost. But the same principle holds inside each process: subscribers run on the receiver thread. Boundaries should exist where the physics require them, not where the code happens to have grown them.</div>
+      </div>
+    </section>
+
+  </div>
+
+<script>
+const sectionMeta = [
+  { title: "Setup" },
+  { title: "Bus is a function call" },
+  { title: "Threads involved" },
+  { title: "Old path (with queue)" },
+  { title: "Why 40ms" },
+  { title: "The fix" },
+  { title: "New path" },
+  { title: "Takeaways" },
+];
+
+function buildTocNav() {
+  const nav = document.getElementById('toc-nav');
+  sectionMeta.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'toc-dot-row';
+    row.innerHTML = `<span class="toc-label">${s.title}</span><div class="toc-dot"></div>`;
+    row.addEventListener('click', () => {
+      document.getElementById('section-' + i).scrollIntoView({ behavior: 'smooth' });
+    });
+    nav.appendChild(row);
+  });
+}
+
+function updateScrollProgress() {
+  const scrollTop = window.scrollY;
+  const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+  const progress = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+  document.getElementById('scroll-progress-bar').style.width = progress + '%';
+}
+
+function setupTocHighlighting() {
+  const sections = document.querySelectorAll('.step-section');
+  const tocRows = document.querySelectorAll('.toc-dot-row');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const idx = parseInt(entry.target.id.split('-')[1]);
+      if (entry.isIntersecting) {
+        tocRows.forEach(r => r.classList.remove('active'));
+        tocRows[idx].classList.add('active');
+        tocRows[idx].classList.add('visited');
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px', threshold: 0 });
+  sections.forEach(section => observer.observe(section));
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  buildTocNav();
+  setupTocHighlighting();
+  window.addEventListener('scroll', updateScrollProgress, { passive: true });
+  updateScrollProgress();
+});
+</script>
+
+</body>
+</html>
