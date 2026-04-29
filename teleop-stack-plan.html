@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Teleoperation Stack — Atlas / UR + MIR600</title>
+<style>
+  :root {
+    --bg: #0e0f12;
+    --surface: #16181d;
+    --surface-2: #1d2027;
+    --border: #2a2e38;
+    --text: #d6d9e0;
+    --muted: #8a92a3;
+    --accent: #4ea1ff;
+    --accent-2: #76e0c2;
+    --warn: #ffb454;
+    --bad: #ff6b6b;
+    --good: #76e0c2;
+    --code-bg: #11131a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+    font-size: 15px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 48px 28px 96px; }
+  header.hero {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 24px;
+    margin-bottom: 32px;
+  }
+  header.hero .eyebrow {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  h1 { font-size: 32px; line-height: 1.2; margin: 6px 0 8px; color: #fff; }
+  h2 { font-size: 22px; margin: 48px 0 12px; color: #fff;
+       border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  h3 { font-size: 17px; margin: 28px 0 8px; color: #fff; }
+  h4 { font-size: 14px; margin: 18px 0 6px; color: var(--accent-2);
+       text-transform: uppercase; letter-spacing: 0.08em; }
+  p, li { color: var(--text); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre, .mono {
+    font-family: "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+    font-size: 13px;
+  }
+  code {
+    background: var(--code-bg); padding: 1px 5px; border-radius: 4px;
+    color: var(--accent-2); border: 1px solid var(--border);
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border);
+    padding: 14px 16px; border-radius: 6px; overflow-x: auto;
+    color: #cdd3df;
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; }
+  .tldr {
+    background: linear-gradient(180deg, #1a2230 0%, #161b25 100%);
+    border: 1px solid #2a3a55;
+    border-left: 3px solid var(--accent);
+    padding: 18px 22px; border-radius: 6px;
+    margin: 20px 0 8px;
+  }
+  .tldr h3 { margin-top: 0; color: var(--accent); }
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--warn);
+    padding: 14px 18px; border-radius: 6px; margin: 18px 0;
+  }
+  .callout.bad { border-left-color: var(--bad); }
+  .callout.good { border-left-color: var(--good); }
+  .callout-title {
+    font-weight: 600; color: var(--warn); font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;
+  }
+  .callout.bad .callout-title { color: var(--bad); }
+  .callout.good .callout-title { color: var(--good); }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0;
+          background: var(--surface); border: 1px solid var(--border);
+          border-radius: 6px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px;
+           border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--surface-2); color: #fff;
+       font-weight: 600; font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  td.num { white-space: nowrap; color: var(--muted); }
+  .grid { display: grid; gap: 14px; }
+  .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 760px) { .grid.cols-2 { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 16px 18px;
+  }
+  .card h4 { margin-top: 0; }
+  .file-ref {
+    display: inline-block; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 6px; font-family: "JetBrains Mono", monospace;
+    font-size: 12px; color: var(--accent-2);
+  }
+  .pill {
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .pill.primary { background: #1a3a5c; color: #9cc8ff; border: 1px solid #2a5a8e; }
+  .pill.fallback { background: #4a3a1a; color: #ffd29c; border: 1px solid #8e6a2a; }
+  .pill.bad { background: #4a1a1a; color: #ff9c9c; border: 1px solid #8e2a2a; }
+  .pill.good { background: #1a4a3a; color: #9cffd6; border: 1px solid #2a8e6a; }
+  ul.compact li { margin-bottom: 4px; }
+  ol.steps { padding-left: 22px; }
+  ol.steps li { margin-bottom: 10px; }
+  ol.steps li strong { color: #fff; }
+  .meta {
+    color: var(--muted); font-size: 12px;
+    border-top: 1px solid var(--border); padding-top: 18px; margin-top: 48px;
+  }
+  details {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 14px; margin: 12px 0;
+  }
+  details summary { cursor: pointer; font-weight: 600; color: #fff; }
+  details[open] summary { margin-bottom: 8px; }
+  blockquote {
+    border-left: 3px solid var(--border);
+    margin: 12px 0; padding: 4px 14px;
+    color: var(--muted); font-style: italic;
+  }
+  .ascii {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 14px 16px; overflow-x: auto;
+    font-family: "JetBrains Mono", monospace; font-size: 12px;
+    white-space: pre; color: #cdd3df; line-height: 1.4;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">Servo7 · Atlas (main @ 68ae39c) · 2026-04-28</div>
+  <h1>Teleoperation Stack — Plan, Tests, and Network Choice</h1>
+  <p style="color:var(--muted); margin: 4px 0 0;">
+    For UR robotic arm on MIR600 mobile base. Leader → follower over USB / Ethernet / Wi-Fi.
+    Goal: a stack that is reliable, safe, and interpretable, with a clear path from in-process sim to real Wi-Fi.
+  </p>
+</header>
+
+<div class="tldr">
+  <h3>TL;DR</h3>
+  <ol style="margin: 6px 0 0 0; padding-left: 22px;">
+    <li>The in-process pipeline on main is already in good shape: polling tick-loops were removed in <code>#22 / #29</code>, the follower is event-driven via <code>bus.subscribe()</code> (callbacks fire <em>synchronously on the publisher's thread</em>), and an EMA smoother + mode blender already sit in front of every command. The "jitter" you see in the wild is almost certainly <strong>not</strong> coming from the local executor anymore.</li>
+    <li>The remaining suspects, in order of likelihood: <strong>(a)</strong> the remote path in <span class="file-ref">servo7/robot/robot_client.py</span> is ZMQ <code>PUB/SUB</code> over <strong>TCP</strong>, and Linux <code>TCP_RTO_MIN = 200&nbsp;ms</code> means a single drop pauses the stream; <strong>(b)</strong> default DDS / multicast discovery over Wi-Fi (the team has already written <span class="file-ref">servo7/dds/start_discovery_server.sh</span> as a workaround, the smoking gun); <strong>(c)</strong> with the new inline command path, a slow hardware write blocks the whole pipeline — but the tracer makes that immediately visible.</li>
+    <li><strong>The sinusoid test idea is half right.</strong> Phase shift gives latency, but a smooth sinusoid silently hides reordering and can't stress congestion. Replace it with: a monotonic <strong>sequence number in every payload</strong> (always), plus alternating workloads of <strong>chirp</strong>, <strong>step</strong>, and <strong>PRBS</strong>. Compute packet-level metrics (loss, reorder, AoI, PDV) <em>and</em> signal-level metrics (cross-correlation latency, coherence, transfer function, RMSE) on each run.</li>
+    <li><strong>Walk a 5-rung test ladder</strong>: in-process → loopback localhost → direct wired → switched Ethernet → Wi-Fi. The <em>diff</em> between rungs is more informative than any absolute number.</li>
+    <li><strong>Network stack: <span class="pill primary">Primary</span> rmw_zenoh on ROS 2 Kilted</strong> with <code>BEST_EFFORT / KEEP_LAST=1 / VOLATILE</code> QoS for joint streams, on a dedicated 5/6 GHz Wi-Fi 6 AP with DSCP-tagged egress. <span class="pill fallback">Fallback</span> stay on FastDDS using the existing Discovery Server, but flip the QoS profile first — that alone likely removes 60-80% of jitter.</li>
+    <li><strong>Architecture: don't rewrite anything.</strong> The codebase already has the perfect injection seam — the <code>PubSub</code> Protocol in <span class="file-ref">servo7/bus/pubsub.py</span> with <code>publish</code> / <code>get_latest</code> / <code>subscribe</code>. Implementing a <code>ZenohBus</code> or <code>FastDdsBus</code> conforming to it is ~80-100 lines per backend and zero changes to nodes.</li>
+    <li><strong>Three concrete first deliverables</strong>: (1) add a 24-byte sequence-numbered envelope and surface drop/reorder/PDV in the existing tracer/profiler panel; (2) repair <span class="file-ref">tests/test_latency.py</span> — it currently references methods removed by <code>#22 / #29 / #32</code> and almost certainly doesn't exercise the real path; (3) add <code>tc netem</code> impairment injection in CI to validate the harness can detect what we claim it detects.</li>
+    <li><strong>UR + MIR600 are not in the codebase yet.</strong> Add them last, after the bus and metrics work — they'll plug into the same <code>Robot</code> interface as <code>R1RosRobot</code> and use whichever bus we pick.</li>
+  </ol>
+</div>
+
+<h2>1. Status Quo on main — What the Pipeline Actually Does</h2>
+
+<p>
+After <code>#22 "moved from polling to event driven"</code>, <code>#29 "no more tick loops"</code>, and
+<code>#32 "Inline command path + LeRobot temporal ensembling + profiler"</code>, the teleop pipeline
+is <strong>fully event-driven</strong>. There is no command queue, no follower poll thread, no
+orchestrator tick loop in the teleop hot path.
+</p>
+
+<div class="ascii">
+┌─────────────┐  robot.get_state()       ┌──────────────────────────┐
+│   LEADER    │ ─────────────────────────│ RobotNode.state_publisher│
+│   robot     │  publish_rate_hz (30 Hz) │   (single thread, fixed) │
+└─────────────┘                          └──────────┬───────────────┘
+                                                    │ stamp publish.{id}.pre_read
+                                                    │ stamp publish.{id}.got_state
+                                                    │ orjson.dumps(state.to_dict())
+                                                    ▼
+                                  bus.publish("state.leader", bytes)
+                                                    │
+                                                    │  (synchronous fan-out, OUTSIDE lock)
+                                                    ▼
+                          ┌──────────────────────────────────────────┐
+                          │  InProcessBus.publish() invokes every    │
+                          │  subscriber callback inline              │
+                          └────────┬─────────────────────────────────┘
+                                   │
+                                   ▼
+                          ┌─────────────────────────────────────┐
+                          │   SystemStateManager._on_state_     │
+                          │   update("leader", payload)         │
+                          │   — dedupe by ts, fire callbacks    │
+                          └────────┬────────────────────────────┘
+                                   │ register_state_change_callback("leader", …)
+                                   ▼
+                          ┌─────────────────────────────────────┐
+                          │ OrchestratorNode._on_leader_state_  │
+                          │ change()  — runs INLINE on the       │
+                          │ publisher's thread                  │
+                          │                                     │
+                          │   if mode != TELEOPERATION: return  │
+                          │   payload = converter.convert(s)    │
+                          │   payload = relative_offset(payload)│
+                          │   payload = ema_smoother.apply(p)   │  ← EMA smoother
+                          │   payload = mode_blender.apply(p)   │  ← cross-fade on mode toggle
+                          │   bus.publish("action.follower",    │
+                          │       dumps(payload.to_dict()))     │
+                          └────────┬────────────────────────────┘
+                                   │ inline subscribe()-callback
+                                   ▼
+                          ┌─────────────────────────────────────┐
+                          │ RobotNode._on_command_received(p)   │
+                          │   stamp .cmd_parsed                 │
+                          │   stamp .cmd_pre_hw_write           │
+                          │   robot.set_state(payload)          │  ← hardware write,
+                          │   stamp .cmd_applied                │     INLINE on publisher
+                          │   trace_logger.log_trace(...)       │     thread
+                          └─────────────────────────────────────┘
+</div>
+
+<h3>1.1 What's already in place — credit where due</h3>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h4>Event-driven bus</h4>
+    <code>InProcessBus</code> at <span class="file-ref">servo7/bus/in_process_bus.py</span> now exposes <code>publish</code>, <code>get_latest</code>, and <code>subscribe(topic, callback)</code>. Subscribers are invoked synchronously, but a snapshot of the subscriber list is taken under the lock so callbacks don't block other publishers and re-entrant publishes don't deadlock. Exceptions are swallowed and logged so one bad subscriber can't take down the bus.
+  </div>
+  <div class="card">
+    <h4>Inline command path</h4>
+    <code>OrchestratorNode._on_leader_state_change</code> publishes directly to <code>action.follower</code>; <code>RobotNode._on_command_received</code> writes to hardware inline. Zero queue round-trips, zero polling. A slow hardware write becomes immediately visible as a long <code>cmd_pre_hw_write → cmd_applied</code> hop in the tracer.
+  </div>
+  <div class="card">
+    <h4>EMA + mode blender</h4>
+    <span class="file-ref">servo7/control/ema_filter.py</span> applies a per-joint EMA (<code>α = 0.1</code> joints, <code>α = 0.5</code> gripper) on every command. <span class="file-ref">servo7/control/mode_blender.py</span> ramps over 0.75 s on mode transitions so teleop↔AI handoffs don't snap. EMA is reset on every <code>set_control_mode()</code>.
+  </div>
+  <div class="card">
+    <h4>Tracer + profiler</h4>
+    <span class="file-ref">servo7/utils/trace_logger.py</span> stamps every hop on the <code>RobotState</code> as it travels through the pipeline; flushes one JSONL record per completed trace on a daemon thread (non-blocking). Activated by <code>ROBOT_TRACE=1</code> or <code>--profile</code>. Live in-memory deque (100k traces, ~7 min @ 240/s) feeds <span class="file-ref">robot-frontend/src/components/ProfilerPanel.jsx</span>; offline analysis via <span class="file-ref">tools/profiler.py</span> renders a self-contained HTML report.
+  </div>
+  <div class="card">
+    <h4>Sync AI worker (deterministic)</h4>
+    <code>OrchestratorNode.ai_inference_worker</code> runs on a dedicated <em>sync</em> thread at <code>command_hz</code> (default 30 Hz). No event-loop jitter on AI ticks. Same EMA/blender pipeline as teleop.
+  </div>
+  <div class="card">
+    <h4>Single bus construction site</h4>
+    Each <span class="file-ref">scripts/main*.py</span> instantiates exactly one <code>bus: PubSub = InProcessBus()</code> and passes it to every node. Swapping to a network bus is a one-line change per script.
+  </div>
+</div>
+
+<h3>1.2 What's <em>missing</em> — the real jitter sources</h3>
+
+<div class="callout bad">
+  <div class="callout-title">Suspect 1 — TCP under the ZMQ remote path</div>
+  <span class="file-ref">servo7/robot/robot_client.py</span> uses <code>zmq.SUB / zmq.PUB</code> over <code>tcp://</code>.
+  Linux's <code>TCP_RTO_MIN</code> is hard-coded to 200 ms regardless of measured RTT. A single dropped packet
+  on the wire stalls every subsequent message at the receiver for at least 200 ms; at 100 Hz that is ~20
+  stale joint frames piled up behind the gap. On Wi-Fi where micro-bursts of loss are routine, this is
+  the single most likely cause of the jitter you see across machines. <strong>This is not solved by the
+  in-process improvements on main.</strong>
+</div>
+
+<div class="callout bad">
+  <div class="callout-title">Suspect 2 — DDS multicast discovery on Wi-Fi</div>
+  Default DDS discovery uses UDP multicast on <code>239.255.0.1</code>. Most enterprise APs convert
+  multicast to broadcast at the lowest mandatory rate (1 Mbps on 2.4 GHz), rate-limit it, or drop it
+  under load. The fact that <span class="file-ref">servo7/dds/start_discovery_server.sh</span>
+  exists with a hard-coded laptop IP <code>192.168.1.85:11811</code> means the team has <em>already</em>
+  hit this and worked around it once. Discovery Server is the FastDDS-specific fix; Zenoh sidesteps
+  the problem entirely by not using multicast for discovery.
+</div>
+
+<div class="callout">
+  <div class="callout-title">Suspect 3 — inline pipeline blocks on slow hardware</div>
+  Because <code>InProcessBus.publish()</code> fans out synchronously and <code>_on_command_received</code>
+  calls <code>robot.set_state()</code> inline, a slow USB/CAN/RTDE write on the follower stalls the leader's
+  <code>state_publisher</code> thread for the duration of the write. This is the <em>right</em> trade-off
+  (fewer queues, lower latency, deterministic) but it means we need to keep an eye on the
+  <code>cmd_pre_hw_write → cmd_applied</code> hop in the tracer. Move the slow side off the hot path
+  only if profiler data shows it.
+</div>
+
+<div class="callout">
+  <div class="callout-title">Suspect 4 — no sequence numbers, no ordering signal</div>
+  <code>InProcessBus</code> overwrites the latest message by topic; the ZMQ path embeds no counter; the
+  trace envelope carries hop timestamps but <em>not</em> a monotonic per-(topic, source) sequence number.
+  We can't today distinguish "two adjacent samples were dropped" from "two were reordered" from "the
+  sender hiccupped." This is a 24-byte fix (§4.2).
+</div>
+
+<div class="callout">
+  <div class="callout-title">Suspect 5 — <code>tests/test_latency.py</code> is stale</div>
+  The test references methods removed by <code>#22 / #29 / #32</code>: <code>follower.command_listener()</code>,
+  <code>follower.command_executer()</code>, <code>orchestrator.control_loop()</code>,
+  <code>orchestrator.publisher_worker()</code>. It almost certainly is not exercising the current pipeline,
+  which means our latency CI is currently a placebo. Repair before extending.
+</div>
+
+<h3>1.3 What does <em>not</em> exist yet on main</h3>
+
+<ul class="compact">
+  <li><strong>UR robot driver wrapper.</strong> <code>RobotType</code> covers Piper / SO100 / R1 / R1T / R1LiteSim / Quest / Dummy. <strong>UR and MIR are not in the enum or factory.</strong> UR20 appears in sim only (<span class="file-ref">servo7/sim/trajectory_demo.py</span>, Drake/MuJoCo). Adding <code>URRobot</code> means extending the <code>base_ros.py</code> pattern and bridging the official <code>ur_robot_driver</code> ROS 2 package (or RTDE directly).</li>
+  <li><strong>MIR600 integration.</strong> Not present anywhere. Needs ROS 2 nav-stack glue.</li>
+  <li><strong>A real network <code>PubSub</code> implementation.</strong> Only <code>InProcessBus</code> is wired in. <code>RemoteRobotClient</code>/<code>RemoteRobotServer</code> exist as a side-path through the <code>Robot</code> interface, not as a bus.</li>
+  <li><strong>Drop/reorder/PDV metrics in the profiler panel.</strong> The tracer captures wall-clock-stamped hops; it doesn't track sequence-number-derived packet metrics yet.</li>
+</ul>
+
+<h2>2. The Test — Better Than a Sinusoid</h2>
+
+<p>The intuition behind the sinusoid plan is right: drive a known signal through the leader, record what arrives at the follower, and measure phase shift = latency. The plan needs to be hardened so it can also catch the things you actually care about — packet loss, reordering, and tail latency.</p>
+
+<h3>2.1 Metrics that matter</h3>
+
+<table>
+  <thead><tr><th>Metric</th><th>Definition</th><th>What it surfaces</th></tr></thead>
+  <tbody>
+    <tr><td>Latency p50 / p95 / <strong>p99 / max</strong></td><td>End-to-end one-way delay distribution</td><td>Mean is useless for safety. <strong>Max and p99 are what trip protective stops.</strong></td></tr>
+    <tr><td>PDV (jitter, RFC 3393)</td><td>Variation in <em>one-way</em> delay between packet pairs</td><td>True network jitter. Distinguish from inter-arrival variation, which conflates sender + network.</td></tr>
+    <tr><td>Packet loss rate</td><td>Drops / sent</td><td>For BEST_EFFORT: real loss. For RELIABLE: shows up as latency spikes from retransmit.</td></tr>
+    <tr><td>Reorder rate</td><td>Count where seq &lt; max-seen-seq</td><td><strong>The thing your sinusoid will silently miss.</strong></td></tr>
+    <tr><td>Age-of-Information (AoI)</td><td><code>now − timestamp_of_last_received_sample</code></td><td>Single freshness number; correlates with closed-loop control quality better than raw latency.</td></tr>
+    <tr><td>Deadline-miss rate</td><td>Periods with no fresh command in time</td><td>The metric the safety case actually rests on.</td></tr>
+  </tbody>
+</table>
+
+<h3>2.2 Why a sinusoid alone is not enough</h3>
+<div class="callout bad">
+  <div class="callout-title">Smoothness hides reordering</div>
+  Two adjacent samples on a 1 Hz sine, swapped, reconstruct identically at the millimetre level.
+  The reorder rate from a sinusoid alone reads zero even when the network is misbehaving.
+  Single-frequency excitation also probes only one point on the channel's transfer function;
+  bandwidth-dependent effects (queueing under burst, MTU fragmentation) won't show up. And a
+  6-DOF sinusoid at 250 Hz is ~12 kbps — the network is idle, so no congestion stress.
+</div>
+
+<h3>2.3 The signal set that does the job</h3>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h4>Sequence number — non-negotiable</h4>
+    A monotonic counter <em>inside the payload</em> on every packet. This is how you detect drops and
+    reorders independent of signal shape. Every other test below assumes it. Cost: 8 bytes.
+  </div>
+  <div class="card">
+    <h4>PRBS / m-sequence on one joint</h4>
+    Each sample is uniquely identifiable, so reordering becomes visible at the signal level too.
+    LFSR-generated maximum-length sequences have white-noise-like autocorrelation — ideal for
+    system-identifying the network's transfer function.
+  </div>
+  <div class="card">
+    <h4>Chirp (log frequency sweep, 0.1 Hz → Nyquist/2)</h4>
+    Exposes bandwidth-dependent fidelity. Lets you compute coherence vs frequency and a Bode-plot-style
+    transfer function in a single short run.
+  </div>
+  <div class="card">
+    <h4>Step / square wave</h4>
+    Exposes deadline misses, slew-rate clipping, and any rate-limiter in the controller path.
+    Worst-case transient response — and a useful stress test for the EMA smoother (a step into EMA
+    becomes an exponential, by design).
+  </div>
+</div>
+
+<p style="margin-top: 14px;">
+Run all of these on every link. Keep the sinusoid as a sanity check / phase-shift demo, not as the headline test.
+</p>
+
+<h3>2.4 What to compute from <span class="mono">s_L(t)</span> and <span class="mono">s_F(t)</span></h3>
+
+<ul class="compact">
+  <li><strong>Cross-correlation peak</strong> → latency estimate (sub-sample accuracy via parabolic fit around the peak).</li>
+  <li><strong>Coherence γ²<sub>xy</sub>(f)</strong> → frequency-resolved fidelity ∈ [0,1]. Drops below ~0.9 mark the usable bandwidth of the link.</li>
+  <li><strong>Transfer function H(f) = S<sub>xy</sub>/S<sub>xx</sub></strong> → Bode plot. Phase slope ⇒ latency, magnitude roll-off ⇒ effective bandwidth (also the EMA's first-order pole — useful for separating "EMA roll-off" from "network roll-off").</li>
+  <li><strong>RMSE on time-aligned signals</strong> after compensating the cross-correlation latency → a single fidelity number.</li>
+  <li><strong>Packet-level metrics from the seq number</strong> — loss count, reorder count, max gap, AoI trace, PDV histogram. Independent of signal shape and ultimately the load-bearing ones.</li>
+  <li><strong>Deadline-miss histogram</strong> at the controller, binned by <code>(arrival_time − deadline)</code>.</li>
+</ul>
+
+<h3>2.5 Pragmatic test ladder</h3>
+
+<p>Run identical workloads at every rung; the diff between rungs tells you where the time goes.</p>
+
+<table>
+  <thead><tr><th>#</th><th>Rung</th><th>Adds</th><th>Expected p99</th><th>Red flag</th></tr></thead>
+  <tbody>
+    <tr><td class="num">1</td><td>In-process (single Python process, current default)</td><td>Inline callbacks + serializer + GIL</td><td>tens of µs</td><td>p99 &gt; 1 ms ⇒ a callback is doing real work; check tracer hop times</td></tr>
+    <tr><td class="num">2</td><td>Loopback localhost (UDP/DDS via 127.0.0.1)</td><td>Kernel UDP + DDS shm/UDP</td><td>~100-300 µs</td><td>max &gt; 5 ms or any loss ⇒ CPU contention or DDS QoS misconfig</td></tr>
+    <tr><td class="num">3</td><td>Direct point-to-point Ethernet between two boxes</td><td>NIC + cable + IRQ handling</td><td>+100-500 µs over rung 2</td><td>PDV &gt; few hundred µs, or <em>any</em> reordering (a direct cable cannot reorder — host stack issue)</td></tr>
+    <tr><td class="num">4</td><td>Switched Ethernet</td><td>Switch buffering</td><td>small bump over rung 3</td><td>PDV grows with cross-traffic, or loss under iperf3 background ⇒ HoL blocking / cheap switch</td></tr>
+    <tr><td class="num">5</td><td>Wi-Fi (5/6 GHz, dedicated AP)</td><td>RF contention, retries, roaming</td><td>5-20× rung 4, bursty</td><td>max &gt; 100 ms, AoI spikes correlated with airtime contention. <strong>This is where MIR600 lives.</strong></td></tr>
+  </tbody>
+</table>
+
+<h3>2.6 Experiment hygiene (so the numbers mean something)</h3>
+
+<ul class="compact">
+  <li><strong>PTP, not NTP.</strong> NTP is millisecond-class; you cannot make sub-ms latency claims with it. Use <code>linuxptp</code> (<code>ptp4l</code> + <code>phc2sys</code>) on both ends. Verify before each run with <code>pmc</code>.</li>
+  <li><strong>Warm-up.</strong> Discard the first 30 s — JIT, page faults, ARP, DDS discovery, Wi-Fi association all distort early samples. The trace deque is 7 minutes deep; one warm-up minute is cheap.</li>
+  <li><strong>Sample budget.</strong> p99 needs ≥10⁵ samples; p99.9 needs ≥10⁶. At 30 Hz teleop publish, that's about an hour for p99.9 — bump publish rate during tests if you want it faster. Bootstrap CIs on the tail percentiles, not just mean ± stdev.</li>
+  <li><strong>CPU governor: performance.</strong> <code>cpupower frequency-set -g performance</code> on every machine. Frequency scaling alone moves p99 by milliseconds.</li>
+  <li><strong>Core isolation + PREEMPT_RT.</strong> <code>isolcpus=</code>, <code>nohz_full=</code>, <code>rcu_nocbs=</code> on the kernel cmdline; pin the teleop process and the NIC IRQ to isolated cores. Validate with <code>cyclictest -p99 -t -m -D 1h</code>; max should be &lt;~50 µs on a tuned PREEMPT_RT system.</li>
+  <li><strong>Quiet the environment.</strong> Disable Wi-Fi power-save (<code>iw dev wlan0 set power_save off</code>); document channel and RSSI; mask background sync services.</li>
+  <li><strong>Record everything.</strong> Kernel, RT patch, DDS vendor + QoS profile, NIC, driver, switch, AP, channel, ambient temp. Otherwise the run is not reproducible.</li>
+</ul>
+
+<h3>2.7 Tools that earn their place</h3>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h4><code>tc netem</code> — Linux traffic control</h4>
+    The single most useful tool. Inject controlled delay, jitter, loss, dup, reordering on the egress
+    of either host. <strong>If your harness can't detect 1% loss injected with
+    <code>tc qdisc add dev eth0 root netem loss 1%</code>, your harness is broken before you start.</strong>
+    Use it to sweep impairment levels and find the controller's failure point.
+  </div>
+  <div class="card">
+    <h4><code>iperf3</code> — background load</h4>
+    Run UDP at a controlled bitrate alongside teleop traffic; watch your metrics on the teleop link
+    degrade. Tests whether QoS / DSCP tagging actually works.
+  </div>
+  <div class="card">
+    <h4>Wireshark / <code>tshark</code></h4>
+    Ground truth. Capture on both ends with PTP-synced timestamps; compute one-way delay and PDV
+    directly from the pcaps. Indispensable for diagnosing DDS discovery storms.
+  </div>
+  <div class="card">
+    <h4>Apex.AI <code>performance_test</code></h4>
+    The right tool for isolating the DDS layer from your application. Run with the same QoS profile
+    as your teleop topics on the same hosts <em>before</em> blaming the network.
+  </div>
+  <div class="card">
+    <h4><code>cyclictest</code></h4>
+    Validates host real-time configuration. If it shows hundreds of µs of host jitter, your network
+    numbers are dominated by host scheduling and you're measuring the wrong thing.
+  </div>
+  <div class="card">
+    <h4>The existing tracer + profiler panel</h4>
+    Already industrial-grade. Extend with three columns derived from the new sequence number:
+    <em>loss count</em>, <em>reorder count</em>, <em>PDV histogram</em>. Don't build a parallel dashboard;
+    fold the metrics into <span class="file-ref">robot-frontend/src/components/ProfilerPanel.jsx</span>
+    and <span class="file-ref">tools/profiler.py</span>.
+  </div>
+</div>
+
+<h2>3. The Network Stack — What Actually Works</h2>
+
+<h3>3.1 Protocol: TCP vs UDP vs QUIC vs RT-Ethernet</h3>
+
+<table>
+  <thead><tr><th>Protocol</th><th>Verdict for hot path</th><th>Reason</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>TCP</strong></td>
+      <td><span class="pill bad">Wrong</span></td>
+      <td>Linux <code>TCP_RTO_MIN = 200&nbsp;ms</code> hard-coded. One drop ⇒ stream stalls 200 ms while every later packet waits for retransmit. At 500 Hz that's ~100 stale joint frames queued. Wi-Fi micro-bursts of loss are routine ⇒ this is the textbook teleop jitter cause. Your current ZMQ remote path is exactly this.</td>
+    </tr>
+    <tr>
+      <td><strong>UDP</strong></td>
+      <td><span class="pill good">Right pattern</span></td>
+      <td>"Publish a fully-self-describing snapshot every tick, never retransmit." A dropped packet is replaced by the next one ~1-10 ms later — below human-perceptible. Handle ordering with a sequence number, drop OOO frames at the receiver.</td>
+    </tr>
+    <tr>
+      <td><strong>QUIC</strong></td>
+      <td><span class="pill">Skip for now</span></td>
+      <td>Multiplexed streams over UDP fix per-stream HoL across streams, but each stream is still reliable+ordered (= TCP-like). RFC 9221 DATAGRAM frames give you raw datagrams alongside, but Python tooling is immature. Not worth introducing here.</td>
+    </tr>
+    <tr>
+      <td><strong>RT-Ethernet (EtherCAT, PROFINET, TSN)</strong></td>
+      <td><span class="pill">N/A here</span></td>
+      <td>Sub-ms determinism but requires kernel bypass, dedicated NICs, layer-2 path with no Wi-Fi. It's how the UR controller talks to its joints internally — not your leader↔follower link.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>3.2 Middleware</h3>
+
+<table>
+  <thead><tr><th>Middleware</th><th>Role</th><th>Notes for our case</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>FastDDS / Cyclone DDS</strong> <span class="pill fallback">Fallback</span></td>
+      <td>ROS 2 default; UR driver + MIR600 are DDS-native</td>
+      <td>Right QoS for 500 Hz joint stream: <code>RELIABILITY=BEST_EFFORT</code>, <code>HISTORY=KEEP_LAST</code> depth 1, <code>DURABILITY=VOLATILE</code>, explicit <code>DEADLINE</code> = control period. <strong>RELIABLE + deep history is the classic teleop footgun</strong>. Multicast discovery is the Wi-Fi pain point — use the Discovery Server you've already scripted.</td>
+    </tr>
+    <tr>
+      <td><strong>Zenoh / rmw_zenoh</strong> <span class="pill primary">Primary</span></td>
+      <td>Eclipse project, pluggable transports</td>
+      <td>Promoted to <strong>Tier 1 in ROS 2 Kilted (May 2025)</strong>; one env-var swap from FastDDS. Published evidence (arXiv 2309.07496): Cyclone wins on Ethernet, <strong>Zenoh wins on Wi-Fi and 4G</strong> with smallest trajectory drift. Doesn't depend on UDP multicast for discovery ⇒ skips the AP-broken-multicast disaster entirely.</td>
+    </tr>
+    <tr>
+      <td><strong>ZeroMQ</strong></td>
+      <td>Brokerless, simple, great Python</td>
+      <td>PUB/SUB with <code>CONFLATE=1</code> mirrors today's "latest-wins" semantics exactly. No QoS framework. <strong>If you want to keep the existing ZMQ code path, switch the transport from <code>tcp://</code> to <code>udp://</code> + <code>epgm://</code>, or to <code>radio/dish</code> (UDP multicast) — that alone removes the 200 ms RTO problem</strong>. Lose graph introspection and free interop with the UR driver topics.</td>
+    </tr>
+    <tr>
+      <td><strong>iceoryx2</strong></td>
+      <td>Rust rewrite, true zero-copy shm</td>
+      <td>Alpha for ROS 2 Rolling. <strong>Same-host only</strong>; no cross-host gateway yet. Useful if leader and follower ever run on the same box, irrelevant for the network leg.</td>
+    </tr>
+    <tr>
+      <td><strong>WebRTC data channels</strong></td>
+      <td>SCTP-over-DTLS-over-UDP</td>
+      <td>Each channel can be <code>ordered=false, maxRetransmits=0</code>. Real option for control over arbitrary networks (NAT/STUN/ICE built-in). Same-LAN, the encryption + congestion control are cost without benefit. Reasonable only if the same stack also has to carry video later.</td>
+    </tr>
+    <tr>
+      <td><strong>gRPC</strong></td>
+      <td>HTTP/2 over TCP</td>
+      <td>Same 200 ms RTO problem as raw TCP. Fine for config/RPC ("home robot", "set TCP", "estop"); wrong for joint streams.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>3.3 Off-the-shelf "&lt;40 ms" claims — the honest table</h3>
+
+<table>
+  <thead><tr><th>Claim source</th><th>Reality</th></tr></thead>
+  <tbody>
+    <tr><td>5G teleop demos (Ericsson, Vodafone, HoloLight)</td><td>Marketing. The 40 ms is media-plane RTT in a clean lab and excludes any control/safety stack. Ignore.</td></tr>
+    <tr><td>Foxglove / Lichtblick</td><td>Visualization, not transport. Will not improve latency; can mask jitter in plots if you don't pin timestamps.</td></tr>
+    <tr><td>Nimble / Sanctuary / Reflex</td><td>Proprietary, hardware-locked. Not buyable as a stack.</td></tr>
+    <tr><td>UR RTDE</td><td><strong>Real and useful.</strong> 500 Hz on e-Series, TCP on port 30004, dedicated short link ⇒ 200 ms RTO almost never fires. <em>Use RTDE for the UR side; the ROS 2 driver wraps it.</em></td></tr>
+    <tr><td>URsim + ROS 2 (quiet local stack)</td><td>~5-15 ms leader-input → follower-state. The cross-Wi-Fi hop is what blows the budget.</td></tr>
+    <tr><td>ros2_control + PREEMPT_RT</td><td>Real, free, well-understood. Removes scheduler jitter (sub-100 µs vs 1-10 ms on stock kernel). Does <strong>nothing</strong> for network jitter — layer it under whichever middleware you pick.</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Honest verdict:</strong> &lt;40 ms end-to-end is achievable on quiet wired Ethernet and unreliable on shared Wi-Fi, regardless of whose slide deck claims it.</p>
+
+<h3>3.4 The Wi-Fi-specific story</h3>
+
+<ul class="compact">
+  <li>Quiet 5/6 GHz AP, one client: ~1-3 ms one-way. With one streaming client sharing: 20-100+ ms tail spikes.</li>
+  <li><strong>5/6 GHz, never 2.4 GHz</strong> — more channels, less interference, much shorter PHY frames.</li>
+  <li><strong>Dedicated SSID/AP for the robot, no other clients.</strong> Single biggest win.</li>
+  <li>Wi-Fi 6 (802.11ax) OFDMA + Target Wake Time: real reductions in contention latency. Caveat: NIST measured OFDMA can <em>hurt</em> TCP control streams (more reason to prefer UDP-based middleware).</li>
+  <li><strong>WMM / DSCP</strong>: tag control packets with DSCP 46 (EF) or 34 (AF41); enterprise APs map those to WMM Voice/Video access categories with shorter contention windows. FastDDS, Cyclone DDS, and Zenoh all expose this.</li>
+  <li>DDS multicast discovery over Wi-Fi: known disaster. Use Discovery Server (FastDDS) or static peers, always — or skip the problem entirely with Zenoh.</li>
+</ul>
+
+<h2>4. Architecture — Where to Inject the Network Layer</h2>
+
+<p>The codebase already has the right seam. Don't refactor; <strong>plug into it</strong>.</p>
+
+<pre><code># servo7/bus/pubsub.py — already on main
+from typing import Callable, Protocol
+
+class PubSub(Protocol):
+    def publish(self, topic: str, payload: bytes) -> None: ...
+    def get_latest(self, topic: str) -> bytes | None: ...
+    def subscribe(self, topic: str, callback: Callable[[bytes], None]) -> None: ...</code></pre>
+
+<p>
+Three methods. Every node (<code>RobotNode</code>, <code>OrchestratorNode</code>, <code>SystemStateManager</code>)
+takes a <code>bus: PubSub</code> in its constructor and never references a concrete implementation. Each
+<span class="file-ref">scripts/main*.py</span> has exactly one construction site:
+</p>
+
+<pre><code>bus: PubSub = InProcessBus()</code></pre>
+
+<h3>4.1 Proposed concrete buses</h3>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h4>ZenohBus  <span class="pill primary">target</span></h4>
+    Wraps <code>zenoh.open()</code>. <code>publish()</code> calls <code>session.put(topic, payload)</code>. <code>subscribe()</code> registers a Zenoh subscriber whose callback invokes the user's callback synchronously (matches <code>InProcessBus</code> semantics — the user's callback pays the cost). <code>get_latest()</code> reads from a per-topic latched cache populated by the subscriber. Estimate: ~80 lines.
+  </div>
+  <div class="card">
+    <h4>FastDdsBus  <span class="pill fallback">fallback</span></h4>
+    Wraps <code>rclpy</code> with QoS <code>BEST_EFFORT / KEEP_LAST=1 / VOLATILE / DEADLINE</code> using the existing Discovery Server XML. <code>subscribe()</code> attaches a DDS DataReader listener; <code>get_latest()</code> snapshots the last sample. Estimate: ~100 lines.
+  </div>
+  <div class="card">
+    <h4>UdpBus  <span class="pill">test rig</span></h4>
+    Bare UDP with seq-numbered framing. Used as a noise-floor reference and as the netem target during the test ladder. ~60 lines.
+  </div>
+  <div class="card">
+    <h4>NetemBus  <span class="pill">testing only</span></h4>
+    Decorator wrapping any other bus, injecting controlled delay/loss/reorder via <code>tc netem</code> on a loopback interface. Used to validate that the harness can detect what we claim it detects.
+  </div>
+</div>
+
+<h3>4.2 Sequence-numbered envelope (do this first, regardless of bus choice)</h3>
+
+<p>
+Today's payload is a JSON dict produced by <code>RobotState.to_dict()</code>. Wrap it in a 24-byte
+binary header so the consumer can compute drop / reorder / PDV without parsing JSON:
+</p>
+
+<pre><code># servo7/bus/envelope.py  (new, ~30 LOC)
+import struct, time
+
+HEADER_FMT = "&lt;QdQ"   # seq (u64), send_ts (f64 perf_counter), source_id (u64 hashed)
+HEADER_LEN = struct.calcsize(HEADER_FMT)
+
+def wrap(seq: int, source_id: int, payload: bytes) -> bytes:
+    return struct.pack(HEADER_FMT, seq, time.perf_counter(), source_id) + payload
+
+def unwrap(b: bytes) -> tuple[int, float, int, bytes]:
+    seq, ts, src = struct.unpack(HEADER_FMT, b[:HEADER_LEN])
+    return seq, ts, src, b[HEADER_LEN:]</code></pre>
+
+<p>
+Wrap inside <code>RobotNode.state_publisher</code> (per-(topic, source) monotonic seq), unwrap inside
+<code>SystemStateManager._on_state_update</code> and feed <code>(seq, send_ts, recv_ts)</code> into the
+existing tracer as a structured event alongside the hop list.
+</p>
+
+<h3>4.3 Extend the existing profiler — do not build a new one</h3>
+
+<p>
+The tracer at <span class="file-ref">servo7/utils/trace_logger.py</span> is good enough; add three columns
+derived from the new envelope:
+</p>
+
+<ul class="compact">
+  <li><strong>Loss count.</strong> Track <code>max_seen_seq</code> per (topic, source); when a new packet arrives with <code>seq &gt; max_seen + 1</code>, emit a <code>"kind": "loss"</code> event with the gap size.</li>
+  <li><strong>Reorder count.</strong> When <code>seq &lt; max_seen</code>, emit a <code>"kind": "reorder"</code> event with the seq delta.</li>
+  <li><strong>PDV.</strong> Difference of consecutive one-way delays; expose as a histogram in the profiler panel next to the existing p50/p95/p99/max latency stats.</li>
+</ul>
+
+<p>
+Surface these in <span class="file-ref">robot-frontend/src/components/ProfilerPanel.jsx</span>'s existing
+summary block (where p50/p95/p99/max already live) and in the offline HTML produced by
+<span class="file-ref">tools/profiler.py</span>. The frontend filters by <code>(origin_stage, terminal_stage)</code>
+already; we just add three counters per filter.
+</p>
+
+<h3>4.4 Repair <code>tests/test_latency.py</code></h3>
+
+<p>
+The existing test references methods that no longer exist on main: <code>follower.command_listener()</code>,
+<code>follower.command_executer()</code>, <code>orchestrator.control_loop()</code>,
+<code>orchestrator.publisher_worker()</code>. Rewrite it to drive the event-driven path directly:
+</p>
+
+<ol class="steps">
+  <li>Build an <code>InProcessBus</code> + a leader <code>DummyRobot</code> with random-walk state + a follower <code>DummyRobot</code>.</li>
+  <li>Start <code>leader_node.state_publisher</code> as a thread.</li>
+  <li>Start the <code>SystemStateManager</code> + <code>OrchestratorNode</code> as on main; subscribe a probe to <code>action.follower</code>.</li>
+  <li>Drive a chirp / step / PRBS workload for ≥10 s (warm-up included), with <code>ROBOT_TRACE=1</code>.</li>
+  <li>Read the JSONL trace file and assert: p99 latency &lt; threshold, max loss = 0, max reorder = 0, no <code>cmd_pre_hw_write → cmd_applied</code> hop &gt; 5 ms.</li>
+</ol>
+
+<p>This is the in-process noise floor (rung 1). Every other rung re-runs this same test with a different bus.</p>
+
+<h3>4.5 UR + MIR600 integration sketch</h3>
+
+<p>
+Two new robots, both extending the existing ROS robot pattern (<code>R1RosRobot</code> already does this in
+<span class="file-ref">servo7/robot/r1.py</span>):
+</p>
+
+<ul class="compact">
+  <li><strong><code>URRobot(Robot)</code></strong> — wraps the official <code>ur_robot_driver</code> ROS 2 package. <code>get_state()</code> reads <code>/joint_states</code>; <code>set_state()</code> publishes to <code>/scaled_joint_trajectory_controller</code>, or — for true low-latency teleop — uses RTDE directly via <code>ur_rtde</code> Python bindings at 500 Hz. Run <code>URsim</code> in a Docker container for sim-only testing as documented in the UR ROS 2 docs.</li>
+  <li><strong><code>MIR600Robot(Robot)</code></strong> — wraps the MIR REST API for high-level nav and the ROS 2 bridge for low-level state. The MIR is the carrier; the UR arm sits on top. Both expose state into the same bus.</li>
+  <li>Add <code>UR</code> and <code>MIR600</code> to <code>RobotType</code> in <span class="file-ref">servo7/robot/robot_types.py</span> and the <code>RobotFactory</code> in <span class="file-ref">servo7/robot/factory.py</span>.</li>
+</ul>
+
+<p>Neither of these touches the bus/network/QoS work — they're orthogonal and can land in any order.</p>
+
+<h2>5. The Pragmatic Plan</h2>
+
+<ol class="steps">
+  <li><strong>Week 1 — Repair the harness.</strong> Add the 24-byte sequence-numbered envelope (§4.2). Surface drop / reorder / PDV in the existing profiler panel (§4.3). Rewrite <span class="file-ref">tests/test_latency.py</span> against the event-driven path on main (§4.4). This gives us the metric vocabulary to argue about everything else, and removes the placebo CI.</li>
+  <li><strong>Week 1 — Sanity-check the harness.</strong> Add <code>tc netem</code> impairment injection in CI. If injecting 1% loss / 5 ms jitter / 1% reorder doesn't show up in the new metrics, the harness is wrong. Fix it before measuring anything else.</li>
+  <li><strong>Week 2 — Walk the ladder on the dummy robot.</strong> Run sinusoid + chirp + step + PRBS at all five rungs (in-process, loopback, direct wired, switched, Wi-Fi) using the existing <code>InProcessBus</code> + ZMQ remote. Diff the metrics. <em>This alone tells you whether jitter is host-side, switch-side, or Wi-Fi-side</em> — without changing any code beyond instrumentation.</li>
+  <li><strong>Week 2 — Quick win: tune the existing FastDDS QoS.</strong> Move the existing leader/follower DDS XML configs to <code>BEST_EFFORT / KEEP_LAST=1 / VOLATILE / DEADLINE=2×period</code>. Build a <code>FastDdsBus</code> that uses them. Re-run the ladder. Likely removes the bulk of the jitter without any new dependency. (Decision gate — see below.)</li>
+  <li><strong>Week 3 — Build <code>ZenohBus</code>.</strong> ~80 LOC. Wire via a CLI flag in <span class="file-ref">scripts/main_remote.py</span>. Re-run the ladder. <strong>Pick whichever wins on the Wi-Fi rung.</strong></li>
+  <li><strong>Week 3-4 — Host hygiene.</strong> PREEMPT_RT kernel on both hosts, PTP via <code>linuxptp</code>, performance governor, isolated cores for the teleop process and NIC IRQ. Validate with <code>cyclictest</code>. Re-run the ladder. The numbers from §3 only mean something on a tuned host.</li>
+  <li><strong>Week 4 — Wi-Fi hygiene.</strong> Dedicated 5/6 GHz Wi-Fi 6 AP, no other clients on the SSID, DSCP-tagged control egress, WMM verified at the AP. Document RSSI and channel. Re-run the Wi-Fi rung.</li>
+  <li><strong>Week 5+ — UR + MIR600 on top.</strong> <code>URRobot</code> via <code>ur_robot_driver</code> + RTDE, <code>MIR600Robot</code> via REST + ROS 2. Both consume the chosen bus. The teleop work above is what makes this safe.</li>
+</ol>
+
+<h3>5.1 Decision gates</h3>
+
+<div class="callout good">
+  <div class="callout-title">Gate 1 — after week 2</div>
+  If a tuned-QoS <code>FastDdsBus</code> already meets the budget at every rung, ship. Don't add Zenoh
+  for its own sake. (We expect this likely doesn't hold on the Wi-Fi rung — but measure first.)
+</div>
+<div class="callout">
+  <div class="callout-title">Gate 2 — after week 3</div>
+  If <code>ZenohBus</code> wins on the Wi-Fi rung by a clear margin (the published evidence says it should),
+  promote it to default. Otherwise stay on tuned FastDDS — fewer moving parts.
+</div>
+<div class="callout bad">
+  <div class="callout-title">Gate 3 — after week 4</div>
+  If after host + Wi-Fi hygiene the Wi-Fi rung still has p99 &gt; 50 ms, escalate: either accept the
+  budget cannot be met on this Wi-Fi infrastructure (and the system needs a wired teleop link or
+  a buffer/predictor on the follower), or adopt one of the heavier options (WebRTC, dedicated UDP
+  transport with FEC). Do not hand-wave past this gate.
+</div>
+
+<h2>6. Open Questions</h2>
+
+<ul class="compact">
+  <li><strong>What's the actual current p99 / max?</strong> The existing tracer captures hop times but the broken latency test isn't asserting on tail percentiles. Until we add p99 / max / PDV / loss / reorder to the assertions, we're flying half-blind.</li>
+  <li><strong>What's the deadline budget?</strong> "Reliable and safe to operate" is not a number. For a UR arm at 500 Hz the deadline is 2 ms; we cannot promise that today. Pick an explicit budget (e.g. p99 &lt; 10 ms, max &lt; 30 ms, loss &lt; 1e-3) and treat it as the acceptance criterion.</li>
+  <li><strong>How tightly do leader and follower clocks need to agree?</strong> Without PTP, our one-way latency numbers are accurate only to NTP error (~1-10 ms). Below that, all latency claims are noise. The tracer uses <code>perf_counter</code> which is per-host monotonic — fine within a host, useless across hosts without sync.</li>
+  <li><strong>Is the EMA the right place for jitter suppression?</strong> EMA on the command path masks observation jitter at the cost of a first-order lag. For a UR teleop loop that's probably fine; for fine manipulation it may not be. Worth re-tuning <code>α</code> (or moving to a Kalman / one-euro filter) once the network jitter is quantified.</li>
+  <li><strong>Is there a hold-last-sample / predictor on the follower side?</strong> A safety net that holds the last commanded joint when no fresh command arrives within deadline drastically reduces the consequences of a Wi-Fi blip. Worth building regardless of which middleware we pick.</li>
+  <li><strong>Where do safety estops sit?</strong> Estop must not depend on the same network as control. Hardware estop on the UR controller is non-negotiable; software estop should travel on a separate reliable channel.</li>
+</ul>
+
+<h2>7. References</h2>
+
+<h3>Test methodology</h3>
+<ul class="compact">
+  <li><a href="https://datatracker.ietf.org/doc/html/rfc3393">RFC 3393 — IP Packet Delay Variation Metric (the PDV / "jitter" definition)</a></li>
+  <li><a href="https://en.wikipedia.org/wiki/Pseudorandom_binary_sequence">PRBS / m-sequences — Wikipedia</a></li>
+  <li><a href="https://www.frontiersin.org/journals/robotics-and-ai/articles/10.3389/frobt.2020.578805/full">A Brief Survey of Telerobotic Time Delay Mitigation — Frontiers in Robotics &amp; AI</a></li>
+  <li><a href="https://arxiv.org/pdf/2210.07212">Haptic Teleoperation goes Wireless — benchmarking (arXiv 2210.07212)</a></li>
+  <li><a href="https://www.mdpi.com/1424-8220/23/20/8438">Quantifying the Effects of Network Latency for a Teleoperated Robot — MDPI Sensors</a></li>
+  <li><a href="https://man7.org/linux/man-pages/man8/tc-netem.8.html"><code>tc-netem(8)</code> man page</a></li>
+  <li><a href="https://www.apex.ai/post/performance-testing-in-ros-2">Apex.AI — Performance Testing in ROS 2</a></li>
+  <li><a href="https://wiki.linuxfoundation.org/realtime/documentation/howto/tools/cyclictest/start">Linux Foundation — <code>cyclictest</code></a></li>
+  <li><a href="https://en.wikipedia.org/wiki/Precision_Time_Protocol">Precision Time Protocol (IEEE 1588)</a></li>
+</ul>
+
+<h3>Network &amp; middleware</h3>
+<ul class="compact">
+  <li><a href="https://pracucci.com/linux-tcp-rto-min-max-and-tcp-retries2.html">Linux TCP_RTO_MIN, RTO_MAX, tcp_retries2 (the 200 ms floor)</a></li>
+  <li><a href="https://arxiv.org/abs/2309.07496">Comparison of DDS, MQTT, and Zenoh for ROS 2 (arXiv 2309.07496)</a></li>
+  <li><a href="https://arxiv.org/html/2505.02734v1">Automotive middleware perf: FastDDS / Zenoh / vSomeIP (arXiv 2505.02734)</a></li>
+  <li><a href="https://docs.ros.org/en/kilted/Releases/Release-Kilted-Kaiju.html">ROS 2 Kilted Kaiju release notes — rmw_zenoh Tier 1</a></li>
+  <li><a href="https://github.com/eclipse-zenoh/zenoh-plugin-ros2dds">eclipse-zenoh / zenoh-plugin-ros2dds</a></li>
+  <li><a href="https://docs.vulcanexus.org/en/jazzy/rst/tutorials/core/wifi/wifi_issues_tutorial/wifi_issues_tutorial.html">Vulcanexus — How to solve wireless network issues in ROS 2</a></li>
+  <li><a href="https://docs.ros.org/en/rolling/Tutorials/Advanced/Discovery-Server/Discovery-Server.html">ROS 2 — FastDDS Discovery Server tutorial</a></li>
+  <li><a href="https://design.ros2.org/articles/qos.html">ROS 2 QoS policies design doc</a></li>
+  <li><a href="https://www.universal-robots.com/developer/communication-protocol/rtde/">Universal Robots — RTDE protocol</a></li>
+  <li><a href="https://docs.universal-robots.com/Universal_Robots_ROS2_Documentation/doc/ur_robot_driver/ur_robot_driver/doc/usage/simulation.html">UR ROS 2 driver — simulation</a></li>
+  <li><a href="https://www.rfc-editor.org/rfc/rfc8831.html">RFC 8831 — WebRTC Data Channels</a></li>
+  <li><a href="https://github.com/eclipse-iceoryx/iceoryx">eclipse-iceoryx — zero-copy IPC</a></li>
+  <li><a href="https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=957641">NIST — Latency-sensitive networked control with 802.11ax OFDMA</a></li>
+</ul>
+
+<h3>In the Atlas codebase (main @ 68ae39c)</h3>
+<ul class="compact">
+  <li><span class="file-ref">servo7/bus/pubsub.py</span> — the <code>PubSub</code> Protocol, now with <code>subscribe()</code> (the injection seam)</li>
+  <li><span class="file-ref">servo7/bus/in_process_bus.py</span> — current in-process implementation; synchronous fan-out outside the lock</li>
+  <li><span class="file-ref">servo7/bus/command_router.py</span> — topic naming + serialization</li>
+  <li><span class="file-ref">servo7/nodes/robot_node.py</span> — leader publish + follower inline <code>_on_command_received</code></li>
+  <li><span class="file-ref">servo7/nodes/orchestrator_node.py</span> — inline <code>_on_leader_state_change</code> + sync <code>ai_inference_worker</code> + EMA + mode blender</li>
+  <li><span class="file-ref">servo7/nodes/system_state_node.py</span> — event-driven state aggregation, fires registered callbacks</li>
+  <li><span class="file-ref">servo7/control/ema_filter.py</span> — per-joint EMA smoother (already in command path)</li>
+  <li><span class="file-ref">servo7/control/mode_blender.py</span> — 0.75 s cross-fade on mode transitions</li>
+  <li><span class="file-ref">servo7/utils/trace_logger.py</span> — JSONL tracer + in-memory deque for live profiler</li>
+  <li><span class="file-ref">tools/profiler.py</span> — offline self-contained HTML profiler renderer</li>
+  <li><span class="file-ref">robot-frontend/src/components/ProfilerPanel.jsx</span> — live profiler frontend</li>
+  <li><span class="file-ref">servo7/robot/robot_client.py</span> + <span class="file-ref">robot_server.py</span> — current ZMQ-over-TCP remote path (the suspect)</li>
+  <li><span class="file-ref">servo7/dds/start_discovery_server.sh</span> + <span class="file-ref">config/dds/dds_config_*.xml</span> — existing FastDDS scaffolding (unused on main)</li>
+  <li><span class="file-ref">tests/test_latency.py</span> — <strong>currently broken on main</strong>; references methods removed by #22 / #29 / #32. Repair before extending.</li>
+  <li><span class="file-ref">scripts/main.py</span> / <span class="file-ref">main_dummy.py</span> / <span class="file-ref">main_remote.py</span> / <span class="file-ref">main_ros.py</span> — single bus construction sites</li>
+</ul>
+
+<div class="meta">
+  Compiled 2026-04-28 against <code>main @ 68ae39c</code>, after <code>#22 "moved from polling to event driven"</code>,
+  <code>#29 "no more tick loops"</code>, <code>#32 "Inline command path + LeRobot temporal ensembling + profiler"</code>,
+  and recent profiler / trace refinements. Multi-agent investigation: codebase trace · teleop QoS literature ·
+  2026 ROS 2 / DDS / Zenoh state of the art. All recommendations are testable; the test ladder in §2.5 is the
+  falsification protocol.
+</div>
+
+</div>
+</body>
+</html>
