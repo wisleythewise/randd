@@ -475,6 +475,37 @@
   .verdict.good { background: #d8efe1; color: var(--good); }
   .verdict.warn { background: #fbecc6; color: var(--warn); }
   .verdict.bad { background: #fbd7d7; color: var(--bad); }
+
+  /* Fix: three fixed jitter-buffer scenes */
+  .jb-scene {
+    background: white;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 14px 16px 12px;
+    margin: 18px 0;
+  }
+  .jb-scene-title {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+  .jb-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    background: #fbfaf7;
+    border-radius: 4px;
+    border: 1px solid #efeadc;
+  }
+  .jb-scene-caption {
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin: 10px 0 0;
+  }
 </style>
 </head>
 <body>
@@ -517,15 +548,16 @@
   <a href="#imp-frames">Camera channel split</a>
 
   <h4>Reflection</h4>
-  <a href="#themes">Cross-cutting themes</a>
   <a href="#conclusion">Conclusion</a>
+
+  <h4>Fix</h4>
+  <a href="#fix">Jitter buffer</a>
 </nav>
 
 <main>
 
 <h1>Teleop on the wire</h1>
 <p class="subtitle">Measuring, fixing, and rethinking the latency between an operator and a remote robot.</p>
-<p class="meta">Branch: wjm/ntp-for-pdv &nbsp;·&nbsp; 32 commits &nbsp;·&nbsp; 2026-04 to 2026-05</p>
 
 <h2 id="intro"><span class="section-num">00</span>Introduction</h2>
 <p>Teleoperation is where modern robotics starts. Before any policy is trained, before any data set exists, before the full set of AI components that make a robot autonomous (vision, object detection, inverse kinematics, failure detection, and so on) is even built, a human with a controller can drive the robot through useful work. That fact carries more weight than it sounds like it should. It lets the robot do real tasks for real users while the autonomous stack is still being developed. It opens robot operation up to anyone who can hold a controller, not just the engineers who built the robot. </p>
@@ -1139,12 +1171,7 @@ projected:
 
 <hr/>
 
-<h2 id="themes"><span class="section-num">05</span>Cross-cutting themes</h2>
-<p>A few patterns recurred often enough to be worth naming. Network and scheduling distributions are heavy-tailed, so every latency number in this work is reported as a percentile and never as a mean; a single mean over a latency array would have hidden every problem this branch found. Separate workloads ran on separate sockets, separate threads, or separate processes, because GIL contention, socket contention, and kernel-buffer contention all dissolve once the workloads are physically separated. Locks isolate code; sockets isolate workloads. When clock sync was not ready, a shorter trace was emitted rather than a fake projected one; when kernel receive timestamps were not available, the trace fell back to user-space stamps with the kernel/Python gap visibly zero; when a camera frame went stale, the last known frame was kept so downstream schemas stayed complete. The pattern in each case is to make the missing data legible rather than to fake it. And every optimisation was wired up to be turned off, so any single change could be measured against its absence on the same Wi-Fi window without redeploying the system.</p>
-
-<hr/>
-
-<h2 id="conclusion"><span class="section-num">06</span>Conclusion</h2>
+<h2 id="conclusion"><span class="section-num">05</span>Conclusion</h2>
 <p>The headline finding of this branch is that Wi-Fi is stochastic. Latency is not the killer; variation in latency is. The protocol turned out to matter less than the Wi-Fi setup. The back-to-back protocol comparisons on the same window showed no consistent winner between raw UDP and ZMQ TCP, and a parallel ping baseline showed the same spikes as the teleop traces at the same moments. The Wi-Fi link itself is what dominates the tail. Against that, the operational settings around the link (power save, CPU governor, packet buffering, DSCP marking) each moved the numbers by far more than any choice of protocol did. The largest improvements on this branch were turning off Wi-Fi power save, switching the CPU governor to performance, unbuffering Python's stderr, marking packets with DSCP on both directions, and moving the profiler out of the teleop process so its snapshot work could no longer stall the publish thread.</p>
 
 <h3 id="wrong-targets">The target was wrong</h3>
@@ -1155,6 +1182,35 @@ projected:
 
 <h3>What comes next</h3>
 <p>The work that follows naturally from this is a control path that pays an explicit latency penalty in exchange for latency variation that approaches zero. The right design takes a running measurement of the network's variation and feeds it back into a small, adjustable buffer on the receive side, so that an arriving command is held for just long enough to absorb the tail of the distribution before being applied. The buffer grows when variation grows and shrinks when variation shrinks. The operator experiences a slightly higher but very stable latency, and feels a smooth, predictable system rather than a fast but jittery one. For a teleoperated robot, the second feel is strictly better than the first, and the prerequisites for building it (a clock-synchronised view of per-tick latency, the ability to attribute time to the right hop, a metric that actually correlates with feel) are exactly the foundations laid in this branch.</p>
+
+<h2 id="fix"><span class="section-num">06</span>Fix: a jitter buffer on the receive side</h2>
+<p>The fix that follows from the conclusion is a fixed-delay playout buffer on the robot side. The operator stamps every outgoing command with the moment it left the operator's clock, translated into the robot's clock via the existing clock-sync exchange. The robot reads each command, computes a target apply time of <code>send_robot_ns + buffer</code>, and sleeps until that target before handing the command to the hardware. Packets that arrive early get held; packets that arrive late get applied immediately and counted as over-budget. The trade is one-line: the system pays a flat latency equal to the buffer size, in exchange for a latency <em>variance</em> that collapses to whatever residual the sleep granularity and clock-sync noise leave behind.</p>
+
+<p>The wire change is a single field on the command, <code>send_robot_ns</code>, computed on the operator with <code>clock_sync.to_robot_frame(time.perf_counter_ns())</code>. The robot reads it, gates apply on <code>send_robot_ns + buffer</code>, and falls back to <code>receive_ns + buffer</code> for the first few hundred milliseconds before clock-sync has accumulated its minimum samples. In steady state with a sender at 100&nbsp;Hz, a 60&nbsp;ms buffer keeps roughly six packets in flight at any moment; that depth is the slack the system has to spend when the wire misbehaves.</p>
+
+<h3>Three scenarios</h3>
+<p>Three looping visualisations follow. Each runs the same six packets, sent at 100&nbsp;Hz, through the system; only the buffer policy differs. In every scene the top line is the operator's send moment, the middle dashed band is the wire, and the bottom line is the moment the actuator applied the command. Diagonals show packets in flight on the wire; horizontal segments in the middle band show packets waiting in the buffer for their apply target. The chart on the right of each scene plots the end-to-end latency of each packet after it applied.</p>
+
+<div class="jb-scene">
+  <div class="jb-scene-title">A.&nbsp; No buffer — actuator inherits all wire jitter</div>
+  <svg viewBox="0 0 720 220" class="jb-svg" id="jb-scene-a"></svg>
+  <p class="jb-scene-caption">Each packet applies the instant it arrives. The latency bars on the right mirror the wire's variance: short when the wire was clean, taller when it spiked. The actuator fires at irregular intervals because the arrivals are irregular.</p>
+</div>
+
+<div class="jb-scene">
+  <div class="jb-scene-title">B.&nbsp; Buffer at 60&nbsp;ms — wire jitter absorbed, latency flat</div>
+  <svg viewBox="0 0 720 220" class="jb-svg" id="jb-scene-b"></svg>
+  <p class="jb-scene-caption">Same packets, same wire variance. Each packet now waits in the buffer (the horizontal segment in the middle band) until <code>send + 60&nbsp;ms</code>. A packet that hit the wire fast waits longer; one that took longer waits less. Total send→apply is identical for every packet, and the actuator fires on a metronome.</p>
+</div>
+
+<div class="jb-scene">
+  <div class="jb-scene-title">C.&nbsp; Buffer at 60&nbsp;ms with a 120&nbsp;ms spike on packet&nbsp;3 — stale packet dropped, immediate recovery</div>
+  <svg viewBox="0 0 720 220" class="jb-svg" id="jb-scene-c"></svg>
+  <p class="jb-scene-caption">Packet&nbsp;3 takes 120&nbsp;ms on the wire — twice the budget. Because packets 4 and 5 arrived on time and were already applied at <code>send + 60&nbsp;ms</code>, packet 3's state is older than what's currently on the robot. The receiver drops it (shown as the red ✕ on the wire, no apply dot, no bar) rather than regressing the actuator. Packets&nbsp;4–6 are unaffected: they had normal wire times, fit inside the buffer, and apply on time. The cost of one over-budget packet is a single missed update at the actuator's cadence, not a backward jolt. A spike that <em>persisted</em> longer than the buffer would empty the queue and leave a real gap; that's the regime where bigger buffers, sender-side lookahead, or extrapolation start to matter.</p>
+</div>
+
+<h3>What is still missing</h3>
+<p>The current implementation has the minimum viable shape: a single field on the wire, a gate in the receive loop, and a drop-stale check that throws away any command older than the most recent one applied. It hands the operator constant latency in steady state without ever regressing the actuator on a single-packet spike. Two things from the standard playout-buffer toolkit are still not in place. First, there is no underflow policy: if the queue empties, the actuator holds the last command rather than extrapolating from recent velocity. Second, the queue lives implicitly inside the ZeroMQ socket buffer, so the receive code can't ask "am I N packets behind?" and act on the answer. The cheap next step is to split the listener into a recv thread and a worker thread with a bounded deque between them; that refactor unlocks both policies and turns the buffer from a flat constant into something that can adapt.</p>
 
 </main>
 </div>
@@ -2166,7 +2222,567 @@ let refreshTocSpy = () => {};
   ids.forEach(id => els[id].addEventListener('input', update));
   update();
 })();
+
+/* ---------- Jitter buffer: three fixed scenes ---------- */
+(function() {
+  const NS = 'http://www.w3.org/2000/svg';
+  function el(name, attrs) {
+    const e = document.createElementNS(NS, name);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+  function textEl(x, y, text, opts) {
+    opts = opts || {};
+    const e = el('text', {
+      x: x, y: y,
+      'font-family': opts.family === 'mono'
+        ? 'ui-monospace, monospace'
+        : 'ui-sans-serif, -apple-system, system-ui, sans-serif',
+      'font-size': opts.size || 11,
+      fill: opts.fill || '#4a4a4a',
+    });
+    if (opts.anchor) e.setAttribute('text-anchor', opts.anchor);
+    if (opts.weight) e.setAttribute('font-weight', opts.weight);
+    e.textContent = text;
+    return e;
+  }
+
+  function buildScene(svgId, wires, bufferMs, opts) {
+    const svg = document.getElementById(svgId);
+    if (!svg) return;
+    const dropStale = opts && opts.dropStale;
+
+    /* Geometry */
+    const laneX0 = 64, laneX1 = 460;
+    const ySend = 38, yApply = 178;
+    const yWire = (ySend + yApply) / 2;
+    const chartX0 = 500, chartX1 = 706;
+    const chartYTop = 40, chartYBase = 184;
+    const SEND_INTERVAL = 16;   /* sim ms between packets */
+
+    /* Compute per-packet timings. A packet is "stale" if drop-stale is on AND
+       any later-sent packet has already been applied before this one's arrival.
+       In single-spike scenarios this is just "wire > buffer". */
+    const packets = wires.map((wire, i) => {
+      const sendT = i * SEND_INTERVAL;
+      const arriveT = sendT + wire;
+      const target = bufferMs > 0 ? sendT + bufferMs : arriveT;
+      const applyT = Math.max(target, arriveT);
+      return {
+        i, wire, sendT, arriveT, applyT, target,
+        late: applyT > target + 0.5,
+        latency: applyT - sendT,
+        dropped: false,
+      };
+    });
+    /* Determine dropped packets: simulate the listener seeing arrivals in
+       arrival-time order; a packet is dropped if a later-sent packet has
+       already been applied when it arrives. */
+    if (dropStale) {
+      const arrivalOrder = packets.slice().sort((a, b) => a.arriveT - b.arriveT);
+      let lastApplied = -Infinity;
+      arrivalOrder.forEach(p => {
+        if (p.sendT < lastApplied) {
+          p.dropped = true;
+        } else {
+          lastApplied = p.sendT;
+        }
+      });
+    }
+    const totalSimMs = Math.max.apply(null, packets.filter(p => !p.dropped).map(p => p.applyT)
+                                   .concat(packets.filter(p => p.dropped).map(p => p.arriveT))) + 20;
+    const loopRealMs = 5800;
+    const padFrac = 0.78;          /* fraction of loop spent animating, rest holds */
+
+    const xForT = t => laneX0 + (t / totalSimMs) * (laneX1 - laneX0);
+    /* Per-scene Y scale on the chart so the variance is visible in scene A
+       even though absolute latencies are small. */
+    const maxLat = Math.max(20, Math.max.apply(null, packets.map(p => p.latency))) * 1.18;
+    const yForLat = lat => chartYBase - (lat / maxLat) * (chartYBase - chartYTop);
+
+    /* Build static layer. */
+    svg.innerHTML = '';
+
+    /* Lane labels and lines */
+    svg.appendChild(textEl(8, ySend + 4, 'SEND',  {size: 10, weight: 600, fill: '#1a1a1a'}));
+    svg.appendChild(textEl(8, yWire + 4, 'WIRE',  {size: 10, weight: 600, fill: '#1a1a1a'}));
+    svg.appendChild(textEl(8, yApply + 4, 'APPLY', {size: 10, weight: 600, fill: '#1a1a1a'}));
+    svg.appendChild(el('line', {x1: laneX0 - 6, y1: ySend, x2: laneX1 + 6, y2: ySend, stroke: '#d8d2c0', 'stroke-width': 1}));
+    svg.appendChild(el('line', {x1: laneX0 - 6, y1: yWire, x2: laneX1 + 6, y2: yWire, stroke: '#ebe6d6', 'stroke-width': 1, 'stroke-dasharray': '2,3'}));
+    svg.appendChild(el('line', {x1: laneX0 - 6, y1: yApply, x2: laneX1 + 6, y2: yApply, stroke: '#d8d2c0', 'stroke-width': 1}));
+
+    /* Per-packet static trail + send/apply markers + numbers. */
+    packets.forEach(p => {
+      const xs  = xForT(p.sendT);
+      const xa  = xForT(p.applyT);
+      const xAr = xForT(p.arriveT);
+      const colorTrail = p.dropped ? '#b32b2b'
+                       : p.late ? '#b32b2b'
+                       : (bufferMs > 0 ? '#1f7a4a' : '#4a4a4a');
+
+      let pathStr;
+      if (p.dropped) {
+        /* Dropped: trail ends at the wire arrival, no apply leg. */
+        pathStr = 'M' + xs + ' ' + ySend
+                + ' L' + xAr + ' ' + yWire;
+      } else if (bufferMs > 0 && p.arriveT < p.target) {
+        const xTar = xForT(p.target);
+        pathStr = 'M' + xs + ' ' + ySend
+                + ' L' + xAr + ' ' + yWire
+                + ' L' + xTar + ' ' + yWire
+                + ' L' + xa + ' ' + yApply;
+      } else {
+        pathStr = 'M' + xs + ' ' + ySend
+                + ' L' + xAr + ' ' + yWire
+                + ' L' + xa + ' ' + yApply;
+      }
+      svg.appendChild(el('path', {d: pathStr, fill: 'none', stroke: colorTrail, 'stroke-width': 1.4, opacity: 0.2}));
+
+      svg.appendChild(el('circle', {cx: xs, cy: ySend, r: 4, fill: colorTrail, opacity: 0.4}));
+      if (!p.dropped) {
+        svg.appendChild(el('circle', {cx: xa, cy: yApply, r: 4, fill: colorTrail, opacity: 0.4}));
+      } else {
+        /* Red ✕ at the wire-arrival point to mark the drop. */
+        const r = 5;
+        svg.appendChild(el('line', {x1: xAr - r, y1: yWire - r, x2: xAr + r, y2: yWire + r, stroke: '#b32b2b', 'stroke-width': 1.6}));
+        svg.appendChild(el('line', {x1: xAr - r, y1: yWire + r, x2: xAr + r, y2: yWire - r, stroke: '#b32b2b', 'stroke-width': 1.6}));
+        svg.appendChild(textEl(xAr + 9, yWire + 3, 'dropped (stale)', {size: 9, fill: '#b32b2b'}));
+      }
+
+      svg.appendChild(textEl(xs, ySend - 10, String(p.i + 1), {
+        size: 9.5, family: 'mono', anchor: 'middle', fill: '#1a1a1a',
+      }));
+    });
+
+    /* Chart frame */
+    svg.appendChild(textEl(chartX0, chartYTop - 8, 'LATENCY  send → apply', {size: 9, weight: 600, fill: '#1a1a1a'}));
+    svg.appendChild(el('line', {x1: chartX0, y1: chartYBase, x2: chartX1, y2: chartYBase, stroke: '#d8d2c0'}));
+
+    /* Buffer target line. */
+    if (bufferMs > 0) {
+      const yT = yForLat(bufferMs);
+      svg.appendChild(el('line', {x1: chartX0, y1: yT, x2: chartX1, y2: yT, stroke: '#c8501e', 'stroke-width': 1, 'stroke-dasharray': '3,3'}));
+      svg.appendChild(textEl(chartX1, yT - 3, bufferMs + ' ms target', {size: 9, anchor: 'end', fill: '#c8501e'}));
+    }
+
+    /* Animated bars (one per non-dropped packet, grows when packet applies). */
+    const slotW = (chartX1 - chartX0) / packets.length;
+    const barW = Math.max(6, slotW - 4);
+    const bars = packets.map(p => {
+      if (p.dropped) return {rect: null, yT: 0};
+      const bx = chartX0 + 2 + p.i * slotW;
+      const yT = yForLat(p.latency);
+      const r = el('rect', {
+        x: bx, y: chartYBase, width: barW, height: 0,
+        fill: p.late ? '#b32b2b' : (bufferMs > 0 ? '#1f7a4a' : '#4a4a4a'),
+      });
+      svg.appendChild(r);
+      return {rect: r, yT: yT};
+    });
+
+    /* Animated dots (one per packet, hidden until its sendT). */
+    const dots = packets.map(p => {
+      const fill = (p.wire >= 100) ? '#b32b2b' : (bufferMs > 0 ? '#c8501e' : '#1a1a1a');
+      const c = el('circle', {
+        cx: -100, cy: -100, r: 6.5,
+        fill: fill, stroke: 'white', 'stroke-width': 1.5,
+      });
+      svg.appendChild(c);
+      return c;
+    });
+
+    /* Reset state ("now" cursor — optional, kept lightweight). */
+    const cursor = el('line', {
+      x1: laneX0, y1: ySend - 14, x2: laneX0, y2: yApply + 14,
+      stroke: '#c8501e', 'stroke-width': 1, opacity: 0.35,
+    });
+    svg.appendChild(cursor);
+
+    /* Animate. */
+    const start = performance.now();
+    function frame(now) {
+      const phase = ((now - start) % loopRealMs) / loopRealMs;
+      let simT;
+      if (phase < padFrac) simT = (phase / padFrac) * totalSimMs;
+      else simT = totalSimMs + 1;
+
+      if (phase < 0.004) {
+        bars.forEach(b => {
+          if (!b.rect) return;
+          b.rect.setAttribute('height', 0);
+          b.rect.setAttribute('y', chartYBase);
+        });
+      }
+
+      cursor.setAttribute('x1', xForT(Math.min(simT, totalSimMs)));
+      cursor.setAttribute('x2', xForT(Math.min(simT, totalSimMs)));
+
+      packets.forEach((p, i) => {
+        const c = dots[i];
+        const DROP_MS = 2;  /* small slide into APPLY lane for visual closure */
+        if (simT < p.sendT) {
+          c.setAttribute('cx', -100);
+        } else if (simT < p.arriveT) {
+          const f = (simT - p.sendT) / Math.max(0.1, p.arriveT - p.sendT);
+          c.setAttribute('cx', xForT(p.sendT) + f * (xForT(p.arriveT) - xForT(p.sendT)));
+          c.setAttribute('cy', ySend + f * (yWire - ySend));
+        } else if (p.dropped) {
+          /* Dropped at arrival — hide the dot, the static red ✕ marks the drop. */
+          c.setAttribute('cx', -100);
+        } else if (bufferMs > 0 && simT < p.applyT - DROP_MS) {
+          const f = (simT - p.arriveT) / Math.max(0.1, p.applyT - p.arriveT);
+          c.setAttribute('cx', xForT(p.arriveT) + f * (xForT(p.applyT) - xForT(p.arriveT)));
+          c.setAttribute('cy', yWire);
+        } else if (simT < p.applyT) {
+          const f = 1 - (p.applyT - simT) / DROP_MS;
+          c.setAttribute('cx', xForT(p.applyT));
+          c.setAttribute('cy', yWire + f * (yApply - yWire));
+        } else {
+          c.setAttribute('cx', -100);
+          const b = bars[i];
+          if (b.rect) {
+            b.rect.setAttribute('y', b.yT);
+            b.rect.setAttribute('height', chartYBase - b.yT);
+          }
+        }
+      });
+
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  /* Same wire pattern for A and B so the comparison is fair; C adds a single
+     120 ms spike on packet 3 to demonstrate the over-budget case. */
+  const wiresAB = [4, 7, 14, 5, 19, 6];
+  const wiresC  = [4, 7, 120, 5, 8, 6];
+  buildScene('jb-scene-a', wiresAB, 0);
+  buildScene('jb-scene-b', wiresAB, 60);
+  buildScene('jb-scene-c', wiresC, 60, {dropStale: true});
+})();
+/* Legacy IIFE body removed — kept the closing braces below dead to preserve
+   any prior parsing; everything below up to the matching closing tag is the
+   old interactive demo, no longer wired into the DOM. */
+(function() {
+  const trackSend = document.getElementById('jb-track-send');
+  const trackWire = document.getElementById('jb-track-wire');
+  const trackApply = document.getElementById('jb-track-apply');
+  const chart = document.getElementById('jb-chart');
+  if (!chart || !trackSend) return;
+  const ctx = chart.getContext('2d');
+
+  const bufEl = document.getElementById('jb-buffer');
+  const bufValEl = document.getElementById('jb-buffer-val');
+  const wireEl = document.getElementById('jb-wire');
+  const wireValEl = document.getElementById('jb-wire-val');
+  const pauseBtn = document.getElementById('jb-pause');
+  const resetBtn = document.getElementById('jb-reset');
+  const modeButtons = document.querySelectorAll('#jb-modes .jb-mode');
+
+  const statMean = document.getElementById('jb-stat-mean');
+  const statJit  = document.getElementById('jb-stat-jit');
+  const statLate = document.getElementById('jb-stat-late');
+  const statQ    = document.getElementById('jb-stat-queue');
+
+  /* Simulation parameters. simT (sim time) advances at SIM_RATE x real time so
+     the eye can follow individual packets; pixel positions on the lanes encode
+     the most recent VIEW_MS of sim time. */
+  const SIM_RATE = 0.07;             /* sim ms per real ms (lower = slower visuals) */
+  const SEND_INTERVAL = 10;          /* 100 Hz sender */
+  const VIEW_MS = 400;               /* lane shows last 400 ms of sim time */
+  const NEW_AT_FRAC = 0.92;          /* "now" position on the lane (right edge) */
+
+  let state = {
+    mode: 'off',
+    bufferMs: 60,
+    wireBaseMs: 6,
+    paused: false,
+    simT: 0,                         /* current sim time in ms */
+    nextSendAt: 0,
+    packets: [],                     /* {id, send, arrive, target, apply, lane} */
+    nextId: 1,
+    spikeUntil: -1,
+    spikeMs: 0,
+    lastSpikeAt: -10000,
+    history: [],                     /* applied packets: {latency, late} */
+    HISTORY_MAX: 80,
+  };
+
+  function setMode(m) {
+    state.mode = m;
+    modeButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+    /* Rebase targets on in-flight packets so the switch reads cleanly
+       instead of dragging the previous mode's behaviour for ~500ms. */
+    state.packets.forEach(p => {
+      if (p.apply >= 0) return;
+      p.target = (m === 'off') ? p.arrive : (p.send + state.bufferMs);
+    });
+  }
+  modeButtons.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+  bufEl.addEventListener('input', () => {
+    state.bufferMs = parseInt(bufEl.value);
+    bufValEl.innerHTML = state.bufferMs + '&nbsp;ms';
+  });
+  wireEl.addEventListener('input', () => {
+    state.wireBaseMs = parseInt(wireEl.value);
+    wireValEl.innerHTML = state.wireBaseMs + '&nbsp;ms';
+  });
+  pauseBtn.addEventListener('click', () => {
+    state.paused = !state.paused;
+    pauseBtn.textContent = state.paused ? 'Resume' : 'Pause';
+  });
+  resetBtn.addEventListener('click', () => {
+    state.history = [];
+    state.packets = [];
+    trackSend.innerHTML = '';
+    trackWire.innerHTML = '';
+    trackApply.innerHTML = '';
+  });
+
+  /* Wire delay model: base + small Gaussian noise, with occasional natural
+     bursts; in "spike" mode an extra deterministic 120 ms slug rides on top
+     to demonstrate exceeding the budget. */
+  function sampleWireDelay(t) {
+    let d = state.wireBaseMs + (Math.random() - 0.5) * 2;
+    if (state.mode === 'off' || state.mode === 'on') {
+      /* organic noise: every ~150 ms a moderate burst, 1% chance of bigger one */
+      const burstPhase = (t % 220) / 220;
+      if (burstPhase < 0.08) d += 6 + Math.random() * 8;
+      if (Math.random() < 0.01) d += 15 + Math.random() * 15;
+    }
+    if (state.mode === 'spike') {
+      /* Every ~2.2 s of sim time, inject a sustained 120 ms spike. */
+      if (t - state.lastSpikeAt > 2200) {
+        state.lastSpikeAt = t;
+        state.spikeUntil = t + 120;
+        state.spikeMs = 120;
+      }
+      if (t < state.spikeUntil) {
+        d = Math.max(d, state.spikeMs - (state.spikeUntil - t));
+      }
+    }
+    return Math.max(1, d);
+  }
+
+  function spawnPacket() {
+    const send = state.simT;
+    const wire = sampleWireDelay(send);
+    const arrive = send + wire;
+    let target;
+    if (state.mode === 'off') {
+      target = arrive;
+    } else {
+      target = send + state.bufferMs;
+    }
+    state.packets.push({
+      id: state.nextId++,
+      send, arrive, target,
+      apply: -1,
+      late: false,
+    });
+  }
+
+  function step(dtMs) {
+    /* sender */
+    while (state.simT >= state.nextSendAt) {
+      state.nextSendAt += SEND_INTERVAL;
+      spawnPacket();
+    }
+    /* applies */
+    state.packets.forEach(p => {
+      if (p.apply >= 0) return;
+      if (state.simT < p.arrive) return;          /* not yet on the robot */
+      const applyAt = Math.max(p.target, p.arrive);
+      if (state.simT >= applyAt) {
+        p.apply = applyAt;
+        p.late = applyAt > p.target + 0.5;
+        state.history.push({
+          latency: applyAt - p.send,
+          late: p.late,
+        });
+        if (state.history.length > state.HISTORY_MAX) state.history.shift();
+      }
+    });
+    /* drop packets that have fully scrolled off-screen */
+    const cutoff = state.simT - VIEW_MS * 1.4;
+    state.packets = state.packets.filter(p => {
+      if (p.apply < 0) return true;
+      return p.apply > cutoff;
+    });
+  }
+
+  /* Lane rendering: each packet gets at most three DOM nodes (one per lane it
+     has reached). We re-parent them across lanes as the packet transitions. */
+  function renderLanes() {
+    const xFor = (eventT) => {
+      /* "now" at NEW_AT_FRAC of the lane width; earlier events further left */
+      const dt = state.simT - eventT;          /* ms ago */
+      const frac = NEW_AT_FRAC - dt / VIEW_MS;
+      return Math.max(-0.05, Math.min(1.05, frac));
+    };
+    /* Clear and redraw — small N so this is fine. */
+    trackSend.innerHTML = '';
+    trackWire.innerHTML = '';
+    trackApply.innerHTML = '';
+    state.packets.forEach(p => {
+      /* SENDER lane: dot at p.send, scrolls left */
+      if (p.send >= state.simT - VIEW_MS) {
+        const el = document.createElement('div');
+        el.className = 'jb-pkt';
+        el.style.left = (xFor(p.send) * 100) + '%';
+        el.textContent = (p.id % 100);
+        trackSend.appendChild(el);
+      }
+      /* WIRE lane: between send and arrive — moves from send-position to arrive-position */
+      if (state.simT >= p.send && state.simT <= p.arrive + 50) {
+        const el = document.createElement('div');
+        el.className = 'jb-pkt';
+        let t;
+        if (state.simT < p.arrive) {
+          /* in flight: interpolate */
+          t = p.send + (p.arrive - p.send) * ((state.simT - p.send) / Math.max(1, p.arrive - p.send));
+        } else {
+          t = p.arrive;
+        }
+        el.style.left = (xFor(t) * 100) + '%';
+        el.textContent = (p.id % 100);
+        trackWire.appendChild(el);
+      }
+      /* APPLY lane: if held in queue, shown in held color; once applied, shown applied/late */
+      if (p.arrive <= state.simT && p.arrive >= state.simT - VIEW_MS - 50) {
+        const el = document.createElement('div');
+        el.className = 'jb-pkt';
+        let eventT;
+        if (p.apply < 0) {
+          /* held in queue, parked at "now" */
+          el.classList.add('held');
+          eventT = state.simT;
+        } else {
+          el.classList.add(p.late ? 'late' : 'applied');
+          eventT = p.apply;
+        }
+        el.style.left = (xFor(eventT) * 100) + '%';
+        el.textContent = (p.id % 100);
+        trackApply.appendChild(el);
+      }
+    });
+  }
+
+  function renderChart() {
+    const w = chart.width;
+    const h = chart.height;
+    ctx.clearRect(0, 0, w, h);
+
+    /* y axis: 0 to 160 ms */
+    const yMax = 160;
+    const yFor = (ms) => h - 8 - (ms / yMax) * (h - 20);
+
+    /* guidelines: buffer target line (orange) */
+    ctx.strokeStyle = '#c8501e';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    if (state.mode !== 'off') {
+      const y = yFor(state.bufferMs);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#c8501e';
+      ctx.font = '10px ui-sans-serif, system-ui';
+      ctx.fillText('target ' + state.bufferMs + ' ms', 6, y - 3);
+    }
+    ctx.setLineDash([]);
+
+    /* zero/baseline */
+    ctx.strokeStyle = '#e6e2d7';
+    ctx.beginPath();
+    ctx.moveTo(0, h - 8);
+    ctx.lineTo(w, h - 8);
+    ctx.stroke();
+
+    /* bars */
+    const N = state.history.length;
+    if (N === 0) return;
+    const barW = Math.max(2, (w - 20) / state.HISTORY_MAX);
+    state.history.forEach((s, i) => {
+      const x = 10 + i * barW;
+      const y = yFor(s.latency);
+      ctx.fillStyle = s.late ? '#b32b2b' : (state.mode === 'off' ? '#4a4a4a' : '#1f7a4a');
+      ctx.fillRect(x, y, barW - 1, h - 8 - y);
+    });
+
+    /* y-axis labels */
+    ctx.fillStyle = '#4a4a4a';
+    ctx.font = '10px ui-sans-serif, system-ui';
+    [0, 40, 80, 120, 160].forEach(v => {
+      const y = yFor(v);
+      ctx.fillText(v + ' ms', w - 40, y + 3);
+    });
+  }
+
+  function renderStats() {
+    if (state.history.length === 0) {
+      statMean.textContent = '–';
+      statJit.textContent = '–';
+      statLate.textContent = '–';
+      statQ.textContent = state.packets.filter(p => p.apply < 0 && p.arrive <= state.simT).length.toString();
+      return;
+    }
+    const lats = state.history.map(s => s.latency).slice().sort((a, b) => a - b);
+    const mean = lats.reduce((a, b) => a + b, 0) / lats.length;
+    const p5  = lats[Math.max(0, Math.floor(lats.length * 0.05))];
+    const p95 = lats[Math.min(lats.length - 1, Math.floor(lats.length * 0.95))];
+    const lateCount = state.history.filter(s => s.late).length;
+    const queueDepth = state.packets.filter(p => p.apply < 0 && p.arrive <= state.simT).length;
+
+    statMean.textContent = mean.toFixed(1) + ' ms';
+    statJit.textContent = (p95 - p5).toFixed(1) + ' ms';
+    statLate.textContent = lateCount + ' / ' + state.history.length;
+    statQ.textContent = queueDepth.toString();
+  }
+
+  let lastReal = performance.now();
+  function loop(now) {
+    const dtReal = Math.min(60, now - lastReal);
+    lastReal = now;
+    if (!state.paused) {
+      const dtSim = dtReal * SIM_RATE;
+      state.simT += dtSim;
+      step(dtSim);
+    }
+    renderLanes();
+    renderChart();
+    renderStats();
+    requestAnimationFrame(loop);
+  }
+
+  /* Size the canvas to its CSS width for crisp drawing on retina. */
+  function resizeChart() {
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = chart.clientWidth;
+    const cssH = chart.clientHeight;
+    chart.width = Math.round(cssW * dpr);
+    chart.height = Math.round(cssH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    chart.width = chart.width;     /* trigger no-op */
+  }
+  /* Use simple CSS-pixel mapping: re-derive width/height once visible. */
+  function ensureSizeOnce() {
+    const cssW = chart.clientWidth || 780;
+    const cssH = chart.clientHeight || 130;
+    chart.width = cssW;
+    chart.height = cssH;
+  }
+  ensureSizeOnce();
+  window.addEventListener('resize', ensureSizeOnce);
+
+  requestAnimationFrame(loop);
+})();
 </script>
 
 </body>
 </html>
+
+
