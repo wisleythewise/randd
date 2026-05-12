@@ -552,6 +552,9 @@
 
   <h4>Fix</h4>
   <a href="#fix">Jitter buffer</a>
+
+  <h4>Review</h4>
+  <a href="#prs">Pull requests</a>
 </nav>
 
 <main>
@@ -1211,6 +1214,35 @@ projected:
 
 <h3>What is still missing</h3>
 <p>The current implementation has the minimum viable shape: a single field on the wire, a gate in the receive loop, and a drop-stale check that throws away any command older than the most recent one applied. It hands the operator constant latency in steady state without ever regressing the actuator on a single-packet spike. Two things from the standard playout-buffer toolkit are still not in place. First, there is no underflow policy: if the queue empties, the actuator holds the last command rather than extrapolating from recent velocity. Second, the queue lives implicitly inside the ZeroMQ socket buffer, so the receive code can't ask "am I N packets behind?" and act on the answer. The cheap next step is to split the listener into a recv thread and a worker thread with a bounded deque between them; that refactor unlocks both policies and turns the buffer from a flat constant into something that can adapt.</p>
+
+<hr/>
+
+<h2 id="prs"><span class="section-num">07</span>Pull requests</h2>
+<p>The work described above is split into a stack of small PRs so each one can be reviewed against a single idea. The recommended review order is foundation → fix → operational wins → measurement tools, so a reviewer can land each layer with the previous already on <code>main</code>.</p>
+
+<h3>Recommended review order</h3>
+<ol>
+  <li><a href="https://github.com/Servo7/atlas/pull/47">#47 — Profiler sidecar + trace_stats + per-trace arrival stamps</a>. Moves the live profiler aggregation out of the teleop process into its own sidecar so its snapshot work can no longer stall the publish thread (the last of the operational wins called out in the <a href="#wire-tuning">wire-tuning</a> section), and adds the <code>servo7.utils.trace_stats</code> module + inter-arrival metrics that every later PR uses to compute its numbers. Base: <code>main</code>.</li>
+  <li><a href="https://github.com/Servo7/atlas/pull/54">#54 — DSCP marking on ZMQ teleop sockets</a>. Adds the <code>SERVO7_TOS_BYTE</code> env var and applies <code>zmq.TOS</code> on the state/command sockets so a WMM-aware Wi-Fi AP maps the flow to AC_VO; this is the DSCP win discussed in <a href="#wire-tuning">tuning the wire</a>, in code form. Independent of every other PR. Base: <code>main</code>.</li>
+  <li><a href="https://github.com/Servo7/atlas/pull/49">#49 — Clock synchronisation between operator and remote</a>. The NTP-style exchange described in the <a href="#clock-sync">clock synchronisation</a> section. Establishes the common time base every later wire-side PR relies on to attribute time to the right hop and to gate a packet's apply moment on the operator's clock. Base: <code>main</code>.</li>
+  <li><a href="https://github.com/Servo7/atlas/pull/50">#50 — Jitter buffer with stale-packet drop on the robot server</a>. The fix from section&nbsp;06: <code>send_robot_ns + 90&nbsp;ms</code> apply gate plus the drop-stale guard, exactly the design in <a href="#fix">Fix</a>. Stacks on #49 because the gate is expressed in the robot clock frame via <code>clock_sync.to_robot_frame</code>. Base: <code>wjm/clock-sync</code>.</li>
+  <li><a href="https://github.com/Servo7/atlas/pull/55">#55 — Camera frames on a separate ZMQ port</a>. The frames channel described in <a href="#imp-frames">camera frames on a separate channel</a>: dedicated publisher/subscriber on port 5558, JPEG encode with a per-frame capture timestamp, operator-side decode, capture stamp projected onto the operator clock, per-camera staleness-aware cache. Stacks on #49 because the capture-stamp projection needs <code>clock_sync.to_op_frame</code>. Base: <code>wjm/clock-sync</code>.</li>
+  <li><a href="https://github.com/Servo7/atlas/pull/56">#56 — UDP transport with kernel receive timestamps</a>. The UDP alternative described in <a href="#imp-udp">UDP transport with kernel receive timestamps</a>: kept side-by-side with the ZMQ path so an A/B sweep on the same Wi-Fi window can fingerprint each transport. Uses <code>SO_TIMESTAMPNS</code> so the kernel-to-Python gap is visible as its own trace segment. Stacks on #49 because the receipt path projects absolute robot stamps via <code>clock_sync.to_op_frame</code>. Base: <code>wjm/clock-sync</code>.</li>
+  <li><a href="https://github.com/Servo7/atlas/pull/52">#52 — Closed-loop E2E measurement harness</a>. The harness referenced from <a href="#harness">the closed-loop test harness</a>: spawns <code>scripts/main.py</code> headless against a real <code>RemoteSession</code>, lets it run for a configurable window, then computes a per-path / per-segment <code>PerformanceReport</code> from the captured trace. Gated on <code>RUN_E2E=1</code>; writes a sidecar JSON next to the trace so successive runs can be diffed. Stacks on #47 because it imports <code>trace_stats</code>. Base: <code>wjm/profiler-perf</code>.</li>
+</ol>
+
+<h3>Dependency graph</h3>
+<pre>
+main
+├── #47  profiler sidecar + trace_stats
+│       └── #52  e2e measurement harness
+├── #54  DSCP marking
+└── #49  clock sync
+        ├── #50  jitter buffer
+        ├── #55  camera frames
+        └── #56  UDP transport
+</pre>
+<p>#47 and #54 are independent of each other and of #49, so review and merge can proceed in parallel on those three roots. Once #49 is in, #50 / #55 / #56 are independent siblings on top of it.</p>
 
 </main>
 </div>
@@ -2784,5 +2816,6 @@ let refreshTocSpy = () => {};
 
 </body>
 </html>
+
 
 
