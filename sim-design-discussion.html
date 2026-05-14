@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atlas Sim — design discussion</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161922;
+    --panel-2: #1c2030;
+    --text: #e7ecf3;
+    --muted: #9aa3b2;
+    --accent: #4ea1ff;
+    --accent-2: #7fd1a8;
+    --warn: #ffb454;
+    --bad: #ff6b6b;
+    --line: #262b39;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.55; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 48px 28px 120px; }
+  header.hero { padding: 32px 0 24px; border-bottom: 1px solid var(--line); margin-bottom: 40px; }
+  header.hero .tag { color: var(--accent); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; }
+  header.hero h1 { font-size: 38px; margin: 6px 0 8px; letter-spacing: -.01em; }
+  header.hero p.sub { color: var(--muted); font-size: 17px; margin: 0; max-width: 720px; }
+  header.hero .meta { color: var(--muted); font-size: 13px; margin-top: 18px; }
+  h2 { font-size: 24px; margin: 56px 0 16px; letter-spacing: -.005em; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  h3 { font-size: 18px; margin: 28px 0 10px; }
+  h4 { font-size: 15px; margin: 18px 0 6px; color: var(--accent-2); text-transform: uppercase; letter-spacing: .05em; }
+  p { margin: 10px 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+  code { background: #20242f; padding: 1px 6px; border-radius: 4px; font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; }
+  pre { background: #0a0c11; border: 1px solid var(--line); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.45; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; margin: 18px 0; }
+  .panel.compact { padding: 14px 18px; }
+  .panel.accent { border-left: 3px solid var(--accent); }
+  .panel.warn { border-left: 3px solid var(--warn); }
+  .panel.good { border-left: 3px solid var(--accent-2); }
+  .grid { display: grid; gap: 18px; }
+  .grid.cards-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid.cards-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid.cards-4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 880px) { .grid.cards-2, .grid.cards-3, .grid.cards-4 { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+  .card.recommended { border-color: var(--accent-2); box-shadow: 0 0 0 1px var(--accent-2) inset; }
+  .card .thumb { width: 100%; height: 180px; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .card .thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .card .body { padding: 14px 18px 18px; }
+  .card .body h3 { margin: 4px 0 6px; display: flex; align-items: center; gap: 10px; }
+  .card .body .label { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--accent-2); color: #0a0c11; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .card .body .label.cold { background: var(--muted); color: #0a0c11; }
+  .card .body .label.warn { background: var(--warn); color: #0a0c11; }
+  .card .body p { margin: 6px 0; font-size: 14px; }
+  .card .body .pc { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  td.good { color: var(--accent-2); }
+  td.bad { color: var(--bad); }
+  td.warn { color: var(--warn); }
+  .diagram { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 22px; overflow-x: auto; }
+  .diagram pre { background: transparent; border: none; padding: 0; color: var(--text); font-size: 12.5px; line-height: 1.5; }
+  .phases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 18px 0; }
+  @media (max-width: 1024px) { .phases { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .phases { grid-template-columns: 1fr; } }
+  .phase { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; position: relative; }
+  .phase .num { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+  .phase h3 { margin: 4px 0 8px; }
+  .qbox { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; margin: 12px 0; }
+  .qbox.answered { border-left: 3px solid var(--accent-2); opacity: 0.85; }
+  .qbox .q { font-weight: 600; color: var(--accent); }
+  .qbox.answered .q { color: var(--accent-2); }
+  .qbox .why { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .qbox .ans { color: var(--accent-2); font-size: 13px; margin-top: 4px; font-style: italic; }
+  .pillrow { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
+  .pill.on { color: var(--accent-2); border-color: var(--accent-2); }
+  .pill.off { color: var(--bad); border-color: rgba(255,107,107,0.4); }
+  .vs { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 22px; margin: 18px 0; }
+  .vs .vs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 880px) { .vs .vs-grid { grid-template-columns: 1fr; } }
+  .vs .col h3 { color: var(--accent); margin: 0 0 8px; }
+  .vs .col.alt h3 { color: var(--warn); }
+  footer { margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="tag">Atlas · Servo7</div>
+  <h1>Designing the palletizing sim</h1>
+  <p class="sub">A discussion document on what to build, why, and which viewer/engine to pick — written ahead of an architecture conversation about integrating a simulator into atlas for the Fairino FR30 palletizing robot.</p>
+  <div class="meta">Draft · v2 · For internal discussion</div>
+</header>
+
+<h2>1. What we want from a sim</h2>
+
+<p>Before picking tools we need to be clear on <em>why</em> we'd run a simulator at all. Three reasons matter for atlas — and they're not the same shape of work.</p>
+
+<div class="grid cards-3">
+  <div class="panel compact">
+    <h4>1 · State visualization</h4>
+    <p>Live mirror of what the follower thinks its joints/EE pose are. Always on whenever a Fairino is connected. The <strong>Tesla screen</strong>. No physics, no rollouts — just a live skeleton with overlays.</p>
+  </div>
+  <div class="panel compact">
+    <h4>2 · Approve-before-execute gate</h4>
+    <p>The <strong>Robot Controller</strong> (classical-control leader) proposes a trajectory → sim plays the rollout → human reviews → clicks approve → real follower executes. Every command requires approval.</p>
+  </div>
+  <div class="panel compact">
+    <h4>3 · Dry-run on virtual hardware</h4>
+    <p>Hardware is attached, but we want to test the command first in the virtual world before letting the motors move. Solved by a <code>sim_mode</code> flag on <code>RobotNode</code>, not by a separate fake robot. See section 2 — these are different things.</p>
+  </div>
+</div>
+
+<div class="panel accent">
+  <strong>Decision:</strong> v1 delivers reason 1 (always-on Tesla screen). v2 delivers reason 2 (Robot Controller mode with approval). Reason 3 is a deployment toggle, not a sim role.
+</div>
+
+<h2>2. The two "sims" — separation of concerns</h2>
+
+<p>The word "sim" has been doing two unrelated jobs. We give them different names and never let them touch.</p>
+
+<div class="vs">
+  <div class="vs-grid">
+    <div class="col">
+      <h3>The Sim Viewer</h3>
+      <p class="small muted">A sibling Python package inside atlas: <code>atlas/sim_viewer/</code>, next to <code>servo7/</code>. Runs in-process. Serves a viser scene on a local port (e.g. <code>:8080</code>) which the atlas frontend iframes.</p>
+      <p><strong>What it does</strong></p>
+      <ul class="small">
+        <li>Renders a URDF</li>
+        <li>Registers a callback on <code>SystemState</code> for the robot it's mirroring; pushes joint updates into the viser scene</li>
+        <li>Shows joints, waypoints, labels, validator overlays, candidate trajectories</li>
+        <li>Hosts buttons and gizmos (Approve, Reject, drag-waypoint). Their click handlers are <strong>Python functions in the same process</strong> — they can call atlas APIs directly. No new WS protocol needed.</li>
+      </ul>
+      <p><strong>What it does NOT do</strong></p>
+      <ul class="small">
+        <li>Run any physics or kinematics math</li>
+        <li>Decide whether a command reaches hardware</li>
+        <li>Produce robot state</li>
+        <li>Talk to the real Fairino</li>
+        <li>Live in its own Docker container or process</li>
+      </ul>
+      <p class="small muted">It is a <em>view layer</em>. Replace it with a different renderer and atlas would not notice.</p>
+    </div>
+    <div class="col alt">
+      <h3>The Sim Engine (inside RobotNode)</h3>
+      <p class="small muted">Lives in atlas, inside <code>RobotNode</code> behind a <code>sim_mode</code> flag. Same <code>EngineBackend</code> Protocol that <code>RobotControllerNode</code> uses for planning in v2.</p>
+      <p><strong>What it does</strong></p>
+      <ul class="small">
+        <li>Forward-integrates commanded actions into <code>RobotState</code> (kinematics in v1, MuJoCo in v3)</li>
+        <li>Populates <code>SystemState["fairino"]</code> exactly as the real driver would</li>
+        <li>Runs whenever <code>RobotNode.sim_mode == True</code> — same RobotNode, same robot_id, no hardware moves</li>
+        <li>Keeps ticking on a 100 Hz timer so state stays live even between commands</li>
+      </ul>
+      <p><strong>What it does NOT do</strong></p>
+      <ul class="small">
+        <li>Render anything</li>
+        <li>Have a web UI</li>
+        <li>Care that a Sim Viewer exists</li>
+        <li>Exist as a separate <code>Robot</code> subclass — there is only one Fairino driver</li>
+      </ul>
+      <p class="small muted">It is the <em>gate</em> in RobotNode. Flip the flag, the same RobotNode produces simulated state instead of hardware state. The visualizer doesn't know or care.</p>
+    </div>
+  </div>
+</div>
+
+<div class="panel good">
+  <strong>The rule:</strong> they share a URDF file. Nothing else. The Sim Viewer subscribes to <code>SystemState["fairino"]</code> and renders whatever is in it — encoder-derived or sim-engine-derived. It cannot tell the difference, and that's the point.
+</div>
+
+<h3>The gate inside RobotNode</h3>
+
+<pre>
+class RobotNode:
+    def __init__(self, robot: Robot, sim_mode: bool = False):
+        self.robot = robot                  # real Fairino driver — instantiated either way
+        self.sim_mode = sim_mode            # the flag
+        self.sim_engine = KinematicEngine(robot.urdf)  # always present, used when flag is on
+
+    def connect(self) -> None:
+        if not self.sim_mode:
+            self.robot.connect()            # only touch hardware when in hardware mode
+
+    def handle_action(self, action: RobotState) -> None:
+        if self.sim_mode:
+            new_state = self.sim_engine.step(action, dt)
+            system_state.update_state(self.robot_id, new_state)
+        else:
+            self.robot.set_state(action)
+            system_state.update_state(self.robot_id, self.robot.get_state())
+
+    def set_sim_mode(self, on: bool) -> None:
+        """Live toggle. WS message from frontend can call this."""
+        if on and not self.sim_mode:
+            self.robot.disconnect()         # release hardware
+        elif not on and self.sim_mode:
+            self.robot.connect()            # reclaim hardware
+        self.sim_mode = on
+</pre>
+
+<p>The driver class is <strong>always instantiated</strong>, but <code>connect()</code> is skipped while the flag is on. This is the live-flip-friendly design: poke a trajectory in sim_mode, flip via a WS message, re-run the same trajectory on hardware without restarting RobotNode.</p>
+
+<h2>3. Viewer / engine options</h2>
+
+<p>This is where the most confusion happens because the candidates live at different layers. Some are <em>physics engines</em>, some are <em>renderers</em>, some are <em>libraries you build a renderer with</em>. The table is the quickest way to see it:</p>
+
+<table>
+  <thead><tr>
+    <th>Tool</th><th>What it is</th><th>3D render</th><th>GUI controls</th><th>Physics</th><th>In browser</th>
+  </tr></thead>
+  <tbody>
+    <tr><td><strong>three.js</strong></td><td>Low-level JS 3D library</td><td class="good">yes</td><td class="bad">no (DIY)</td><td class="bad">no</td><td class="good">yes</td></tr>
+    <tr><td><strong>MeshCat</strong></td><td>three.js + Python WS bridge</td><td class="good">yes</td><td class="bad">no</td><td class="bad">no</td><td class="good">yes</td></tr>
+    <tr><td><strong>viser</strong></td><td>three.js + Python + GUI framework</td><td class="good">yes</td><td class="good">yes</td><td class="bad">no</td><td class="good">yes</td></tr>
+    <tr><td><strong>Rerun</strong></td><td>Rust+wasm telemetry viewer</td><td class="good">yes</td><td class="warn">weak</td><td class="bad">no</td><td class="good">yes</td></tr>
+    <tr><td><strong>MuJoCo</strong></td><td>Physics engine w/ native viewer</td><td class="good">yes</td><td class="bad">no</td><td class="good">yes</td><td class="bad">no (desktop)</td></tr>
+  </tbody>
+</table>
+
+<div class="grid cards-3" style="margin-top:24px;">
+
+  <div class="card recommended">
+    <div class="thumb"><img src="sim_viewers/viser_urdf.png" alt="viser URDF visualizer"></div>
+    <div class="body">
+      <h3>viser <span class="label">recommended</span></h3>
+      <div class="pillrow">
+        <span class="pill on">URDF</span><span class="pill on">Buttons</span><span class="pill on">Gizmos</span><span class="pill on">Labels</span><span class="pill on">MIT</span>
+      </div>
+      <p>three.js + Python + a GUI panel framework. <code>@button.on_click</code> decorators, transform gizmos for waypoint authoring, scene labels and mesh recolor — everything we listed as mandatory, out of the box.</p>
+      <p class="pc"><strong>Maintenance:</strong> active (v1.0.26, Mar 2026, Nerfstudio team). Forkable if it goes stale (~3k LOC Python).</p>
+      <p class="pc"><strong>Risk:</strong> small team. We pin the version.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="thumb"><img src="sim_viewers/meshcat_demo.gif" alt="MeshCat / RoboMeshCat demo"></div>
+    <div class="body">
+      <h3>MeshCat <span class="label cold">stale</span></h3>
+      <div class="pillrow">
+        <span class="pill on">URDF (via wrappers)</span><span class="pill off">No buttons</span><span class="pill on">MIT</span>
+      </div>
+      <p>Same three.js renderer as viser, with a Python-WS bridge. No GUI controls layer — for buttons you'd add Streamlit/Gradio alongside, which means <em>two web UIs to iframe</em>.</p>
+      <p class="pc"><strong>Maintenance:</strong> no commits in 12+ months. Was the standard for Drake/Pinocchio users in 2020–2023.</p>
+      <p class="pc"><strong>Why we'd skip:</strong> worse than viser on every axis we care about today.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="thumb"><img src="sim_viewers/rerun_urdf.png" alt="Rerun URDF"></div>
+    <div class="body">
+      <h3>Rerun <span class="label warn">parallel use</span></h3>
+      <div class="pillrow">
+        <span class="pill on">URDF (built-in)</span><span class="pill off">Weak callbacks</span><span class="pill on">Apache-2.0</span>
+      </div>
+      <p>Excellent telemetry/time-series viewer. URDF loading is first-class (improved again in 0.28/0.29). But custom buttons that call back to Python are not a first-class primitive — fine for "view a rollout afterwards", weak for "approve this now".</p>
+      <p class="pc"><strong>Role:</strong> not the interactive viewer. Use it <em>alongside</em> viser later for trajectory replay and joint-trace scrubbing.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="thumb"><img src="sim_viewers/threejs_urdf_demo.gif" alt="three.js urdf-loaders demo"></div>
+    <div class="body">
+      <h3>three.js + urdf-loaders <span class="label cold">DIY</span></h3>
+      <div class="pillrow">
+        <span class="pill on">URDF</span><span class="pill off">DIY everything else</span><span class="pill on">Apache-2.0</span>
+      </div>
+      <p>Battle-tested URDF parser (gkjohnson, used at JPL). You'd build the websocket protocol, button bridge, waypoint gizmos, and label layer yourself. Roughly 2 weeks of work that viser hands you for free.</p>
+      <p class="pc"><strong>When this wins:</strong> we hit a wall with viser and need full control. Not v1.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="thumb"><img src="sim_viewers/mujoco_banner.png" alt="MuJoCo banner"></div>
+    <div class="body">
+      <h3>MuJoCo <span class="label warn">engine, not viewer</span></h3>
+      <div class="pillrow">
+        <span class="pill on">Physics</span><span class="pill off">Desktop viewer only</span><span class="pill on">Apache-2.0</span>
+      </div>
+      <p>Best-in-class rigid-body physics with contact. Native OpenGL viewer — <em>not iframeable</em>. MuJoCo-WASM compiles physics to the browser but ships no GUI.</p>
+      <p class="pc"><strong>Role:</strong> a physics layer for the <em>Robot Controller's</em> internal engine when we want contact-rich behaviour (grasp stability, slip, force control). v1 doesn't need it; v3 does.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="thumb"><img src="sim_viewers/viser_gui.png" alt="viser GUI primitives"></div>
+    <div class="body">
+      <h3>viser GUI — what we get for free</h3>
+      <p>Buttons, sliders, dropdowns, file uploads, foldable panels, transform gizmos, 3D click events, scene labels with color overlays. All controlled from Python with decorators. This is the <em>specific reason</em> viser wins for the approve-gate flow.</p>
+      <p class="pc">No JavaScript written on our side.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="panel good" style="margin-top:24px;">
+  <strong>Recommendation:</strong> viser for the Sim Viewer + Rerun (later) for trajectory logging + MuJoCo (later) as the Robot Controller's physics engine. Three layers, three roles, no overlap.
+</div>
+
+<h2>4. The four leaders, one follower</h2>
+
+<p>The follower is always <strong>one robot</strong>. What changes is <em>who is driving it</em>. Atlas already has Teleop, AI and Emergency Stop. We're adding a fourth leader: <strong>Robot Controller</strong>.</p>
+
+<div class="grid cards-4">
+  <div class="panel compact">
+    <h4>Teleop</h4>
+    <p class="small">Human leader arm drives the follower. Real-time, no preview.</p>
+  </div>
+  <div class="panel compact">
+    <h4>AI</h4>
+    <p class="small">Neural policy drives the follower. Real-time, no preview.</p>
+  </div>
+  <div class="panel compact good">
+    <h4>Robot Controller</h4>
+    <p class="small">Classical control: trajectory planning, IK, force control. <strong>Every command rendered in the Sim Viewer and approved by a human before execution.</strong></p>
+  </div>
+  <div class="panel compact warn">
+    <h4>Emergency Stop</h4>
+    <p class="small">Override. Blocks all other leaders. Existing behaviour.</p>
+  </div>
+</div>
+
+<p>The Sim Viewer is <strong>always</strong> rendering the follower's live state. The mode only changes whether the viewer's buttons are <em>active</em> as a command source.</p>
+
+<h2>5. Architecture</h2>
+
+<p>Everything plugs through <code>SystemState</code>. The Sim Viewer is a sibling Python package living inside atlas's process — it registers a callback on <code>SystemState</code> directly. No new transport layer, no inter-process serialization.</p>
+
+<div class="diagram"><pre>
+┌─ atlas process ──────────────────────────────────────────────────┐
+│                                                                  │
+│   ┌────────────────────────────────────────────────┐             │
+│   │ RobotNode (one per robot)                      │             │
+│   │                                                │             │
+│   │   action ──►  sim_mode flag ─┬─► [True]  ──►   │             │
+│   │                              │   sim_engine.step  ──┐        │
+│   │                              │                      │        │
+│   │                              └─► [False] ──►        │        │
+│   │                                  robot.set_state ──►│        │
+│   │                                  robot.get_state ──►│        │
+│   │                                                     │        │
+│   │   Sim engine ticks at 100 Hz even when no command   │        │
+│   │   (so SystemState stays live).                      │        │
+│   └─────────────────────────────────────────────────────┼────────┘
+│                                                         │
+│                          ──── state ────────────────────┴────────►
+│                                                    SystemState
+│                                                  ["fairino"]
+│                                                        │
+│                                                        │ callbacks
+│                                ┌───────────────────────┤
+│                                ▼                       ▼
+│                       ┌─────────────────┐    ┌──────────────────┐
+│                       │ Orchestrator    │    │ sim_viewer/      │
+│                       │ + WS :8765      │ ◄─►│ (in-process      │
+│                       │ + CommandRouter │    │  Python package) │
+│                       │ + Mode gate     │    │                  │
+│           commands ──►└─────────────────┘    │  viser server    │
+│           mode gate           ▲              │  on :8080  ──────┼────►
+│           ▲                   │ SET_SIM_MODE │  URDF render     │
+│           │                   │              │  callbacks ←─────┤
+│  ┌────────┼────────┬──────────┐              │   SystemState    │
+│  │        │        │          │              │  buttons → call  │
+│ Teleop  AI   Robot         Emergency         │   atlas Python   │
+│              Controller    Stop              │   directly       │
+│              Node (v2)                       └──────────────────┘
+│                                                       │
+│  RobotControllerNode (v2) owns:                       │
+│    • SimCore + same EngineBackend used by RobotNode   │
+│    • Validators (torque, collision, …)                │
+│    • Proposal/Approval state machine                  │
+│    • Calls sim_viewer.show_proposal(…) directly       │
+│                                                       │
+└───────────────────────────────────────────────────────┼─────────
+                                                        │
+        ┌───────────── atlas-frontend :3000 ────────────┴─────────┐
+        │ AtlasSimPanel.jsx  →  &lt;iframe src="localhost:8080"/&gt;    │
+        │ Plus sim-mode toggle (sends SET_SIM_MODE over :8765)    │
+        └─────────────────────────────────────────────────────────┘
+</pre></div>
+
+<p class="small muted">The Sim Viewer is a sibling of <code>servo7/</code> inside the same atlas Python process. Two consequences: state moves as a Python callback (no serialization, no WS hop), and the Approve/Reject buttons inside viser can invoke atlas functions directly (no new WS message types like <code>APPROVE</code>/<code>REJECT</code> ever ship).</p>
+
+<h3>The two flows, side by side</h3>
+
+<div class="grid cards-2">
+  <div class="panel compact">
+    <h4>Hardware mode (sim_mode = False)</h4>
+    <ol class="small">
+      <li>Active leader emits an action.</li>
+      <li>Orchestrator routes through <code>CommandRouter</code> to <code>RobotNode</code>.</li>
+      <li><code>RobotNode</code> calls <code>self.robot.set_state(action)</code> → motors move.</li>
+      <li><code>self.robot.get_state()</code> → encoders read → <code>SystemState</code>.</li>
+      <li>Sim Viewer renders.</li>
+    </ol>
+  </div>
+  <div class="panel compact good">
+    <h4>Sim mode (sim_mode = True)</h4>
+    <ol class="small">
+      <li>Active leader emits an action.</li>
+      <li>Orchestrator routes through <code>CommandRouter</code> to <code>RobotNode</code>.</li>
+      <li><code>RobotNode</code> sees the flag; calls <code>self.sim_engine.step(action, dt)</code>. Hardware untouched.</li>
+      <li>Returned simulated state → <code>SystemState</code>.</li>
+      <li>Sim Viewer renders. <strong>Looks identical from atlas's perspective.</strong></li>
+    </ol>
+  </div>
+</div>
+
+<h3>Why all heavy math lives in atlas, not the Sim Viewer</h3>
+<ul>
+  <li>The <em>Sim Engine</em> already lives inside RobotNode for the sim_mode path; <em>SimCore</em> in <code>RobotControllerNode</code> uses the same <code>EngineBackend</code> Protocol. One engine, two consumers.</li>
+  <li>Validators need access to the URDF, mass model, and SystemState — all already in atlas.</li>
+  <li>Keeps the Sim Viewer container thin: just viser + URDF + a WS client. Trivially restartable; never carries state of its own.</li>
+  <li>Swap the viewer (viser → something else, one day) without touching control logic.</li>
+</ul>
+
+<h3>The channels at a glance</h3>
+<table>
+  <thead><tr><th>Channel</th><th>Endpoints</th><th>Carries</th></tr></thead>
+  <tbody>
+    <tr><td>Sim Viewer ↔ atlas</td><td><strong>In-process Python callbacks</strong></td><td>State change callbacks from <code>SystemState</code>. Button clicks call atlas functions directly. No serialization, no WS.</td></tr>
+    <tr><td>browser iframe ↔ Sim Viewer</td><td>WS :8080 (viser internal)</td><td>Scene updates, button clicks, gizmo drags. All handled by viser itself.</td></tr>
+    <tr><td>frontend ↔ atlas</td><td>WS :8765 (existing)</td><td><code>STATE_UPDATE</code>, mode changes, recording, <code>SET_SIM_MODE</code> (new in v0). Unchanged transport.</td></tr>
+  </tbody>
+</table>
+
+<h3>SimCore layering — so we can swap engines later</h3>
+
+<pre>
+class EngineBackend(Protocol):
+    def step(self, joint_cmd: list[float], dt: float) -> EngineState: ...
+    def reset(self, q: list[float]) -> None: ...
+    def add_body(self, urdf_or_mesh: str, pose: Pose) -> BodyHandle: ...
+
+# v1 / v2 — kinematics + collision, no physics
+class KinematicEngine(EngineBackend):
+    # pinocchio FK + hpp-fcl collision
+
+# v3 — full physics, no atlas changes needed
+class MujocoEngine(EngineBackend):
+    # contact, gripper success, slip
+</pre>
+
+<p>Rule: <strong>no engine types cross the SimCore boundary.</strong> No <code>mjData</code> in the rest of atlas, no <code>pinocchio.Model</code> in the Sim Viewer. <code>EngineState</code> is pure data: joint positions, EE pose, optional contact list. Swap engines = one config line; nothing else moves.</p>
+
+<h2>6. Phasing</h2>
+
+<div class="phases">
+  <div class="phase">
+    <div class="num">v0 — virtual_robot</div>
+    <h3>The gate, no viewer</h3>
+    <p class="small muted">Goal: <code>RobotNode</code> can route commands to a sim engine instead of hardware. Verified entirely from the backend; no UI work yet.</p>
+    <ul class="small">
+      <li><code>servo7/sim/kinematic_engine.py</code> — <code>EngineBackend</code> impl (pinocchio FK + hpp-fcl)</li>
+      <li><code>sim_mode</code> flag on <code>RobotNode</code> + the engine instance</li>
+      <li>100 Hz timer to keep simulated state live between commands</li>
+      <li><code>SET_SIM_MODE</code> WS handler for live toggle (driver <code>connect/disconnect</code> on flip)</li>
+      <li><strong>Acceptance:</strong> start atlas with real Fairino, sim_mode on. Send a teleop command. <code>SystemState["fairino"]</code> updates; real arm stays still. Flip flag off, send same command, real arm moves.</li>
+      <li>No Sim Viewer, no iframe, no frontend changes</li>
+    </ul>
+  </div>
+  <div class="phase">
+    <div class="num">v1 — Tesla screen</div>
+    <h3>In-process viser + iframe</h3>
+    <p class="small muted">Goal: the operator can <em>see</em> what v0 already routes. Visual feedback for the sim/hardware mode that's already working.</p>
+    <ul class="small">
+      <li>New sibling package <code>atlas/sim_viewer/</code> (next to <code>servo7/</code>)</li>
+      <li>viser, yourdfpy added to atlas's <code>pyproject.toml</code></li>
+      <li>Viewer starts as part of atlas main loop; binds viser to <code>:8080</code></li>
+      <li>Registers a callback on <code>SystemState</code>; pushes joint updates into the viser scene</li>
+      <li><code>AtlasSimPanel.jsx</code> with <code>&lt;iframe src="localhost:8080"/&gt;</code> + sim-mode toggle button</li>
+      <li>No Docker container, no compose file, no devcontainer change</li>
+    </ul>
+  </div>
+  <div class="phase">
+    <div class="num">v2 — Robot Controller</div>
+    <h3>Approve-gate &amp; command surface</h3>
+    <p class="small muted">Goal: classical control leader plans, sim shows it, human approves.</p>
+    <ul class="small">
+      <li>New <code>ControlMode.ROBOT_CONTROLLER</code></li>
+      <li><code>RobotControllerNode</code> with SimCore + KinematicEngine + validators</li>
+      <li><code>TRAJECTORY_PROPOSAL</code> / <code>APPROVE</code> / <code>REJECT</code> WS messages</li>
+      <li>Viser sidebar shows validator results (red rows, highlighted waypoints)</li>
+      <li>Approved commands routed via existing <code>CommandRouter</code> to follower</li>
+    </ul>
+  </div>
+  <div class="phase">
+    <div class="num">v3 — physics</div>
+    <h3>MuJoCo engine</h3>
+    <p class="small muted">Goal: contact-rich validation. Grasp stability, slip, payload limits with real dynamics.</p>
+    <ul class="small">
+      <li>Add <code>MujocoEngine</code> implementing <code>EngineBackend</code></li>
+      <li>Config switch; no other atlas changes</li>
+      <li>New validators light up: grasp slip, contact force</li>
+      <li>Sim Viewer unchanged — same WS messages, richer content</li>
+    </ul>
+  </div>
+</div>
+
+<h2>7. The "no jiggle" problem</h2>
+
+<p>In MuJoCo, when something was wrong with the physics — load too heavy, integrator unstable, contact unsolvable — the arm would jiggle and explode. That was an <em>in-band signal</em>: the engine was telling us "this won't work".</p>
+
+<p>Kinematics-only doesn't jiggle. Set joint angles → they sit there. A 50 kg payload looks identical to a 5 kg one. <strong>Silence is the new failure mode.</strong></p>
+
+<p>The fix isn't to add physics — it's to add explicit analytical checks inside <code>RobotControllerNode</code> that turn implicit jiggle into named failures. Most of what MuJoCo was telling us can be computed directly from the URDF + a candidate trajectory:</p>
+
+<div class="grid cards-2">
+  <div class="panel compact good">
+    <h4>Catchable in v2 without physics</h4>
+    <ul>
+      <li><strong>Static gravity torque</strong> — pinocchio's inverse dynamics. Says <em>"Joint 2 over torque at waypoint 4 (114% of rated, payload 18 kg, EE 0.8m extended)"</em>.</li>
+      <li><strong>Dynamic torque</strong> — same with non-zero velocity/accel.</li>
+      <li><strong>Joint limits, velocity limits, accel limits</strong></li>
+      <li><strong>Self/environment collision</strong> via hpp-fcl</li>
+      <li><strong>Singularity proximity</strong> via Jacobian condition number</li>
+      <li><strong>Workspace bounds</strong>, reachability/IK convergence</li>
+    </ul>
+  </div>
+  <div class="panel compact warn">
+    <h4>Needs real physics (v3)</h4>
+    <ul>
+      <li>Grasp stability — does the suction/jaw hold?</li>
+      <li>Tipping / sliding of unsecured loads on the pallet</li>
+      <li>Contact-rich behaviour (insertion, push, wedge)</li>
+      <li>Impedance / force-controlled tasks</li>
+      <li>Cable / hose drag on the EE</li>
+      <li>Resonance and vibration at high speeds</li>
+    </ul>
+  </div>
+</div>
+
+<p class="small muted">Each validator returns <code>CheckResult(pass, severity, message, waypoint_idx)</code>. <code>RobotControllerNode</code> attaches them to the <code>TRAJECTORY_PROPOSAL</code> message; the Sim Viewer renders them as a red row in the sidebar with the offending waypoint highlighted in 3D. Arguably <em>better</em> than MuJoCo's wobble: wobble told us <em>something</em> was wrong; this tells us <em>what</em>.</p>
+
+<p class="small"><strong>Dependency:</strong> the torque validator only works if the URDF has real mass/inertia data. Fairino's URDF quality is a v2 acceptance criterion — if their values are placeholders we backfill from CAD or fall back to the datasheet payload-vs-reach envelope.</p>
+
+<h2>8. Open questions for the conversation</h2>
+
+<div class="qbox answered">
+  <div class="q">Q1 · Is the sim a robot? ✓ answered</div>
+  <div class="ans">No. Sim Viewer is a render layer; FakeFollower is a Robot subclass. Different concerns, different code, never the same thing.</div>
+</div>
+
+<div class="qbox answered">
+  <div class="q">Q2 · Where does the approve-gate live? ✓ answered</div>
+  <div class="ans">In a new <code>RobotControllerNode</code>, which also owns SimCore and validators. Orchestrator stays as the mode gate.</div>
+</div>
+
+<div class="qbox answered">
+  <div class="q">Q3 · Always-approve or sometimes-direct in Robot Controller mode? ✓ answered</div>
+  <div class="ans">Always require approval. Even single jogs render in the Sim Viewer first.</div>
+</div>
+
+<div class="qbox answered">
+  <div class="q">Q4 · Is the sim a parallel "fake robot" or a mode of the real one? ✓ answered</div>
+  <div class="ans">A mode. <code>sim_mode</code> flag on <code>RobotNode</code>, plus a <code>KinematicEngine</code> instance it can route commands to instead of the hardware driver. The Robot subclass is always instantiated; <code>connect()</code> is skipped while the flag is on. Live-toggle via WS. No separate FakeFollower class.</div>
+</div>
+
+<div class="qbox answered">
+  <div class="q">Q5 · Where does the URDF come from? ✓ answered</div>
+  <div class="ans">Vendor URDF exists. FAIR-INNOVATION publishes the FR-series ROS 2 packages including <code>fairino30_v6_moveit2_config</code> at <a href="https://github.com/FAIR-INNOVATION/frcobot_ros2">github.com/FAIR-INNOVATION/frcobot_ros2</a>, with URDF/xacro files in <code>fairino_description/urdf/</code>. We pull from there. <strong>Still TBD before v1:</strong> verify the URDF carries real mass/inertia data (not placeholders) — that's what the torque validators depend on. If not, backfill from CAD or fall back to the datasheet payload-vs-reach envelope.</div>
+</div>
+
+<div class="qbox answered">
+  <div class="q">Q6 · Iframe or native React panel? ✓ answered</div>
+  <div class="ans">Iframe. Lower coupling, zero JS we have to write, clean swap-out if we ever change viewers. Approve/reject buttons live <em>inside</em> the viser iframe (viser owns the GUI surface); the iframe doesn't need to bubble events to the React shell.</div>
+</div>
+
+<div class="qbox answered">
+  <div class="q">Q7 · One Sim Viewer instance per developer, or shared? ✓ answered</div>
+  <div class="ans">One shared instance. viser binds to <code>0.0.0.0:8080</code>; teammates reach it over LAN / Tailscale / SSH forward. Multiple browsers can connect and view the same scene simultaneously. <strong>Convention, not enforcement:</strong> "one writer at a time" — whoever's clicking. We can add a soft lock later if it becomes a problem; not worth building in v1.</div>
+</div>
+
+<div class="qbox answered">
+  <div class="q">Q8 · Standalone repo or in-tree? ✓ answered</div>
+  <div class="ans">Standalone module at <code>atlas/sim_viewer/</code> with its own <code>Dockerfile</code> and a <code>docker-compose.yml</code> at atlas root. See the next section for how it slots into the existing devcontainer.</div>
+</div>
+
+<h2>9. Deployment — in-process, no Docker</h2>
+
+<p>The Sim Viewer is a sibling Python package inside atlas, next to <code>servo7/</code>. It lives in the same process as the orchestrator and RobotNode. The existing devcontainer doesn't change — no compose migration, no second container, no inter-process WS.</p>
+
+<div class="panel good">
+  <p><strong>What "in-process" buys us:</strong></p>
+  <ul>
+    <li>The viewer reads <code>SystemState</code> via Python callbacks — no JSON, no WS hop, no <code>STATE_UPDATE</code> serialization tax.</li>
+    <li>Approve / Reject / waypoint events from viser's GUI <em>are Python function calls</em> on atlas APIs. We never need to invent new WS message types for them. (In v2, <code>RobotControllerNode</code> can register handlers directly with the viewer.)</li>
+    <li>One <code>uv sync</code> installs everything. One <code>python -m servo7</code> (or whatever atlas's entrypoint is) starts everything.</li>
+    <li>If the viewer crashes, it brings atlas down — but viser is small and well-isolated; we accept the coupling for the simplicity.</li>
+  </ul>
+</div>
+
+<p>The viewer still binds viser to <code>localhost:8080</code>, and the atlas frontend iframes that URL. The browser↔Python WS that viser uses internally is unchanged — that's still how button clicks reach the Python event handlers. The only thing that's gone is a second WS hop between atlas and "the viewer container".</p>
+
+<h3>Directory layout</h3>
+
+<pre>
+atlas/
+├── .devcontainer/            # unchanged
+│   ├── devcontainer.json
+│   ├── Dockerfile.dev
+│   └── Dockerfile.base
+├── pyproject.toml            # MODIFIED — adds viser, yourdfpy
+├── sim_viewer/               # NEW — sibling Python package
+│   ├── __init__.py
+│   ├── server.py             # starts viser; called from atlas main
+│   ├── scene.py              # URDF load, joint update, button bindings
+│   └── urdf/
+│       └── fairino30_v6.urdf # vendored from FAIR-INNOVATION/frcobot_ros2
+└── servo7/
+    ├── nodes/
+    │   └── robot_node.py     # MODIFIED — sim_mode flag + SimEngine + 100Hz timer
+    └── sim/
+        └── kinematic_engine.py  # NEW — EngineBackend (pinocchio FK + hpp-fcl)
+</pre>
+
+<p class="small muted">The viewer is a normal Python package, importable from atlas's entrypoint:</p>
+
+<pre>
+# atlas main.py (sketch)
+from sim_viewer import start_viewer
+from servo7.system import system_state
+
+viewer = start_viewer(system_state, robot_id="fairino", port=8080)
+# atlas continues — orchestrator, robot_node, etc.
+</pre>
+
+<h2>10. Smallest concrete next step — ship v0</h2>
+
+<div class="panel good">
+  <p><strong>Just the backend gate. No viewer, no frontend changes.</strong> v0 is verifiable entirely from atlas logs and <code>SystemState</code> snapshots — that's the point of splitting it out.</p>
+  <ol>
+    <li><strong>Sim Engine.</strong> Add <code>servo7/sim/kinematic_engine.py</code> — <code>EngineBackend</code> implementation using pinocchio FK + hpp-fcl. Loads URDF, exposes <code>step(action, dt) → RobotState</code>.</li>
+    <li><strong>Sim flag in RobotNode.</strong> Modify <code>servo7/nodes/robot_node.py</code>: take a <code>sim_mode: bool</code>, instantiate the engine, route <code>handle_action</code> through it when the flag is on. Add a 100 Hz timer to keep state live between commands. Add a <code>SET_SIM_MODE</code> WS handler for live toggle (driver's <code>connect/disconnect</code> called on flip).</li>
+    <li><strong>FR30 URDF.</strong> Vendor <code>fairino30_v6.urdf</code> from <code>FAIR-INNOVATION/frcobot_ros2</code> into <code>servo7/sim/urdf/</code>. Confirm mass/inertia are real values, not placeholders.</li>
+  </ol>
+  <p><strong>Acceptance test:</strong> start atlas with real Fairino driver, <code>sim_mode = true</code> in config. Send a teleop command from the leader arm. Observe in logs: <code>SystemState["fairino"]</code> joint positions update to the commanded values; the real arm <em>does not move</em>. Send <code>SET_SIM_MODE false</code> over WS. Send the same command. Now the real arm moves and reports back through the encoders. Dry-run-then-execute, end to end, with zero frontend code touched.</p>
+  <p class="small muted">Roughly 1 day if the URDF lands clean. v1 (Sim Viewer + iframe) layers on top without changing any v0 code — it's just a new subscriber to <code>SystemState</code>.</p>
+</div>
+
+<footer>
+  <p>Reference images sourced from the projects' own repositories and documentation sites: viser (<a href="https://viser.studio">viser.studio</a>), Rerun (<a href="https://rerun.io">rerun.io</a>), MuJoCo (<a href="https://mujoco.org">mujoco.org</a>), RoboMeshCat / MeshCat, gkjohnson/urdf-loaders.</p>
+  <p>Draft for internal discussion. Architectural anchors in atlas: <code>servo7/system/system_state.py</code>, <code>servo7/robot/r1lite_sim.py</code> (pattern for FakeFollower), <code>servo7/nodes/orchestrator_node.py</code>, <code>servo7/bus/command_router.py</code>.</p>
+</footer>
+
+</div>
+</body>
+</html>
