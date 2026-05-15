@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atlas Bus &amp; Digital Twin — implementation report</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161922;
+    --panel-2: #1c2030;
+    --text: #e7ecf3;
+    --muted: #9aa3b2;
+    --accent: #4ea1ff;
+    --accent-2: #7fd1a8;
+    --warn: #ffb454;
+    --bad: #ff6b6b;
+    --line: #262b39;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.55; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 48px 28px 120px; }
+  header.hero { padding: 32px 0 24px; border-bottom: 1px solid var(--line); margin-bottom: 40px; }
+  header.hero .tag { color: var(--accent); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; }
+  header.hero h1 { font-size: 38px; margin: 6px 0 8px; letter-spacing: -.01em; }
+  header.hero p.sub { color: var(--muted); font-size: 17px; margin: 0; max-width: 760px; }
+  header.hero .meta { color: var(--muted); font-size: 13px; margin-top: 18px; }
+  h2 { font-size: 24px; margin: 56px 0 16px; letter-spacing: -.005em; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  h3 { font-size: 18px; margin: 28px 0 10px; }
+  h4 { font-size: 14px; margin: 18px 0 6px; color: var(--accent-2); text-transform: uppercase; letter-spacing: .05em; }
+  p { margin: 10px 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+  code { background: #20242f; padding: 1px 6px; border-radius: 4px; font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; }
+  pre { background: #0a0c11; border: 1px solid var(--line); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.45; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; margin: 18px 0; }
+  .panel.compact { padding: 14px 18px; }
+  .panel.accent { border-left: 3px solid var(--accent); }
+  .panel.warn { border-left: 3px solid var(--warn); }
+  .panel.good { border-left: 3px solid var(--accent-2); }
+  .grid { display: grid; gap: 18px; }
+  .grid.cards-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid.cards-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid.cards-4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 880px) { .grid.cards-2, .grid.cards-3, .grid.cards-4 { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  td.good { color: var(--accent-2); }
+  td.bad { color: var(--bad); }
+  td.warn { color: var(--warn); }
+  .diagram { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 22px; overflow-x: auto; }
+  .diagram pre { background: transparent; border: none; padding: 0; color: var(--text); font-size: 12.5px; line-height: 1.5; }
+  .pillrow { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
+  .pill.on { color: var(--accent-2); border-color: var(--accent-2); }
+  .pill.off { color: var(--bad); border-color: rgba(255,107,107,0.4); }
+  footer { margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="tag">Atlas · Servo7</div>
+  <h1>Atlas Bus &amp; Digital Twin — implementation report</h1>
+  <p class="sub">What started as "a PID twin in a subprocess" turned into a transport-bus seam underneath every cross-process Robot in atlas. The bus, four implementations, the digital-twin lifecycle, the ROS rewrite, the Quest VR migration, and a robot-package reorg — all from one branch.</p>
+  <div class="meta">Draft · 2026-05-14 · Companion to <a href="sim-design-discussion.html">sim-design-discussion</a> · Tests: 381 → 439 passing (+58)</div>
+</header>
+
+<h2>0. TL;DR</h2>
+
+<div class="panel accent">
+  <p>A single <code>PubSub</code> ABC under <code>servo7/bus/bus.py</code> with four implementations — <strong>InProcessBus</strong>, <strong>ZmqBus</strong>, <strong>MpBus</strong>, <strong>UdpBus</strong> — and the same <code>RobotServer</code> + <code>RemoteRobotClient</code> pair rides on any of them. <code>RemoteRobotClient</code> grew five <code>over_*</code> classmethods that own the full spawn-and-connect lifecycle for each transport. PID digital twin is now <code>RemoteRobotClient.over_zmq_local_server("pid", &hellip;)</code> in one line. ROS robots moved their synchronous control onto <code>MpBus</code>. Quest VR now sits on <code>UdpBus</code>. The <code>servo7/robot/</code> package was sorted by <em>kind</em>: <code>hardware/</code>, <code>mock/</code>, <code>remote/</code>.</p>
+</div>
+
+<h2>1. The bus contract</h2>
+
+<p>One ABC, four methods. The lowest-common-denominator interface every transport implements:</p>
+
+<pre>
+# servo7/bus/bus.py
+
+class PubSub(ABC):
+    @abstractmethod
+    def publish(self, topic: str, payload: bytes) -> None: ...
+    @abstractmethod
+    def subscribe(self, topic: str, callback: Callable[[bytes], None]) -> None: ...
+    @abstractmethod
+    def get_latest(self, topic: str) -> bytes | None: ...
+    @abstractmethod
+    def close(self) -> None: ...
+</pre>
+
+<p>That's it. Bytes in, bytes out, fire-and-forget, latest-wins cache, explicit lifecycle. <code>InProcessBus</code> doesn't actually need bytes (it stores references), but the ABC forces the contract because the other three transports do need them on the wire.</p>
+
+<h2>2. The four implementations</h2>
+
+<table>
+  <thead><tr><th>Bus</th><th>Wire</th><th>Use when</th><th>Cost</th></tr></thead>
+  <tbody>
+    <tr><td><strong>InProcessBus</strong></td><td>Python callbacks, no I/O</td><td>Server and client live in the same Python process; tests; quick wiring</td><td>~function-call</td></tr>
+    <tr><td><strong>ZmqBus</strong></td><td>TCP, ZMQ pub/sub</td><td>Cross-host or cross-process; production transport for hardware servers</td><td>~50–100 µs loopback</td></tr>
+    <tr><td><strong>MpBus</strong></td><td><code>mp.Queue</code> pair, pickle</td><td>Parent ↔ child <code>mp.Process</code>; ROS isolation; carries pub/sub <em>and</em> synchronous req/serve on one wire</td><td>~10–30 µs same-host</td></tr>
+    <tr><td><strong>UdpBus</strong></td><td>UDP datagrams</td><td>External producers (Quest VR controllers, foot pedal); lossy, latest-wins streams</td><td>~100 µs loopback, lossy</td></tr>
+  </tbody>
+</table>
+
+<p><strong>MpBus</strong> is the odd one out — it implements <code>PubSub</code> (for streaming) <em>and</em> adds <code>request()</code>/<code>serve()</code> methods for synchronous request/response on the same queue pair. Three frame tags share the wire: <code>("pub", topic, payload)</code>, <code>("req", correlation_id, type, payload)</code>, <code>("res", correlation_id, payload, error)</code>. The receiver thread dispatches by tag. <code>request()</code> blocks on a per-correlation-id <code>threading.Event</code>; concurrent requests don't get their replies mixed up.</p>
+
+<div class="diagram"><pre>
+                ┌────────────────────┐
+                │   PubSub  (ABC)    │
+                └─────────┬──────────┘
+            ┌─────────────┼─────────────┬──────────────────┐
+       InProcessBus   ZmqBus         MpBus              UdpBus
+       (callbacks)    (TCP)        (mp.Queue)         (datagrams)
+                                  +request/serve
+</pre></div>
+
+<h2>3. RobotServer + RemoteRobotClient — bus-agnostic</h2>
+
+<p>Both classes take a <code>PubSub</code> at construction time. No transport baked in. The two roles still exist — server publishes state at 100 Hz and subscribes to commands; client subscribes to state and publishes commands — but the wire is just whatever bus you handed them.</p>
+
+<pre>
+class RobotServer:
+    def __init__(self, robot: Robot, bus: PubSub, _owns_bus: bool = False):
+        self.robot = robot
+        self.bus = bus
+        self.bus.subscribe(TOPIC_COMMAND, self._on_command_bytes)
+
+class RemoteRobotClient(Robot):
+    def __init__(self, config, id, bus: PubSub, _owns_bus: bool = False):
+        super().__init__(config, id)
+        self.bus = bus
+        self.bus.subscribe(TOPIC_STATE, self._on_state_bytes)
+</pre>
+
+<h3>The five over_* classmethods</h3>
+
+<p>To save callers from wiring up the bus manually, <code>RemoteRobotClient</code> exposes a classmethod per common scenario. Each one owns the subprocess/server lifecycle — <code>disconnect()</code> tears down whatever the constructor brought up.</p>
+
+<table>
+  <thead><tr><th>Classmethod</th><th>What happens on construction</th><th>What <code>disconnect()</code> does</th></tr></thead>
+  <tbody>
+    <tr><td><code>over_zmq(host, ports)</code></td><td>Builds a ZmqBus pointing at an already-running server somewhere on the network</td><td>Closes the bus</td></tr>
+    <tr><td><code>over_zmq_local_server(robot_type, ports)</code></td><td>Spawns <code>python -m servo7.robot.remote.robot_server --robot_type X &hellip;</code>, waits for <code>READY &lt;nonce&gt;</code>, connects via ZmqBus</td><td>Closes the bus + terminates the subprocess</td></tr>
+    <tr><td><code>over_in_process(robot)</code></td><td>Builds an InProcessBus, constructs a RobotServer around the given Robot, starts it</td><td>Stops the server, closes the bus</td></tr>
+    <tr><td><code>over_mp_subprocess(robot_type)</code></td><td>Spawns an <code>mp.Process</code> running a RobotServer over MpBus; child constructs the Robot via RobotFactory</td><td>Closes the bus, terminates the child, joins it</td></tr>
+    <tr><td><code>over_zmq</code> (server side)</td><td>Same idea on RobotServer: build a ZmqBus bound to the given ports</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<h2>4. Digital twin — a Robot you spawn-and-connect in one call</h2>
+
+<p>The original problem: run a PID-based digital twin in a separate process to keep numpy / future MuJoCo out of atlas's interpreter. The collapse: a digital twin is just another <code>Robot</code> served by the same <code>RobotServer</code> we already have.</p>
+
+<div class="grid cards-2">
+  <div class="panel compact">
+    <h4>The kernel</h4>
+    <p><code>servo7/digital_twin/pid_6dof.py::DigitalTwinPID(Robot)</code>. P/D integrator with its own 100 Hz step thread. <code>RobotType.PID</code> in the enum; <code>RobotFactory</code> constructs it; <code>config/robots/pid.yaml</code> describes it. Runs <em>inside</em> the subprocess.</p>
+  </div>
+  <div class="panel compact good">
+    <h4>The handle</h4>
+    <p>From atlas main: <code>RemoteRobotClient.over_zmq_local_server(config, id, robot_type="pid", &hellip;)</code>. Spawns the subprocess holding the kernel, waits for READY, connects, returns a fully-wired Robot. One call.</p>
+  </div>
+</div>
+
+<pre>
+# atlas main process
+client = RemoteRobotClient.over_zmq_local_server(
+    config=pid_config, id="twin", robot_type="pid",
+    state_port=5557, command_port=5558,
+)
+client.connect()                       # waits for first state on the wire
+client.set_state(target_action)        # P/D integrator converges
+state = client.get_state()             # cached, no wire round-trip
+client.disconnect()                    # also terminates the subprocess
+</pre>
+
+<h3>Routing slot on the hardware robot</h3>
+
+<p>The <code>Robot</code> base class grew a <code>digital_twin: Robot | None</code> slot plus opt-in helpers (<code>_route_set_state</code>, <code>_route_get_state</code>) that subclasses call at the top of their own <code>set_state</code> / <code>get_state</code>. The hardware Robot's <code>enable_digital_twin(on)</code> flag is what flips the routing.</p>
+
+<pre>
+class DummyRobot(Robot):
+    def set_state(self, action):
+        super().set_state(action)
+        routed = self._route_set_state(action)
+        if routed is not None:
+            return routed                 # → hits the twin
+        # ... hardware path
+</pre>
+
+<p>The set-state path uses <code>dataclasses.replace</code> to retag the action with the twin's <code>robot_type</code> so the twin's own type assertion passes. Subclasses opt in by adding two lines; nothing forces every Robot to migrate.</p>
+
+<h2>5. ROS migration — pub/sub + req/serve on one wire</h2>
+
+<p>The existing ROS pair (<code>ROSRobotProxy</code> in atlas main, a hand-rolled tuple protocol over two <code>mp.Queue</code>s to a child process) was renamed and restructured:</p>
+
+<ul>
+  <li><code>ros_robot_proxy.py</code> → <code>ros_robot_client.py</code>; class <code>ROSRobotProxy</code> → <code>ROSRobotClient</code></li>
+  <li><code>ros_robot_process.py</code> → <code>ros_robot_server.py</code>; the <code>run_robot_process</code> function became a <code>ROSRobotServer</code> class with handler methods</li>
+  <li>The DDS-env-setup + Robot-import launcher logic stayed at module level for <code>mp.Process</code> pickling, but is now in <code>ros_robot_client.py</code> next to the client (no separate <code>ros_robot_launcher.py</code>)</li>
+</ul>
+
+<p>Then the wire migrated: <strong>synchronous control</strong> (<code>connect</code>, <code>disconnect</code>, <code>emergency_stop</code>) moved onto <code>MpBus.request</code>/<code>serve</code> — correlation IDs, typed errors (<code>MpRemoteError</code>), no more "drain the queue until you see a <code>connect_response</code>" loops. <strong>Streaming</strong> (state updates, observation metadata) stays on the existing raw <code>mp.Queue</code> pair; moving it onto a PubSub channel is a clean follow-up.</p>
+
+<pre>
+# Server side (inside child mp.Process):
+self.req_res.serve("connect", self._serve_connect)
+self.req_res.serve("disconnect", self._serve_disconnect)
+self.req_res.serve("emergency_stop", self._serve_emergency_stop)
+
+# Client side (atlas main):
+response_bytes = self.req_res.request("connect", b"", timeout=30.0)
+response = json.loads(response_bytes)
+if not response["success"]:
+    ...
+</pre>
+
+<h2>6. Quest VR — UdpBus, parsing as a free function</h2>
+
+<p>The 95-line <code>UDPReceiver</code> class inside <code>quest_vr.py</code> is gone. In its place: a <code>UdpBus.bind(...)</code> call and a subscriber callback. The "what does this datagram mean" logic became a free function so it's testable in isolation.</p>
+
+<pre>
+# In QuestVRRobot.connect():
+self._bus = UdpBus.bind(
+    endpoints={"quest.pose": ("sub", self.udp_port)},
+    host=self.udp_host,
+)
+self._bus.subscribe("quest.pose", self._on_pose_datagram)
+
+# Module-level free function:
+def _parse_quest_pose_datagram(data: bytes) -> DualControllerData | None:
+    # decode CSV, build ControllerPose for left+right, return DualControllerData
+</pre>
+
+<p><strong>Nothing on the Quest side changed.</strong> The wire (UDP packets, <code>POSE,&lt;26 floats&gt;\n</code> at the same port) is unchanged. The Meta Quest app doesn't know — and doesn't need to know — that we restructured our receive side.</p>
+
+<h2>7. Robot package layout</h2>
+
+<p>The <code>servo7/robot/</code> folder had grown into a flat list of unrelated concerns (drivers, mocks, transport wrappers, sims). Sorted by <em>what kind</em> of robot:</p>
+
+<div class="diagram"><pre>
+servo7/robot/
+├── factory.py              the lookup
+├── robot_types.py          the data shapes (RobotState, RobotType, ...)
+├── __init__.py             re-exports Robot, RobotState, ...
+│
+├── hardware/               concrete hardware drivers + ABC
+│   ├── base.py             (Robot ABC)
+│   ├── base_ros.py
+│   ├── piper.py / dual_piper.py
+│   ├── so100.py / so100_follower.py / dual_so100.py
+│   ├── r1.py / r1t.py
+│   └── quest_vr.py
+│
+├── mock/                   fake robots — for tests, leaders, signal gen
+│   ├── mock_6dof.py        (was dummy.py)
+│   ├── mock_r1.py          (was mock_ros_robot.py)
+│   └── mock_6dof_signal.py (was signal_robot.py)
+│
+└── remote/                 transport-wrapped Robots + servers
+    ├── robot_server.py     (RobotServer — bus-agnostic)
+    ├── robot_client.py     (RemoteRobotClient + 5 over_* classmethods)
+    ├── ros_robot_client.py (ROSRobotClient + launch_ros_robot)
+    └── ros_robot_server.py (ROSRobotServer)
+
+servo7/digital_twin/        sims / kernels — twins of real robots
+├── pid_6dof.py             (DigitalTwinPID)
+├── r1_mujoco.py            (R1LiteSimRobot — was r1lite_sim.py)
+└── mujoco/r1/              MuJoCo env files (was servo7/sim/)
+</pre></div>
+
+<h2>8. Where Fairino fits</h2>
+
+<p>From <a href="sim-design-discussion.html">sim-design-discussion</a>: the Fairino digital twin is a Docker container running their FRControl image, speaking Fairino's TCP protocol natively. In the new architecture this is straightforward:</p>
+
+<div class="diagram"><pre>
+                    ┌────────────────────────┐
+                    │  hardware Fairino arm  │
+                    └────────────┬───────────┘
+                                 │
+                  FairinoRobot(host="192.168.x.x", port=20003)
+                                 │
+                       set_digital_twin(twin)
+                                 │
+                       ┌─────────┴─────────┐
+                       │                   │
+                       ▼                   ▼
+            FairinoRobot               (any other Robot impl —
+            (host="localhost",          e.g. RemoteRobotClient.over_zmq_local_server
+             port=20004)                 for a PID twin you're sanity-checking against)
+                       │
+                       ▼  (Fairino TCP — their SDK)
+              docker run fairino/sim:tag
+</pre></div>
+
+<p>The <em>same</em> wire format as the real arm — different host/port. No <code>RobotServer</code> + <code>RemoteRobotClient</code> needed in front of the docker because Fairino's SDK is already a remote service. A future <code>FairinoRobot(Robot)</code> subclass that speaks their TCP, plus a <code>launch_fairino_docker(port)</code> helper, is all the Fairino path needs.</p>
+
+<h2>9. Test coverage</h2>
+
+<p>Each bus has its own contract tests (subclass-of-PubSub, pub/sub round-trip, error surfaces, lifecycle). The server/client pair has integration tests over each transport. The digital twin chain has both in-process and subprocess end-to-end tests.</p>
+
+<table>
+  <thead><tr><th>Test file</th><th># tests</th><th>What it pins</th></tr></thead>
+  <tbody>
+    <tr><td><code>tests/test_in_process_bus.py</code></td><td>12</td><td>InProcessBus contract (pre-existing)</td></tr>
+    <tr><td><code>tests/test_zmq_bus.py</code></td><td>14</td><td>ZmqBus: bind/connect, pub/sub, errors, lifecycle</td></tr>
+    <tr><td><code>tests/test_mp_bus.py</code></td><td>12</td><td>MpBus: pub/sub + req/serve; cross-process round-trip via real <code>mp.Process</code></td></tr>
+    <tr><td><code>tests/test_udp_bus.py</code></td><td>9</td><td>UdpBus: datagram receive, get_latest, error surfaces</td></tr>
+    <tr><td><code>tests/test_robot_server.py</code></td><td>8</td><td>RobotServer + RemoteRobotClient over ZMQ</td></tr>
+    <tr><td><code>tests/test_robot_server_inproc.py</code></td><td>4</td><td>Same pair over InProcessBus</td></tr>
+    <tr><td><code>tests/test_remote_robot_client_constructors.py</code></td><td>2</td><td>over_in_process + over_mp_subprocess</td></tr>
+    <tr><td><code>tests/test_digital_twin_pid.py</code></td><td>10</td><td>PID kernel: shape, lifecycle, convergence, safety</td></tr>
+    <tr><td><code>tests/test_digital_twin_e2e.py</code></td><td>2</td><td>over_zmq_local_server: spawn → connect → converge → shutdown</td></tr>
+    <tr><td><code>tests/test_robot_digital_twin_routing.py</code></td><td>7</td><td>Robot.digital_twin slot, flag toggle, action retagging</td></tr>
+  </tbody>
+</table>
+
+<p class="small muted">Net: <code>uv run pytest -m "not skip_ci and not skip_long and not hardware"</code> → 439 passing, 48 skipped (the usual integration/credential gates), 71 deselected. Baseline before this branch was 381.</p>
+
+<h2>10. What's still on the to-do list</h2>
+
+<div class="grid cards-2">
+  <div class="panel compact">
+    <h4>ROS streaming → PubSub</h4>
+    <p>State/observation updates still ride the legacy raw <code>mp.Queue</code> tuple protocol. The natural follow-up: PubSub topics on the same MpBus that already carries the control req/res. Then <code>ros_robot_client</code> + <code>ros_robot_server</code> stop having any direct queue handling at all.</p>
+  </div>
+  <div class="panel compact">
+    <h4>Frontend launcher integration</h4>
+    <p><code>servo7/launcher/</code> still owns the ssh + devcontainer remote-spawn path for the frontend's "pick a host" flow. <code>RemoteRobotClient.over_remote_subprocess(host, robot_type)</code> would give scripted/headless callers the same convenience that <code>over_zmq_local_server</code> has today — and let the LauncherService delegate the actual spawning instead of duplicating it.</p>
+  </div>
+  <div class="panel compact">
+    <h4>InProcessBus is still bytes-typed</h4>
+    <p>The PubSub ABC types payload as <code>bytes</code> because the cross-process buses need it. In-process callers serialize for the contract even though the bus itself just passes references. A <code>Channel[T]</code> generic — or just relaxing the type on <code>InProcessBus</code> — would let hot paths skip the JSON round-trip entirely.</p>
+  </div>
+  <div class="panel compact">
+    <h4>Class renames left for a follow-up</h4>
+    <p>Files renamed (<code>mock_6dof.py</code>, <code>pid_6dof.py</code>, &hellip;) but class names didn't (still <code>DummyRobot</code>, <code>DigitalTwinPID</code>, <code>R1LiteSimRobot</code>). One sweeping rename pass when the team's ready; everything still works either way.</p>
+  </div>
+</div>
+
+<footer>
+  <p>Atlas, May 2026 · Companion to the <a href="sim-design-discussion.html">sim-design-discussion</a> RFC. Architectural anchors in atlas: <code>servo7/bus/</code>, <code>servo7/robot/{factory,robot_types,base}.py</code>, <code>servo7/robot/remote/{robot_server,robot_client}.py</code>, <code>servo7/digital_twin/pid_6dof.py</code>.</p>
+</footer>
+
+</div>
+</body>
+</html>
