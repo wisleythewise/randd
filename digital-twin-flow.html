@@ -1,0 +1,1376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Digital twin integration — interactive flow</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161922;
+    --panel-2: #1c2030;
+    --text: #e7ecf3;
+    --muted: #9aa3b2;
+    --accent: #4ea1ff;
+    --accent-2: #7fd1a8;
+    --warn: #ffb454;
+    --bad: #ff6b6b;
+    --purple: #c084fc;
+    --line: #262b39;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.55; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 36px 28px 100px; }
+  header.hero { padding: 18px 0 20px; border-bottom: 1px solid var(--line); margin-bottom: 28px; }
+  header.hero .tag { color: var(--accent); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; }
+  header.hero h1 { font-size: 32px; margin: 6px 0 6px; letter-spacing: -.01em; }
+  header.hero p.sub { color: var(--muted); font-size: 15px; margin: 0; max-width: 880px; }
+  h2 { font-size: 21px; margin: 44px 0 14px; letter-spacing: -.005em; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  h3 { font-size: 16px; margin: 22px 0 8px; }
+  p { margin: 8px 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  code { background: #20242f; padding: 1px 6px; border-radius: 4px; font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12.5px; color: #d0d6e2; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 3px 0; font-size: 14px; }
+
+  /* ---------- Control bar ---------- */
+  .controls { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin: 0 0 14px; display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
+  .ctrl-group { display: flex; gap: 8px; align-items: center; }
+  .ctrl-group .lbl { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin-right: 4px; }
+  button.mode, button.toggle, button.action {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 12px; font-size: 12.5px; font-family: inherit; cursor: pointer; transition: all .15s;
+  }
+  button:hover { border-color: var(--accent); }
+  button.mode.on.teleop { background: rgba(78,161,255,.18); border-color: var(--accent); color: var(--accent); }
+  button.mode.on.ai     { background: rgba(127,209,168,.18); border-color: var(--accent-2); color: var(--accent-2); }
+  button.mode.on.ctrl   { background: rgba(192,132,252,.18); border-color: var(--purple); color: var(--purple); }
+  button.mode.on.replay { background: rgba(255,180,84,.18); border-color: var(--warn); color: var(--warn); }
+  button.mode.on.estop  { background: rgba(255,107,107,.2); border-color: var(--bad); color: var(--bad); }
+  button.toggle.on { background: rgba(192,132,252,.2); border-color: var(--purple); color: var(--purple); }
+  button.toggle.rec.on { background: rgba(255,107,107,.2); border-color: var(--bad); color: var(--bad); }
+  button.action { color: var(--accent); }
+  .pill-status { font-size: 11.5px; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
+  .pill-status.live { color: var(--accent-2); border-color: var(--accent-2); }
+
+  /* ---------- Stage layout ---------- */
+  .stage { display: grid; grid-template-columns: 1fr 280px; gap: 14px; }
+  @media (max-width: 1000px) { .stage { grid-template-columns: 1fr; } }
+  .diagram { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; overflow: auto; position: relative; }
+  .diagram svg { display: block; min-width: 880px; width: 100%; height: auto; }
+  .side { display: flex; flex-direction: column; gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .card h4 { margin: 0 0 8px; font-size: 11px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
+
+  /* ---------- Queue display ---------- */
+  .queue {
+    display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px;
+  }
+  .queue .slot {
+    height: 18px; border-radius: 3px; background: var(--panel-2); border: 1px solid var(--line);
+    transition: background .15s, border-color .15s, transform .15s;
+  }
+  .queue .slot.full { background: var(--purple); border-color: var(--purple); }
+  .queue .slot.flash { transform: scale(1.15); }
+  .queue-meta { margin-top: 8px; font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
+  .queue-meta .count { color: var(--text); font-family: ui-monospace, monospace; }
+
+  /* ---------- Event log ---------- */
+  .log { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11.5px; max-height: 220px; overflow-y: auto; padding-right: 4px; }
+  .log .line { padding: 3px 0; border-bottom: 1px dashed #20242f; }
+  .log .line .t { color: var(--muted); margin-right: 8px; }
+  .log .line.teleop .msg { color: var(--accent); }
+  .log .line.ai     .msg { color: var(--accent-2); }
+  .log .line.ctrl   .msg { color: var(--purple); }
+  .log .line.replay .msg { color: var(--warn); }
+  .log .line.estop  .msg { color: var(--bad); }
+  .log .line.system .msg { color: var(--muted); }
+
+  /* ---------- SVG element states ---------- */
+  .node { transition: opacity .25s, filter .25s; }
+  .node.dim { opacity: .25; }
+  .node .nodebox { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.2; rx: 8; }
+  .node.glow .nodebox { stroke-width: 2.4; filter: drop-shadow(0 0 6px currentColor); }
+  .node.teleop .nodebox.active { stroke: var(--accent); }
+  .node.ai     .nodebox.active { stroke: var(--accent-2); }
+  .node.ctrl   .nodebox.active { stroke: var(--purple); }
+  .node.replay .nodebox.active { stroke: var(--warn); }
+  .node.estop  .nodebox.active { stroke: var(--bad); }
+
+  .flow { stroke-width: 1.4; fill: none; transition: opacity .25s, stroke-width .25s; }
+  .flow.dim { opacity: 0.06; stroke-width: 0.6; }
+  .flow.hot { stroke-width: 3; opacity: 1; }
+
+  .label { font-size: 11px; fill: var(--muted); }
+  .label.title { font-size: 13px; font-weight: 700; fill: var(--text); }
+  .label.mode-teleop { fill: var(--accent); }
+  .label.mode-ai { fill: var(--accent-2); }
+  .label.mode-ctrl { fill: var(--purple); }
+  .label.mode-replay { fill: var(--warn); }
+
+  .frozen-overlay {
+    fill: var(--bg); opacity: 0; transition: opacity .25s;
+  }
+  .frozen-overlay.show { opacity: 0.55; }
+
+  .recording-badge {
+    fill: var(--bad); opacity: 0;
+    animation: none;
+  }
+  .recording-badge.on { opacity: 1; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ---------- Tab nav ---------- */
+  .tab-nav { display: flex; gap: 4px; margin: 0 0 18px; border-bottom: 1px solid var(--line); }
+  .tab-nav button {
+    background: transparent; color: var(--muted); border: none; border-bottom: 2px solid transparent;
+    padding: 10px 18px; font-size: 14px; font-family: inherit; cursor: pointer;
+    margin-bottom: -1px; transition: color .15s, border-color .15s;
+  }
+  .tab-nav button:hover { color: var(--text); }
+  .tab-nav button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  section.tab { display: none; }
+  section.tab.active { display: block; }
+
+  /* ---------- Folder tree ---------- */
+  .folder-tree {
+    background: #0a0c11; border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px 22px; margin: 16px 0; overflow-x: auto;
+    font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; line-height: 1.65;
+    white-space: pre;
+  }
+  .folder-tree .dir   { color: #4ea1ff; font-weight: 600; }
+  .folder-tree .file  { color: #d0d6e2; }
+  .folder-tree .new   { color: #c084fc; font-weight: 600; }
+  .folder-tree .key   { color: #7fd1a8; font-weight: 600; }
+  .folder-tree .note  { color: var(--muted); font-style: italic; }
+  .folder-tree .arrow { color: var(--warn); }
+
+  /* ---------- Class diagram aux ---------- */
+  .classbox text { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+  .legend-row { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin: 10px 0; }
+  .legend-row .item { display:flex; align-items:center; gap:6px; }
+  .legend-row .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="tag">Atlas · Servo7 · branch <code>JvL/digital_twin_integration</code></div>
+  <h1>Digital twin integration — interactive flow</h1>
+  <p class="sub">Click the mode buttons, toggle the DT flag, hit record, then "Tick" (or turn on Auto). Packets travel along whichever path is currently active. The record queue fills while recording in non-replay modes; <em>REPLAY</em> drains it back through the bus (FIFO).</p>
+  <p class="sub" style="margin-top:10px;font-size:13px"><strong style="color:var(--accent-2)">Update 2026-05-16 (later):</strong> resurveyed after 9 commits. Soft snap-back was reverted to an immediate <code>snap_twin_to_self()</code> on DT disable. <code>Robot.commanded_action</code> is now a single-slot store (last action) populated inside <code>set_state</code>. STATE_UPDATE now carries four joint vectors per follower (<code>joint_positions</code>, <code>hw_joint_positions</code>, <code>dt_joint_positions</code>, <code>commanded_joint_positions</code>). The frontend renders a new <code>AtlasJointDebugStrip</code> that diffs all three.</p>
+</header>
+
+<nav class="tab-nav">
+  <button class="tab-btn active" data-target="flow">Flow (interactive)</button>
+  <button class="tab-btn" data-target="structure">Folders &amp; classes</button>
+  <button class="tab-btn" data-target="comms">Comms &amp; remoting</button>
+</nav>
+
+<section class="tab active" data-tab="flow">
+
+<div class="controls">
+  <div class="ctrl-group">
+    <span class="lbl">Mode</span>
+    <button class="mode teleop" data-mode="teleop">TELEOP</button>
+    <button class="mode ai"     data-mode="ai">AI</button>
+    <button class="mode ctrl"   data-mode="ctrl">CONTROLLER</button>
+    <button class="mode replay" data-mode="replay">REPLAY</button>
+    <button class="mode estop"  data-mode="estop">E-STOP</button>
+  </div>
+  <div class="ctrl-group">
+    <span class="lbl">DT</span>
+    <button class="toggle dt" id="btn-dt">enable_digital_twin</button>
+  </div>
+  <div class="ctrl-group">
+    <span class="lbl">Twin</span>
+    <button class="toggle rec" id="btn-rec">start_recording</button>
+  </div>
+  <div class="ctrl-group">
+    <span class="lbl">Simulate</span>
+    <button class="action" id="btn-tick">Tick ▸</button>
+    <button class="toggle" id="btn-auto">Auto</button>
+    <button class="action" id="btn-clear">Reset</button>
+  </div>
+  <div class="ctrl-group" style="margin-left:auto">
+    <span class="pill-status" id="status-mode">mode: teleop</span>
+    <span class="pill-status" id="status-dt">DT: off</span>
+    <span class="pill-status" id="status-rec">rec: off</span>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="diagram">
+    <svg id="flow-svg" viewBox="0 0 1100 820" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="ah-blue"   viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4ea1ff"/></marker>
+        <marker id="ah-green"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7fd1a8"/></marker>
+        <marker id="ah-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c084fc"/></marker>
+        <marker id="ah-warn"   viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ffb454"/></marker>
+        <marker id="ah-muted"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9aa3b2"/></marker>
+      </defs>
+
+      <!-- =================== LEADERS =================== -->
+      <g class="node teleop" data-leader="teleop">
+        <rect class="nodebox active" x="20" y="40" width="200" height="58" rx="8"/>
+        <text class="label title mode-teleop" x="34" y="64">TELEOP LEADER</text>
+        <text class="label" x="34" y="82">Quest / Dummy · event-driven</text>
+      </g>
+      <g class="node ai" data-leader="ai">
+        <rect class="nodebox active" x="20" y="120" width="200" height="58" rx="8"/>
+        <text class="label title mode-ai" x="34" y="144">AI LEADER</text>
+        <text class="label" x="34" y="162">AINode.predict_sync() · 30Hz</text>
+      </g>
+      <g class="node ctrl" data-leader="ctrl">
+        <rect class="nodebox active" x="20" y="200" width="200" height="58" rx="8"/>
+        <text class="label title mode-ctrl" x="34" y="224">ROBOT_CONTROLLER</text>
+        <text class="label" x="34" y="242">controller.get_action() · 30Hz</text>
+      </g>
+      <g class="node replay" data-leader="replay">
+        <rect class="nodebox active" x="20" y="280" width="200" height="58" rx="8"/>
+        <text class="label title mode-replay" x="34" y="304">REPLAY (synthetic)</text>
+        <text class="label" x="34" y="322">twin.get_action() drains queue</text>
+      </g>
+
+      <!-- =================== ORCHESTRATOR =================== -->
+      <g class="node orchestrator" data-node="orch">
+        <rect class="nodebox active" x="310" y="60" width="320" height="280" rx="10" style="stroke:#4ea1ff;stroke-width:1.6;fill:#161922"/>
+        <text class="label title" x="470" y="86" text-anchor="middle">Orchestrator</text>
+        <text class="label" x="470" y="104" text-anchor="middle">orchestrator_node.py</text>
+
+        <rect x="326" y="120" width="288" height="48" rx="6" fill="#1c2030" stroke="#262b39"/>
+        <text class="label" x="340" y="140" style="fill:#4ea1ff;font-weight:700;font-size:11px">CONTROL MODE</text>
+        <text class="label" x="340" y="158" id="orch-mode-label">mode: teleop</text>
+
+        <rect x="326" y="180" width="288" height="78" rx="6" fill="#1c2030" stroke="#262b39"/>
+        <text class="label" x="340" y="200" style="fill:#4ea1ff;font-weight:700;font-size:11px">command_dispatch_worker (30Hz)</text>
+        <text class="label" x="340" y="218">AI · CONTROLLER · REPLAY pulled here</text>
+        <text class="label" x="340" y="234">TELEOP is event-driven (callback)</text>
+        <text class="label" x="340" y="250">all paths → smooth + blend</text>
+
+        <rect x="326" y="270" width="288" height="56" rx="6" fill="#1c2030" stroke="#262b39"/>
+        <text class="label" x="340" y="290" style="fill:#4ea1ff;font-weight:700;font-size:11px">_publish_command()</text>
+        <text class="label" x="340" y="306">single seam → bus topic action.{id}</text>
+        <text class="label" x="340" y="320" style="fill:#9aa3b2">EMA smoother · ModeBlender</text>
+      </g>
+
+      <!-- =================== BUS =================== -->
+      <g class="node bus" data-node="bus">
+        <rect class="nodebox active" x="310" y="370" width="320" height="50" rx="8" style="stroke:#4ea1ff;fill:#0a0c11"/>
+        <text class="label title" x="470" y="392" text-anchor="middle" style="fill:#4ea1ff">PubSub bus  ·  "action.{follower_id}"</text>
+        <text class="label" x="470" y="408" text-anchor="middle">in-process or ZMQ (RemoteRobotClient)</text>
+      </g>
+
+      <!-- =================== FOLLOWER =================== -->
+      <g class="node follower" data-node="follower">
+        <rect class="nodebox active" x="310" y="450" width="320" height="200" rx="10" style="stroke:#7fd1a8;stroke-width:1.6;fill:#161922"/>
+        <text class="label title" x="470" y="470" text-anchor="middle">RobotNode (follower)</text>
+        <text class="label" x="470" y="484" text-anchor="middle">robot.set_state(action) — captures Robot.commanded_action</text>
+
+        <!-- HW sub-box -->
+        <g data-node="hw">
+          <rect x="326" y="510" width="135" height="124" rx="6" fill="#1c2030" stroke="#262b39"/>
+          <text class="label" x="335" y="530" style="fill:#7fd1a8;font-weight:700;font-size:11px">HARDWARE</text>
+          <text class="label" x="335" y="548">_set_state_impl()</text>
+          <text class="label" x="335" y="564">drives real arm</text>
+          <text class="label" x="335" y="582" style="fill:#9aa3b2">(or mirrored to twin)</text>
+          <rect class="frozen-overlay" id="hw-frozen" x="326" y="510" width="135" height="124" rx="6"/>
+          <text class="label" id="hw-frozen-label" x="335" y="610" style="fill:#ff6b6b;font-weight:700;opacity:0">FROZEN (DT on)</text>
+        </g>
+
+        <!-- DT gate sub-box -->
+        <g data-node="gate">
+          <rect x="478" y="510" width="135" height="124" rx="6" fill="#1c2030" stroke="#262b39"/>
+          <text class="label" x="487" y="530" style="fill:#c084fc;font-weight:700;font-size:11px">DT GATE</text>
+          <text class="label" x="487" y="548">if use_digital_twin</text>
+          <text class="label" x="487" y="564">→ twin.set_state()</text>
+          <text class="label" x="487" y="582">else: HW + mirror</text>
+          <text class="label" id="gate-state" x="487" y="610" style="font-weight:700">flag: OFF</text>
+        </g>
+      </g>
+
+      <!-- =================== DIGITAL TWIN =================== -->
+      <g class="node twin" data-node="twin">
+        <rect class="nodebox active" x="690" y="450" width="380" height="200" rx="10" style="stroke:#c084fc;stroke-width:1.6;fill:#161922"/>
+        <text class="label title" x="880" y="476" text-anchor="middle">DigitalTwin (DigitalTwinPID)</text>
+        <text class="label" x="880" y="494" text-anchor="middle">digital_twin/base.py · pid_6dof.py</text>
+
+        <rect x="706" y="510" width="350" height="60" rx="6" fill="#1c2030" stroke="#262b39"/>
+        <text class="label" x="716" y="530" style="fill:#c084fc;font-weight:700;font-size:11px">twin.set_state(action)</text>
+        <text class="label" x="716" y="548">_record(action) if recording &amp; !replay_active</text>
+        <text class="label" x="716" y="564">_set_state_impl() · 100Hz P/D step</text>
+
+        <!-- Recording dot -->
+        <circle class="recording-badge" id="rec-dot" cx="1050" cy="528" r="6"/>
+        <text class="label" id="rec-label" x="1040" y="532" text-anchor="end" style="fill:#ff6b6b;opacity:0;font-weight:700">REC</text>
+
+        <!-- Queue panel inside twin -->
+        <rect x="706" y="580" width="350" height="60" rx="6" fill="#1c2030" stroke="#262b39"/>
+        <text class="label" x="716" y="600" style="fill:#c084fc;font-weight:700;font-size:11px">_record_queue : deque[RobotState]</text>
+        <text class="label" id="queue-svg-label" x="716" y="618">depth: 0</text>
+        <text class="label" x="716" y="634" style="fill:#9aa3b2">replay drains via twin.get_action()</text>
+      </g>
+
+      <!-- =================== SYSTEM STATE =================== -->
+      <g class="node systate" data-node="systate">
+        <rect class="nodebox active" x="690" y="40" width="380" height="155" rx="10" style="stroke:#c084fc;stroke-width:1.6;fill:#161922"/>
+        <text class="label title" x="880" y="62" text-anchor="middle">SystemState  ·  STATE_UPDATE @ 5Hz</text>
+
+        <text class="label" x="710" y="84" style="fill:#c084fc;font-weight:700;font-size:11px">annotate_state() now emits 4 vectors:</text>
+        <text class="label" x="710" y="100">· joint_positions  (route-aware: twin if DT on)</text>
+        <text class="label" x="710" y="114">· hw_joint_positions  (real hardware, always)</text>
+        <text class="label" x="710" y="128">· dt_joint_positions  (twin pose, always)</text>
+        <text class="label" x="710" y="142">· commanded_joint_positions  (last action)</text>
+
+        <text class="label" x="710" y="164" style="fill:#9aa3b2;font-weight:700;font-size:11px">callbacks fire on update:</text>
+        <text class="label" x="710" y="180">→ orchestrator._on_leader_state_change (TELEOP)</text>
+      </g>
+
+      <!-- =================== VISER VIEWER =================== -->
+      <g class="node viewer" data-node="viewer">
+        <rect class="nodebox active" x="690" y="200" width="380" height="160" rx="10" style="stroke:#7fd1a8;stroke-width:1.6;fill:#161922"/>
+        <text class="label title" x="880" y="226" text-anchor="middle">Viser viewer</text>
+        <text class="label" x="880" y="244" text-anchor="middle">servo7/viz/viewer.py · :8080</text>
+
+        <text class="label" x="710" y="270" style="fill:#7fd1a8;font-weight:700;font-size:11px">subscribes SystemState["follower"]</text>
+        <text class="label" x="710" y="288">URDF redraws on every state update</text>
+
+        <text class="label" x="710" y="312" style="fill:#c084fc;font-weight:700;font-size:11px">buttons + jog sliders</text>
+        <text class="label" x="710" y="328">"Scrub recording" → twin.get_trajectory()</text>
+        <text class="label" x="710" y="344">jog → controller.set_joint(i, v)</text>
+      </g>
+
+      <!-- =================== FLOW PATHS (orthogonal / Manhattan routing) =================== -->
+      <!-- Leader → Orchestrator: each leader takes its own y-band into the orch's left side -->
+      <path id="p-teleop-orch" class="flow leader-flow teleop" d="M220,69 L255,69 L255,150 L310,150" stroke="#4ea1ff" marker-end="url(#ah-blue)"/>
+      <path id="p-ai-orch"     class="flow leader-flow ai"     d="M220,149 L265,149 L265,170 L310,170" stroke="#7fd1a8" marker-end="url(#ah-green)"/>
+      <path id="p-ctrl-orch"   class="flow leader-flow ctrl"   d="M220,229 L275,229 L275,200 L310,200" stroke="#c084fc" marker-end="url(#ah-purple)"/>
+      <path id="p-replay-orch" class="flow leader-flow replay" d="M220,309 L285,309 L285,260 L310,260" stroke="#ffb454" marker-end="url(#ah-warn)"/>
+
+      <!-- Orchestrator → Bus → Follower (straight verticals) -->
+      <path id="p-orch-bus"     class="flow main-flow" d="M470,340 L470,370" stroke="#4ea1ff" marker-end="url(#ah-blue)"/>
+      <path id="p-bus-follower" class="flow main-flow" d="M470,420 L470,450" stroke="#4ea1ff" marker-end="url(#ah-blue)"/>
+
+      <!-- Follower title → HW / DT-gate split (short verticals into each sub-box) -->
+      <path id="p-follower-hw"   class="flow follower-flow dt-off" d="M393,498 L393,510" stroke="#7fd1a8" marker-end="url(#ah-green)"/>
+      <path id="p-follower-twin" class="flow follower-flow dt-on"  d="M545,498 L545,510" stroke="#c084fc" marker-end="url(#ah-purple)"/>
+
+      <!-- DT gate → Twin (horizontal hop through the gap between follower and twin) -->
+      <path id="p-gate-twin" class="flow follower-flow dt-on" d="M613,545 L706,545" stroke="#c084fc" marker-end="url(#ah-purple)"/>
+
+      <!-- HW → mirror → twin: down out of HW, across under the boxes, up into twin -->
+      <path id="p-hw-mirror" class="flow follower-flow dt-off" d="M425,634 L425,665 L660,665 L660,560 L706,560" stroke="#7fd1a8" stroke-dasharray="4 3" marker-end="url(#ah-green)"/>
+
+      <!-- Twin → queue (record): short vertical inside twin -->
+      <path id="p-twin-queue" class="flow record-flow" d="M880,570 L880,580" stroke="#c084fc" marker-end="url(#ah-purple)"/>
+
+      <!-- Queue → Replay leader (drain loop): right edge down, across bottom, up the leader corridor -->
+      <path id="p-queue-replay" class="flow record-flow drain" d="M880,640 L1080,640 L1080,685 L295,685 L295,310 L220,310" stroke="#ffb454" stroke-dasharray="6 4" fill="none" marker-end="url(#ah-warn)"/>
+
+      <!-- Twin → SystemState (state publish, DT on): straight vertical -->
+      <path id="p-twin-systate" class="flow state-flow" d="M880,450 L880,195" stroke="#7fd1a8" marker-end="url(#ah-green)"/>
+
+      <!-- HW → SystemState (state publish, DT off): out HW right, up corridor x=660, over the top into systate -->
+      <path id="p-hw-systate" class="flow state-flow dt-off" d="M461,540 L660,540 L660,20 L880,20 L880,40" stroke="#7fd1a8" stroke-dasharray="3 3" marker-end="url(#ah-green)"/>
+
+      <!-- SystemState → Viewer: 5 px vertical -->
+      <path id="p-systate-viewer" class="flow state-flow" d="M880,195 L880,200" stroke="#7fd1a8" marker-end="url(#ah-green)"/>
+
+      <!-- Viewer → Controller (jog): out viewer left, over the top of the canvas, down corridor x=240 into ctrl leader -->
+      <path id="p-viewer-ctrl" class="flow leader-flow ctrl" d="M690,330 L670,330 L670,10 L240,10 L240,229 L220,229" stroke="#c084fc" stroke-dasharray="3 3" marker-end="url(#ah-purple)"/>
+
+      <!-- =================== FRONTEND (React) =================== -->
+      <g class="node frontend" data-node="frontend">
+        <rect class="nodebox active" x="20" y="700" width="1050" height="100" rx="10" style="stroke:#9aa3b2;stroke-width:1.4;fill:#161922"/>
+        <text class="label title" x="545" y="724" text-anchor="middle">Frontend (React)  ·  robot-frontend/  ·  WS :8765</text>
+
+        <!-- Sub: control panel -->
+        <rect x="36" y="738" width="320" height="50" rx="6" fill="#1c2030" stroke="#262b39"/>
+        <text class="label" x="46" y="756" style="fill:#4ea1ff;font-weight:700;font-size:11px">AtlasOrchestrator panel</text>
+        <text class="label" x="46" y="772">SET_CONTROL_MODE · EMERGENCY_STOP · SET_DIGITAL_TWIN</text>
+
+        <!-- Sub: joint debug strip (new) -->
+        <rect x="370" y="738" width="360" height="50" rx="6" fill="#1c2030" stroke="#c084fc"/>
+        <text class="label" x="380" y="756" style="fill:#c084fc;font-weight:700;font-size:11px">AtlasJointDebugStrip  (new)</text>
+        <text class="label" x="380" y="772">3 rows / joint: state · action · dt  (amber/cyan on drift)</text>
+
+        <!-- Sub: iframe to viser -->
+        <rect x="744" y="738" width="310" height="50" rx="6" fill="#1c2030" stroke="#262b39"/>
+        <text class="label" x="754" y="756" style="fill:#7fd1a8;font-weight:700;font-size:11px">iframe → viser viewer :8080</text>
+        <text class="label" x="754" y="772">URDF · jog · recording · scrub</text>
+      </g>
+
+      <!-- STATE_UPDATE: SystemState → Frontend — orthogonal along far-right edge into joint-debug-strip top-right -->
+      <path id="p-systate-frontend" class="flow state-flow" d="M1070,130 L1090,130 L1090,720 L730,720 L730,738" fill="none" stroke="#7fd1a8" stroke-dasharray="3 3" marker-end="url(#ah-green)"/>
+
+      <!-- Frontend → Orchestrator (control plane) — out top of AtlasOrchestrator panel, up the gap corridor x=295, into orch CONTROL MODE -->
+      <path id="p-frontend-orch" class="flow ctrl-plane" d="M195,738 L195,690 L295,690 L295,140 L310,140" fill="none" stroke="#9aa3b2" stroke-dasharray="4 4" marker-end="url(#ah-muted)"/>
+
+    </svg>
+  </div>
+
+  <div class="side">
+    <div class="card">
+      <h4>Record queue</h4>
+      <div class="queue" id="queue-display"></div>
+      <div class="queue-meta">
+        <span><span class="count" id="queue-count">0</span> / <span class="count" id="queue-cap">32</span> recorded</span>
+        <span class="muted" id="queue-state">idle</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>What happens on tick?</h4>
+      <p class="small muted" id="tick-explainer" style="margin:0">Pick a mode + Tick. Or hit Auto.</p>
+    </div>
+
+    <div class="card">
+      <h4>Event log</h4>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+</div>
+
+<h2>How to read this</h2>
+<ul>
+  <li><strong>Pick a mode</strong> — only that leader is lit; the right paths to the orchestrator turn solid.</li>
+  <li><strong>Toggle DT</strong> — flips the gate inside the follower. On = HW box dims to "FROZEN", commands route through the gate to the twin. Off = HW is the executor and the twin gets mirrored writes (dashed line). Disable triggers an immediate <code>snap_twin_to_self()</code> — no soft settle window (that was reverted).</li>
+  <li><strong>Hit Record</strong> — REC badge pulses on the twin. Now every tick (in non-REPLAY modes) appends to <code>_record_queue</code> and you see a slot fill on the right.</li>
+  <li><strong>Switch to REPLAY</strong> — recording is gated off automatically (<code>twin.begin_replay()</code> sets <code>_replay_active</code>). Each tick <code>popleft()</code>s one slot from the front of the queue (FIFO), animates it back up to the orchestrator, through the bus, to the follower. The HW or twin moves depending on DT.</li>
+  <li><strong>Every set_state captures <code>commanded_action</code></strong> — that single-slot store is what the frontend's new <code>AtlasJointDebugStrip</code> reads to draw the "action" row alongside "state" (hw) and "dt" (twin). Amber when commanded drifts from hw, cyan when dt drifts from hw.</li>
+  <li><strong>E-STOP</strong> — no commands are produced. Nothing animates.</li>
+</ul>
+
+<h2>Where state actually lives (the part that doesn't lie)</h2>
+<table style="width:100%;border-collapse:collapse;font-size:13.5px">
+  <thead><tr style="color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em"><th style="text-align:left;padding:8px 12px;border-bottom:1px solid var(--line)">Store</th><th style="text-align:left;padding:8px 12px;border-bottom:1px solid var(--line)">Owner</th><th style="text-align:left;padding:8px 12px;border-bottom:1px solid var(--line)">Who writes · who reads</th></tr></thead>
+  <tbody>
+    <tr><td style="padding:8px 12px;border-bottom:1px solid var(--line)"><code>SystemState.states</code></td><td style="padding:8px 12px;border-bottom:1px solid var(--line)">SystemState</td><td style="padding:8px 12px;border-bottom:1px solid var(--line)">written by every robot's state publish · read by orchestrator (TELEOP callback) + viewer (URDF) + STATE_UPDATE broadcast</td></tr>
+    <tr><td style="padding:8px 12px;border-bottom:1px solid var(--line)"><code>RobotController._queue</code></td><td style="padding:8px 12px;border-bottom:1px solid var(--line)">RobotController</td><td style="padding:8px 12px;border-bottom:1px solid var(--line)">pushed by viser jog · drained by orchestrator at 30Hz in CONTROLLER mode</td></tr>
+    <tr><td style="padding:8px 12px;border-bottom:1px solid var(--line)"><code>DigitalTwin._record_queue</code></td><td style="padding:8px 12px;border-bottom:1px solid var(--line)">DigitalTwin</td><td style="padding:8px 12px;border-bottom:1px solid var(--line)">FIFO. written by <code>_record()</code> when recording + not replay-active · drained by REPLAY via <code>popleft()</code> · snapshotted by viewer scrub</td></tr>
+    <tr><td style="padding:8px 12px;border-bottom:1px solid var(--line)"><code>Robot.commanded_action</code></td><td style="padding:8px 12px;border-bottom:1px solid var(--line)">Each Robot</td><td style="padding:8px 12px;border-bottom:1px solid var(--line)"><strong>NEW.</strong> single-slot store (last action). populated at the top of <code>set_state()</code> before routing. surfaced as <code>commanded_joint_positions</code> in STATE_UPDATE for the joint-debug strip</td></tr>
+    <tr><td style="padding:8px 12px;border-bottom:1px solid var(--line)"><code>orchestrator.control_mode</code></td><td style="padding:8px 12px;border-bottom:1px solid var(--line)">Orchestrator</td><td style="padding:8px 12px;border-bottom:1px solid var(--line)">set by frontend WS (SET_CONTROL_MODE) · broadcast as MODE_CHANGED</td></tr>
+    <tr><td style="padding:8px 12px"><code>Robot._use_digital_twin</code></td><td style="padding:8px 12px">Each Robot</td><td style="padding:8px 12px">toggled by <code>enable_digital_twin()</code> · independent of control_mode · disable does an immediate <code>snap_twin_to_self()</code> (no settle window)</td></tr>
+  </tbody>
+</table>
+
+</section><!-- /tab flow -->
+
+<section class="tab" data-tab="structure">
+
+<h2 style="margin-top:8px">The one insight that makes the rest make sense</h2>
+<div class="panel accent" style="font-size:14.5px">
+  <strong>A <code>DigitalTwin</code> is a <code>Robot</code>, and it <em>lives inside</em> its parent Robot.</strong>
+  <p style="margin:8px 0 0">It inherits from the same <code>Robot</code> ABC as <code>PiperRobot</code> or <code>SO100Robot</code>. Same <code>set_state(action)</code>, same <code>get_state()</code>, same <code>RobotState</code> dataclass on the wire. That's why the orchestrator, the system state, and the viewer don't have to care whether they're talking to silicon or to a P/D integrator — they just talk to "a Robot".</p>
+  <p style="margin:8px 0 0">The twin isn't a sibling of the real robot — it's a <strong>field on the real robot</strong>. <code>piper.digital_twin</code> holds an instance of another <code>Robot</code> subclass. The "DT toggle" doesn't switch between two different APIs — it switches <em>which Robot instance</em> the parent's <code>set_state</code> call routes to: the parent's own hardware path, or the twin sitting in <code>self.digital_twin</code>.</p>
+</div>
+
+<h2>Class hierarchy</h2>
+
+<div class="legend-row">
+  <div class="item"><span class="swatch" style="background:#1c2030;border-color:#4ea1ff"></span> Abstract base</div>
+  <div class="item"><span class="swatch" style="background:#1c2030;border-color:#7fd1a8"></span> Hardware (real motors)</div>
+  <div class="item"><span class="swatch" style="background:#1c2030;border-color:#c084fc"></span> Digital twin (sim / record)</div>
+  <div class="item"><span class="swatch" style="background:#1c2030;border-color:#ffb454"></span> Remote (network proxy)</div>
+</div>
+
+<div class="diagram" style="background:var(--panel)">
+<svg class="classbox" viewBox="0 0 1180 860" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ch-inherit" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0,0 L12,6 L0,12 z" fill="none" stroke="#9aa3b2" stroke-width="1.2"/>
+    </marker>
+    <marker id="ch-compose" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c084fc"/>
+    </marker>
+  </defs>
+
+  <!-- ROBOT ABC -->
+  <g>
+    <rect x="430" y="20" width="320" height="170" rx="10" fill="#1c2030" stroke="#4ea1ff" stroke-width="2"/>
+    <text x="590" y="38" text-anchor="middle" fill="#4ea1ff" font-size="11" font-weight="700">«abstract base»</text>
+    <text x="590" y="58" text-anchor="middle" fill="#e7ecf3" font-size="17" font-weight="700">Robot</text>
+    <text x="590" y="74" text-anchor="middle" fill="#9aa3b2" font-size="11">servo7/robot/hardware/base.py</text>
+    <line x1="446" y1="82" x2="734" y2="82" stroke="#262b39"/>
+    <text x="450" y="98"  fill="#ffb454" font-size="10.5">@abstractmethod  connect() → bool</text>
+    <text x="450" y="112" fill="#ffb454" font-size="10.5">@abstractmethod  disconnect() → bool</text>
+    <text x="450" y="126" fill="#d0d6e2" font-size="10.5">+ set_state(action) → bool       (subclasses override _set_state_impl)</text>
+    <text x="450" y="140" fill="#d0d6e2" font-size="10.5">+ get_state() → RobotState       (subclasses override _get_state_impl)</text>
+    <text x="450" y="158" fill="#c084fc" font-size="10.5">+ set_digital_twin(twin: "Robot | None")</text>
+    <text x="450" y="172" fill="#c084fc" font-size="10.5">+ enable_digital_twin(on: bool)</text>
+  </g>
+
+  <!-- Inheritance lines from Robot bottom down to group anchors (must originate AT/BELOW box bottom y=190) -->
+  <line x1="590" y1="190" x2="170" y2="215" stroke="#9aa3b2" stroke-width="1.4" marker-end="url(#ch-inherit)"/>
+  <line x1="590" y1="190" x2="590" y2="215" stroke="#9aa3b2" stroke-width="1.4" marker-end="url(#ch-inherit)"/>
+  <line x1="590" y1="190" x2="1010" y2="215" stroke="#9aa3b2" stroke-width="1.4" marker-end="url(#ch-inherit)"/>
+
+  <!-- Group label row (sits just below the inheritance arrowheads) -->
+  <text x="170" y="225"  text-anchor="middle" fill="#7fd1a8" font-size="13" font-weight="700">HARDWARE</text>
+  <text x="170" y="240"  text-anchor="middle" fill="#9aa3b2" font-size="11">servo7/robot/hardware/ + mock/</text>
+
+  <text x="590" y="225"  text-anchor="middle" fill="#c084fc" font-size="13" font-weight="700">DIGITAL TWIN</text>
+  <text x="590" y="240"  text-anchor="middle" fill="#9aa3b2" font-size="11">servo7/digital_twin/</text>
+
+  <text x="1010" y="225" text-anchor="middle" fill="#ffb454" font-size="13" font-weight="700">REMOTE PROXY</text>
+  <text x="1010" y="240" text-anchor="middle" fill="#9aa3b2" font-size="11">servo7/robot/remote/</text>
+
+  <!-- HARDWARE column -->
+  <g>
+    <rect x="30" y="252" width="280" height="380" rx="10" fill="#161922" stroke="#7fd1a8" stroke-width="1.4"/>
+    <text x="46" y="274" fill="#7fd1a8" font-size="11" font-weight="700">concrete hardware Robots</text>
+
+    <text x="46" y="300" fill="#e7ecf3" font-size="13" font-weight="600">PiperRobot</text>
+    <text x="60" y="316" fill="#9aa3b2" font-size="11">hardware/piper.py</text>
+
+    <text x="46" y="336" fill="#e7ecf3" font-size="13" font-weight="600">DualPiperRobot</text>
+    <text x="60" y="352" fill="#9aa3b2" font-size="11">hardware/dual_piper.py</text>
+
+    <text x="46" y="372" fill="#e7ecf3" font-size="13" font-weight="600">SO100Robot · DualSO100Robot</text>
+    <text x="60" y="388" fill="#9aa3b2" font-size="11">hardware/so100*.py</text>
+
+    <text x="46" y="408" fill="#e7ecf3" font-size="13" font-weight="600">SO100FollowerRobot</text>
+    <text x="60" y="424" fill="#9aa3b2" font-size="11">hardware/so100_follower.py</text>
+
+    <text x="46" y="444" fill="#e7ecf3" font-size="13" font-weight="600">QuestVRRobot</text>
+    <text x="60" y="460" fill="#9aa3b2" font-size="11">hardware/quest_vr.py  ·  used as leader</text>
+
+    <text x="46" y="480" fill="#e7ecf3" font-size="13" font-weight="600">RosRobot  (base)</text>
+    <text x="60" y="496" fill="#9aa3b2" font-size="11">hardware/base_ros.py</text>
+    <text x="76" y="512" fill="#e7ecf3" font-size="12.5">└ R1RosRobot   <tspan fill="#9aa3b2">— hardware/r1.py</tspan></text>
+    <text x="76" y="528" fill="#e7ecf3" font-size="12.5">└ R1TRosRobot  <tspan fill="#9aa3b2">— hardware/r1t.py</tspan></text>
+
+    <text x="46" y="558" fill="#e7ecf3" font-size="13" font-weight="600">DummyRobot</text>
+    <text x="60" y="574" fill="#9aa3b2" font-size="11">mock/mock_6dof.py</text>
+
+    <text x="46" y="594" fill="#e7ecf3" font-size="13" font-weight="600">SignalRobot  &lt;-  DummyRobot</text>
+    <text x="60" y="610" fill="#9aa3b2" font-size="11">mock/mock_6dof_signal.py</text>
+  </g>
+
+  <!-- DIGITAL TWIN column -->
+  <g>
+    <rect x="450" y="252" width="280" height="200" rx="10" fill="#161922" stroke="#c084fc" stroke-width="1.4"/>
+    <text x="466" y="274" fill="#c084fc" font-size="11" font-weight="700">«abstract»</text>
+    <text x="466" y="292" fill="#e7ecf3" font-size="15" font-weight="700">DigitalTwin</text>
+    <text x="466" y="308" fill="#9aa3b2" font-size="11">digital_twin/base.py</text>
+    <line x1="462" y1="318" x2="718" y2="318" stroke="#262b39"/>
+    <text x="466" y="334" fill="#d0d6e2" font-size="11.5">+ start_recording() / stop_recording()</text>
+    <text x="466" y="348" fill="#d0d6e2" font-size="11.5">+ get_action() → RobotState (popleft)</text>
+    <text x="466" y="362" fill="#d0d6e2" font-size="11.5">+ begin_replay() / end_replay()</text>
+    <text x="466" y="376" fill="#d0d6e2" font-size="11.5">+ get_trajectory() — non-destructive</text>
+    <text x="466" y="390" fill="#9aa3b2" font-size="11.5">_record_queue : deque[RobotState]</text>
+    <text x="466" y="404" fill="#9aa3b2" font-size="11.5">_recording · _replay_active (gate)</text>
+
+    <!-- DT concrete -->
+    <rect x="450" y="472" width="280" height="70" rx="10" fill="#1c2030" stroke="#c084fc"/>
+    <text x="466" y="494" fill="#e7ecf3" font-size="13" font-weight="600">DigitalTwinPID</text>
+    <text x="466" y="510" fill="#9aa3b2" font-size="11">digital_twin/pid_6dof.py</text>
+    <text x="466" y="528" fill="#9aa3b2" font-size="11">P/D integrator · 100Hz step thread</text>
+
+    <rect x="450" y="562" width="280" height="70" rx="10" fill="#1c2030" stroke="#c084fc"/>
+    <text x="466" y="584" fill="#e7ecf3" font-size="13" font-weight="600">R1LiteSimRobot</text>
+    <text x="466" y="600" fill="#9aa3b2" font-size="11">digital_twin/r1_mujoco.py</text>
+    <text x="466" y="618" fill="#9aa3b2" font-size="11">MuJoCo backend (uses digital_twin/mujoco/r1/*)</text>
+
+    <!-- DT inheritance -->
+    <line x1="590" y1="452" x2="590" y2="472" stroke="#9aa3b2" stroke-width="1.2" marker-end="url(#ch-inherit)"/>
+    <line x1="590" y1="452" x2="590" y2="562" stroke="#9aa3b2" stroke-width="1.2" marker-end="url(#ch-inherit)" stroke-dasharray="3 2"/>
+  </g>
+
+  <!-- REMOTE column -->
+  <g>
+    <rect x="870" y="252" width="280" height="200" rx="10" fill="#161922" stroke="#ffb454" stroke-width="1.4"/>
+    <text x="886" y="274" fill="#ffb454" font-size="11" font-weight="700">network proxies</text>
+
+    <text x="886" y="300" fill="#e7ecf3" font-size="13" font-weight="600">RemoteRobotClient</text>
+    <text x="900" y="316" fill="#9aa3b2" font-size="11">remote/robot_client.py · ZMQ / MP / InProcess</text>
+    <text x="900" y="330" fill="#9aa3b2" font-size="11">talks to a remote RobotServer</text>
+
+    <text x="886" y="356" fill="#e7ecf3" font-size="13" font-weight="600">ROSRobotClient</text>
+    <text x="900" y="372" fill="#9aa3b2" font-size="11">remote/ros_robot_client.py</text>
+    <text x="900" y="386" fill="#9aa3b2" font-size="11">talks to a remote ROSRobotServer</text>
+
+    <text x="886" y="416" fill="#9aa3b2" font-size="11" font-style="italic">Companion servers in remote/:</text>
+    <text x="886" y="432" fill="#9aa3b2" font-size="11">RobotServer · ROSRobotServer</text>
+  </g>
+
+  <!-- COMPOSITION inset (top-left): the twin lives INSIDE its parent Robot -->
+  <g>
+    <rect x="30" y="22" width="370" height="140" rx="10" fill="#0a0c11" stroke="#c084fc" stroke-width="1.4" stroke-dasharray="4 3"/>
+    <text x="46" y="44" fill="#c084fc" font-size="11" font-weight="700">COMPOSITION — the twin lives INSIDE</text>
+
+    <!-- Outer Robot box -->
+    <rect x="60" y="58" width="310" height="92" rx="8" fill="#1c2030" stroke="#7fd1a8" stroke-width="1.4"/>
+    <text x="74" y="76" fill="#7fd1a8" font-size="11" font-weight="700">PiperRobot  (real)</text>
+    <text x="74" y="92" fill="#d0d6e2" font-size="11.5" font-family="ui-monospace,monospace">self.digital_twin = …</text>
+
+    <!-- Inner nested Robot box (the twin) -->
+    <rect x="78" y="104" width="276" height="38" rx="6" fill="#1c2030" stroke="#c084fc" stroke-width="1.4"/>
+    <text x="92" y="120" fill="#c084fc" font-size="11" font-weight="700">DigitalTwinPID  (also a Robot)</text>
+    <text x="92" y="134" fill="#9aa3b2" font-size="10.5">lives as a field inside the parent</text>
+  </g>
+
+  <!-- Pointer routed down through the empty corridor at x=410 to land on the DigitalTwin column -->
+  <path d="M370,150 L410,150 L410,244 L450,244 L450,252" fill="none" stroke="#c084fc" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#ch-compose)"/>
+  <text x="420" y="180" fill="#c084fc" font-size="10.5" font-style="italic">↓ inner type = any DigitalTwin subclass below</text>
+
+  <!-- RobotFactory + RobotNode bottom row -->
+  <rect x="30" y="680" width="540" height="150" rx="10" fill="#161922" stroke="#4ea1ff" stroke-width="1.4"/>
+  <text x="46" y="704" fill="#4ea1ff" font-size="11" font-weight="700">FACTORY</text>
+  <text x="46" y="724" fill="#e7ecf3" font-size="14" font-weight="600">RobotFactory.create(config)</text>
+  <text x="46" y="742" fill="#9aa3b2" font-size="11">servo7/robot/factory.py</text>
+  <text x="46" y="762" fill="#d0d6e2" font-size="12">reads RobotType enum → instantiates the right class</text>
+  <text x="46" y="778" fill="#d0d6e2" font-size="12">PIPER · DUAL_PIPER · SO100 · DUAL_SO100 · R1 · R1T</text>
+  <text x="46" y="794" fill="#d0d6e2" font-size="12">R1_LITE_SIM · QUEST_VR · DUMMY · SIGNAL · PID</text>
+  <text x="46" y="814" fill="#9aa3b2" font-size="11">attaches a DigitalTwin via set_digital_twin() when configured</text>
+
+  <rect x="610" y="680" width="540" height="150" rx="10" fill="#161922" stroke="#7fd1a8" stroke-width="1.4"/>
+  <text x="626" y="704" fill="#7fd1a8" font-size="11" font-weight="700">RUNTIME OWNER</text>
+  <text x="626" y="724" fill="#e7ecf3" font-size="14" font-weight="600">RobotNode</text>
+  <text x="626" y="742" fill="#9aa3b2" font-size="11">servo7/nodes/robot_node.py</text>
+  <text x="626" y="762" fill="#d0d6e2" font-size="12">owns one Robot per follower</text>
+  <text x="626" y="778" fill="#d0d6e2" font-size="12">subscribes "action.{robot_id}" on the bus</text>
+  <text x="626" y="794" fill="#d0d6e2" font-size="12">publishes state changes to SystemState</text>
+  <text x="626" y="814" fill="#9aa3b2" font-size="11">orchestrated by OrchestratorNode (mode state machine)</text>
+
+</svg>
+</div>
+
+<p class="small muted" style="margin-top:6px">Hollow triangle = inheritance (UML <code>extends</code>). The dashed inset at the top-left shows the composition relationship: any concrete <code>Robot</code> can hold another <code>Robot</code> as a field via <code>self.digital_twin</code> — the twin doesn't sit next to the parent, it sits inside it.</p>
+
+<h2>Folder layout</h2>
+<p class="small muted">Only the parts relevant to the robot/digital-twin story. Annotations: <span class="key" style="font-family:'JetBrains Mono',monospace">key</span> files defining the contract, <span class="new" style="font-family:'JetBrains Mono',monospace">new</span> stuff added on this branch, <span class="note" style="font-family:'JetBrains Mono',monospace">// notes</span>.</p>
+
+<div class="folder-tree"><span class="dir">servo7/</span>
+├── <span class="dir">robot/</span>
+│   ├── <span class="key">factory.py</span>                  <span class="note">// RobotFactory.create(config) — picks the right class from RobotType</span>
+│   ├── <span class="key">robot_types.py</span>              <span class="note">// RobotType enum · RobotState · RobotObservation · RobotStatus</span>
+│   │
+│   ├── <span class="dir">hardware/</span>                   <span class="note">// real motors / cameras / IK</span>
+│   │   ├── <span class="key">base.py</span>                 <span class="note">// Robot ABC · DT routing · snap_twin_to_self · commanded_action</span>
+│   │   ├── <span class="file">base_ros.py</span>             <span class="note">// shared RosRobot base</span>
+│   │   ├── <span class="file">piper.py</span>                  <span class="note">// PiperRobot</span>
+│   │   ├── <span class="file">dual_piper.py</span>             <span class="note">// DualPiperRobot</span>
+│   │   ├── <span class="file">so100.py</span>                  <span class="note">// SO100Robot</span>
+│   │   ├── <span class="file">dual_so100.py</span>             <span class="note">// DualSO100Robot</span>
+│   │   ├── <span class="file">so100_follower.py</span>         <span class="note">// SO100FollowerRobot</span>
+│   │   ├── <span class="file">quest_vr.py</span>               <span class="note">// QuestVRRobot — used as leader (input)</span>
+│   │   ├── <span class="file">r1.py</span>                     <span class="note">// R1RosRobot</span>
+│   │   └── <span class="file">r1t.py</span>                    <span class="note">// R1TRosRobot — teleop variant</span>
+│   │
+│   ├── <span class="dir">mock/</span>                       <span class="note">// deterministic stand-ins for tests + jogging</span>
+│   │   ├── <span class="file">mock_6dof.py</span>              <span class="note">// DummyRobot — the generic 6-DOF mock</span>
+│   │   ├── <span class="file">mock_6dof_signal.py</span>       <span class="note">// SignalRobot — DummyRobot with deterministic signal trace</span>
+│   │   └── <span class="file">mock_r1.py</span>                <span class="note">// MockRobotNode for R1 integration tests</span>
+│   │
+│   └── <span class="dir">remote/</span>                     <span class="note">// network proxies — used when twin/HW run in different processes</span>
+│       ├── <span class="file">robot_client.py</span>           <span class="note">// RemoteRobotClient (ZMQ) — looks like a Robot, forwards to RobotServer</span>
+│       ├── <span class="file">robot_server.py</span>           <span class="note">// RobotServer — wraps a local Robot, exposes it over ZMQ</span>
+│       ├── <span class="file">ros_robot_client.py</span>
+│       └── <span class="file">ros_robot_server.py</span>
+│
+├── <span class="dir new">digital_twin/</span>               <span class="note">// NEW package on this branch — Robot subclasses that simulate</span>
+│   ├── <span class="key">base.py</span>                     <span class="note">// DigitalTwin ABC — adds _record_queue, replay gate, snap()</span>
+│   ├── <span class="new">pid_6dof.py</span>                 <span class="note">// DigitalTwinPID — P/D 6-DOF integrator at 100Hz</span>
+│   ├── <span class="file">r1_mujoco.py</span>                <span class="note">// R1LiteSimRobot — MuJoCo-backed twin</span>
+│   └── <span class="dir">mujoco/</span>                     <span class="note">// embedded sim env (URDF, scene, scripted policies)</span>
+│       └── <span class="dir">r1/</span> …
+│
+└── <span class="dir">nodes/</span>
+    ├── <span class="key">orchestrator_node.py</span>        <span class="note">// mode state machine · command dispatch worker · broadcast</span>
+    ├── <span class="key">robot_node.py</span>               <span class="note">// owns one Robot per follower · subscribes "action.{id}"</span>
+    ├── <span class="file">frontend_node.py</span>            <span class="note">// WS :8765 server · SET_CONTROL_MODE / STATE_UPDATE handlers</span>
+    ├── <span class="file">system_state_node.py</span>        <span class="note">// SystemState container + callback registry</span>
+    ├── <span class="file">ai_node.py</span>                  <span class="note">// AI policy leader (predict_sync)</span>
+    ├── <span class="file">recorder_node.py</span>            <span class="note">// dataset episode recorder</span>
+    ├── <span class="file">training_node.py</span>            <span class="note">// LoRA / policy training lifecycle</span>
+    └── <span class="file">message_protocol.py</span>         <span class="note">// MessageType enum, ControlMode enum, message dataclasses</span>
+</div>
+
+<h2>What a "robot with a twin" looks like at runtime</h2>
+
+<div class="panel purple" style="font-size:14.5px;margin-bottom:14px">
+  <strong>The twin literally lives <em>inside</em> the parent robot.</strong> It's a field, not a sibling. <code>piper.digital_twin</code> holds a <code>DigitalTwinPID</code> instance — which is itself a <code>Robot</code>. The drawing below shows the nesting verbatim: outer box = the real Piper, inner box = the twin it owns.
+</div>
+
+<div class="diagram" style="background:var(--panel)">
+<svg viewBox="0 0 1100 360" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif">
+  <!-- RobotNode wrapper -->
+  <rect x="20" y="20" width="1060" height="320" rx="14" fill="#161922" stroke="#9aa3b2" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <text x="40" y="44" fill="#9aa3b2" font-size="12" font-weight="700">RobotNode  (one per follower — owns ONE Robot, which is…)</text>
+
+  <!-- OUTER: PiperRobot (real). Big enough to contain the twin. -->
+  <rect x="60" y="60" width="980" height="260" rx="12" fill="#1c2030" stroke="#7fd1a8" stroke-width="1.8"/>
+  <text x="78" y="84" fill="#7fd1a8" font-size="13" font-weight="700">PiperRobot  (real arm) — inherits Robot</text>
+
+  <text x="78" y="106" fill="#d0d6e2" font-size="12" font-family="ui-monospace,monospace">self.commanded_action : RobotState | None</text>
+  <text x="78" y="122" fill="#d0d6e2" font-size="12" font-family="ui-monospace,monospace">self._use_digital_twin : bool</text>
+  <text x="78" y="138" fill="#c084fc" font-size="12" font-weight="700" font-family="ui-monospace,monospace">self.digital_twin : Robot | None    ◀ the field that holds the twin (below)</text>
+
+  <!-- INNER (NESTED): the twin lives inside the parent. -->
+  <rect x="100" y="156" width="920" height="100" rx="10" fill="#15101e" stroke="#c084fc" stroke-width="1.6"/>
+  <text x="116" y="178" fill="#c084fc" font-size="12" font-weight="700">↓  self.digital_twin = DigitalTwinPID(…)  —  this whole box IS the twin, attached as a field</text>
+  <text x="116" y="200" fill="#e7ecf3" font-size="13" font-weight="700">DigitalTwinPID  (sim)  ·  inherits DigitalTwin &lt; Robot</text>
+  <text x="116" y="220" fill="#d0d6e2" font-size="12" font-family="ui-monospace,monospace">self._record_queue : deque[RobotState]   ·   self._recording   ·   self._replay_active</text>
+  <text x="116" y="238" fill="#d0d6e2" font-size="12" font-family="ui-monospace,monospace">self._target / self._joints  (P/D state)   ·   100 Hz step thread converges _joints → _target</text>
+
+  <!-- Footer: routing logic in the parent — matches the actual Robot.set_state() body -->
+  <text x="78" y="270" fill="#7fd1a8" font-size="12" font-weight="700">piper.set_state(action):  (the actual body)</text>
+  <text x="98" y="286" fill="#d0d6e2" font-size="11.5" font-family="ui-monospace,monospace">self.commanded_action = action</text>
+  <text x="98" y="301" fill="#d0d6e2" font-size="11.5" font-family="ui-monospace,monospace">if self.digital_twin is not None: self._set_state_digital_twin(action)   <tspan fill="#9aa3b2">← always feeds the inner twin</tspan></text>
+  <text x="98" y="316" fill="#d0d6e2" font-size="11.5" font-family="ui-monospace,monospace">if not self.use_digital_twin:      self._set_state_impl(action)            <tspan fill="#9aa3b2">← HW only when DT routing is off</tspan></text>
+</svg>
+</div>
+
+<p class="small muted">Two independent <code>if</code> statements, not an <code>if/else</code>. The twin always sees the write (so its pose tracks the real arm even when DT routing is off — that's how the joint-debug-strip stays meaningful). The hardware path only runs when the routing flag is off; when it's on, the motors stay still and only the inner twin moves. Same <code>Robot</code> contract on both sides — nothing outside this diagram changes either way.</p>
+
+<h2>Quick recipe — how a new digital twin gets added</h2>
+<ol>
+  <li>New subclass under <code>servo7/digital_twin/</code> extending <code>DigitalTwin</code> (recording / replay-gate machinery is inherited).</li>
+  <li>Override the two <code>@abstractmethod</code>s: <code>connect()</code> and <code>disconnect()</code>.</li>
+  <li>Override <code>_set_state_impl(action)</code> and <code>_get_state_impl()</code> for the sim's write/read. (Don't override <code>set_state</code> / <code>get_state</code> directly unless you really need to — the DT-routing logic in the base class only kicks in if you let it.)</li>
+  <li>Add an enum value to <code>RobotType</code> in <code>robot/robot_types.py</code>.</li>
+  <li>Wire it up in <code>RobotFactory.create()</code> — map the new type to your class.</li>
+  <li>Configure it on the hardware robot at boot: <code>real_robot.set_digital_twin(new_twin)</code>; flip it on with <code>real_robot.enable_digital_twin(True)</code>.</li>
+  <li>Nothing in the orchestrator, system state, or viewer changes.</li>
+</ol>
+
+</section><!-- /tab structure -->
+
+<section class="tab" data-tab="comms">
+
+<h2 style="margin-top:8px">One contract, many transports</h2>
+
+<div class="panel accent" style="font-size:14.5px">
+  <strong>The whole point of <code>PubSub</code>:</strong> nothing above the bus knows or cares whether bytes travel via callbacks, an <code>mp.Queue</code>, a ZMQ socket, or a UDP datagram. Same four methods (<code>publish</code> / <code>subscribe</code> / <code>get_latest</code> / <code>close</code>) on every implementation. Same client code, swap the bus at construction time.
+  <p style="margin:8px 0 0">That's how the same <code>RobotServer</code> + <code>RemoteRobotClient</code> pair runs in-process in tests, in a subprocess for local isolation, and across hosts in production.</p>
+</div>
+
+<div class="diagram" style="background:var(--panel)">
+<svg viewBox="0 0 1180 480" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif">
+  <defs>
+    <marker id="bus-arrow" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0,0 L12,6 L0,12 z" fill="none" stroke="#9aa3b2" stroke-width="1.2"/>
+    </marker>
+  </defs>
+
+  <!-- PubSub ABC -->
+  <rect x="430" y="20" width="320" height="120" rx="10" fill="#1c2030" stroke="#4ea1ff" stroke-width="2"/>
+  <text x="590" y="44" text-anchor="middle" fill="#4ea1ff" font-size="11" font-weight="700">«abstract base»</text>
+  <text x="590" y="66" text-anchor="middle" fill="#e7ecf3" font-size="17" font-weight="700">PubSub</text>
+  <text x="590" y="84" text-anchor="middle" fill="#9aa3b2" font-size="11">servo7/bus/bus.py</text>
+  <line x1="446" y1="94" x2="734" y2="94" stroke="#262b39"/>
+  <text x="450" y="112" fill="#d0d6e2" font-size="11.5" font-family="ui-monospace,monospace">publish(topic, payload)</text>
+  <text x="450" y="126" fill="#d0d6e2" font-size="11.5" font-family="ui-monospace,monospace">subscribe(topic, callback)  ·  get_latest(topic)  ·  close()</text>
+
+  <!-- Implementations row -->
+  <g>
+    <rect x="20"  y="200" width="270" height="240" rx="10" fill="#161922" stroke="#7fd1a8" stroke-width="1.4"/>
+    <text x="36" y="222" fill="#7fd1a8" font-size="11" font-weight="700">SAME PROCESS</text>
+    <text x="36" y="244" fill="#e7ecf3" font-size="15" font-weight="700">InProcessBus</text>
+    <text x="36" y="262" fill="#9aa3b2" font-size="11">bus/in_process_bus.py</text>
+    <text x="36" y="286" fill="#d0d6e2" font-size="12">publish → direct callback dispatch</text>
+    <text x="36" y="302" fill="#d0d6e2" font-size="12">zero serialization, zero IPC</text>
+    <text x="36" y="324" fill="#9aa3b2" font-size="11.5" font-style="italic">use: tests, sim-only, integration</text>
+    <text x="36" y="358" fill="#7fd1a8" font-size="11" font-weight="700">latency: ~µs</text>
+    <text x="36" y="376" fill="#7fd1a8" font-size="11" font-weight="700">scope: one Python process</text>
+  </g>
+
+  <g>
+    <rect x="310" y="200" width="270" height="240" rx="10" fill="#161922" stroke="#4ea1ff" stroke-width="1.4"/>
+    <text x="326" y="222" fill="#4ea1ff" font-size="11" font-weight="700">SIBLING PROCESS</text>
+    <text x="326" y="244" fill="#e7ecf3" font-size="15" font-weight="700">MpBus</text>
+    <text x="326" y="262" fill="#9aa3b2" font-size="11">bus/mp_bus.py</text>
+    <text x="326" y="286" fill="#d0d6e2" font-size="12">backed by mp.Queue pair</text>
+    <text x="326" y="302" fill="#d0d6e2" font-size="12">+ request() / serve() — sync RPC</text>
+    <text x="326" y="318" fill="#d0d6e2" font-size="12">on the same wire</text>
+    <text x="326" y="340" fill="#9aa3b2" font-size="11.5" font-style="italic">use: spawn a robot in a subprocess</text>
+    <text x="326" y="356" fill="#9aa3b2" font-size="11.5" font-style="italic">without OS networking</text>
+    <text x="326" y="384" fill="#4ea1ff" font-size="11" font-weight="700">latency: ~ms</text>
+    <text x="326" y="402" fill="#4ea1ff" font-size="11" font-weight="700">scope: parent + child proc</text>
+  </g>
+
+  <g>
+    <rect x="600" y="200" width="270" height="240" rx="10" fill="#161922" stroke="#c084fc" stroke-width="1.4"/>
+    <text x="616" y="222" fill="#c084fc" font-size="11" font-weight="700">NETWORK · STREAM</text>
+    <text x="616" y="244" fill="#e7ecf3" font-size="15" font-weight="700">ZmqBus</text>
+    <text x="616" y="262" fill="#9aa3b2" font-size="11">bus/zmq_bus.py</text>
+    <text x="616" y="286" fill="#d0d6e2" font-size="12">PUB / SUB sockets per topic</text>
+    <text x="616" y="302" fill="#d0d6e2" font-size="12">bind() server-side, connect() client-side</text>
+    <text x="616" y="318" fill="#d0d6e2" font-size="12">reliable, ordered, queued</text>
+    <text x="616" y="340" fill="#9aa3b2" font-size="11.5" font-style="italic">use: production cross-host control</text>
+    <text x="616" y="356" fill="#9aa3b2" font-size="11.5" font-style="italic">backbone for RemoteRobotClient</text>
+    <text x="616" y="384" fill="#c084fc" font-size="11" font-weight="700">latency: few ms (LAN)</text>
+    <text x="616" y="402" fill="#c084fc" font-size="11" font-weight="700">scope: any host that can route</text>
+  </g>
+
+  <g>
+    <rect x="890" y="200" width="270" height="240" rx="10" fill="#161922" stroke="#ffb454" stroke-width="1.4"/>
+    <text x="906" y="222" fill="#ffb454" font-size="11" font-weight="700">NETWORK · DATAGRAM</text>
+    <text x="906" y="244" fill="#e7ecf3" font-size="15" font-weight="700">UdpBus</text>
+    <text x="906" y="262" fill="#9aa3b2" font-size="11">bus/udp_bus.py</text>
+    <text x="906" y="286" fill="#d0d6e2" font-size="12">raw UDP sockets per topic</text>
+    <text x="906" y="302" fill="#d0d6e2" font-size="12">unreliable, lossy, no order</text>
+    <text x="906" y="318" fill="#d0d6e2" font-size="12">low-overhead streaming</text>
+    <text x="906" y="340" fill="#9aa3b2" font-size="11.5" font-style="italic">use: Quest VR pose stream</text>
+    <text x="906" y="356" fill="#9aa3b2" font-size="11.5" font-style="italic">(hardware/quest_vr.py)</text>
+    <text x="906" y="384" fill="#ffb454" font-size="11" font-weight="700">latency: ~sub-ms</text>
+    <text x="906" y="402" fill="#ffb454" font-size="11" font-weight="700">scope: any host on the LAN</text>
+  </g>
+
+  <!-- Inheritance arrows from each impl up to PubSub -->
+  <line x1="155"  y1="200" x2="500" y2="140" stroke="#9aa3b2" stroke-width="1.2" marker-end="url(#bus-arrow)"/>
+  <line x1="445"  y1="200" x2="560" y2="140" stroke="#9aa3b2" stroke-width="1.2" marker-end="url(#bus-arrow)"/>
+  <line x1="735"  y1="200" x2="620" y2="140" stroke="#9aa3b2" stroke-width="1.2" marker-end="url(#bus-arrow)"/>
+  <line x1="1025" y1="200" x2="680" y2="140" stroke="#9aa3b2" stroke-width="1.2" marker-end="url(#bus-arrow)"/>
+</svg>
+</div>
+
+<h2>The remote pair — wrapping a Robot, not a RobotNode</h2>
+
+<div class="panel warn">
+  <strong>Important design choice:</strong> <code>RemoteRobotClient</code> and <code>RobotServer</code> wrap a single <strong><code>Robot</code></strong> instance — not a <code>RobotNode</code>.
+  <p style="margin:8px 0 0">That means the remoting boundary sits one level below where you might expect. Anything that takes a <code>Robot</code> can take a remote-wrapped one without noticing. The orchestrator, the <code>RobotNode</code>, the <code>SystemState</code> callbacks — none of them know whether the Robot under them is local silicon, a digital twin, or a ZMQ stub pointing at another machine.</p>
+  <p style="margin:8px 0 0"><strong>The flip side:</strong> today there's one <code>RobotNode</code> per follower. The modularity is at the <em>Robot</em> level, not yet at the <em>RobotNode</em> level. See the "Future" panel below.</p>
+</div>
+
+<div class="diagram" style="background:var(--panel)">
+<svg viewBox="0 0 1180 380" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif">
+  <defs>
+    <marker id="rp-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4ea1ff"/></marker>
+    <marker id="rp-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7fd1a8"/></marker>
+  </defs>
+
+  <!-- CLIENT side -->
+  <rect x="20" y="40" width="380" height="300" rx="12" fill="#161922" stroke="#7fd1a8" stroke-width="1.6"/>
+  <text x="36" y="62" fill="#7fd1a8" font-size="11" font-weight="700">CLIENT PROCESS  (e.g. atlas main)</text>
+
+  <rect x="40" y="80" width="340" height="50" rx="6" fill="#1c2030" stroke="#262b39"/>
+  <text x="50" y="100" fill="#4ea1ff" font-size="11" font-weight="700">OrchestratorNode  ·  RobotNode</text>
+  <text x="50" y="116" fill="#9aa3b2" font-size="11">treats the Robot below as just "a Robot"</text>
+
+  <rect x="40" y="148" width="340" height="80" rx="6" fill="#1c2030" stroke="#c084fc"/>
+  <text x="50" y="170" fill="#c084fc" font-size="11" font-weight="700">RemoteRobotClient  (Robot subclass)</text>
+  <text x="50" y="188" fill="#9aa3b2" font-size="11">robot/remote/robot_client.py</text>
+  <text x="50" y="206" fill="#d0d6e2" font-size="12">set_state(action) → bus.publish(TOPIC_COMMAND, …)</text>
+  <text x="50" y="222" fill="#d0d6e2" font-size="12">on bus(TOPIC_STATE) → cache as self._state</text>
+
+  <rect x="40" y="246" width="340" height="80" rx="6" fill="#1c2030" stroke="#4ea1ff"/>
+  <text x="50" y="266" fill="#4ea1ff" font-size="11" font-weight="700">PubSub bus (client end)</text>
+  <text x="50" y="282" fill="#9aa3b2" font-size="11">ZmqBus.connect(host, ports)  /  MpBus  /  InProcessBus</text>
+  <text x="50" y="302" fill="#d0d6e2" font-size="12">TOPIC_COMMAND  →  out</text>
+  <text x="50" y="318" fill="#d0d6e2" font-size="12">TOPIC_STATE    ←  in</text>
+
+  <!-- BUS LINE in the middle -->
+  <g>
+    <line x1="400" y1="285" x2="780" y2="285" stroke="#4ea1ff" stroke-width="2" marker-end="url(#rp-blue)" stroke-dasharray="6 3"/>
+    <line x1="780" y1="265" x2="400" y2="265" stroke="#7fd1a8" stroke-width="2" marker-end="url(#rp-green)" stroke-dasharray="6 3"/>
+    <text x="590" y="252" text-anchor="middle" fill="#7fd1a8" font-size="11">TOPIC_STATE   (RobotState frames)</text>
+    <text x="590" y="305" text-anchor="middle" fill="#4ea1ff" font-size="11">TOPIC_COMMAND (RobotState actions)</text>
+    <text x="590" y="330" text-anchor="middle" fill="#9aa3b2" font-size="11" font-style="italic">same wire whatever the bus is</text>
+  </g>
+
+  <!-- SERVER side -->
+  <rect x="780" y="40" width="380" height="300" rx="12" fill="#161922" stroke="#7fd1a8" stroke-width="1.6"/>
+  <text x="796" y="62" fill="#7fd1a8" font-size="11" font-weight="700">SERVER PROCESS  (e.g. piper-host)</text>
+
+  <rect x="800" y="80" width="340" height="80" rx="6" fill="#1c2030" stroke="#4ea1ff"/>
+  <text x="810" y="100" fill="#4ea1ff" font-size="11" font-weight="700">PubSub bus (server end)</text>
+  <text x="810" y="116" fill="#9aa3b2" font-size="11">ZmqBus.bind(ports)  /  MpBus  /  InProcessBus</text>
+  <text x="810" y="136" fill="#d0d6e2" font-size="12">TOPIC_COMMAND  ←  in</text>
+  <text x="810" y="152" fill="#d0d6e2" font-size="12">TOPIC_STATE    →  out</text>
+
+  <rect x="800" y="180" width="340" height="80" rx="6" fill="#1c2030" stroke="#c084fc"/>
+  <text x="810" y="200" fill="#c084fc" font-size="11" font-weight="700">RobotServer</text>
+  <text x="810" y="218" fill="#9aa3b2" font-size="11">robot/remote/robot_server.py</text>
+  <text x="810" y="236" fill="#d0d6e2" font-size="12">subscribes TOPIC_COMMAND → robot.set_state()</text>
+  <text x="810" y="252" fill="#d0d6e2" font-size="12">polls robot.get_state() → publishes TOPIC_STATE</text>
+
+  <rect x="800" y="276" width="340" height="50" rx="6" fill="#1c2030" stroke="#7fd1a8"/>
+  <text x="810" y="296" fill="#7fd1a8" font-size="11" font-weight="700">Robot  (the actual one)</text>
+  <text x="810" y="312" fill="#9aa3b2" font-size="11">PiperRobot · DigitalTwinPID · DummyRobot · anything</text>
+</svg>
+</div>
+
+<p class="small muted">Same <code>RobotServer</code> class, same <code>RemoteRobotClient</code> class — the only thing that changes between dev/test/prod is which <code>PubSub</code> implementation gets passed in.</p>
+
+<h2>How to instantiate — same client, four transports</h2>
+
+<div class="panel" style="background:#0a0c11">
+<pre style="margin:0;background:transparent;border:none;padding:0;font-size:13px"><span style="color:#7fd1a8">RemoteRobotClient</span>.<span style="color:#c084fc">over_zmq</span>(
+    robot_type=<span style="color:#ffb454">"piper"</span>,
+    host=<span style="color:#ffb454">"piper-host.lan"</span>,
+    state_port=<span style="color:#4ea1ff">5555</span>, command_port=<span style="color:#4ea1ff">5556</span>,
+)
+<span style="color:#9aa3b2"># production · server already running on another host · ZmqBus.connect</span>
+
+<span style="color:#7fd1a8">RemoteRobotClient</span>.<span style="color:#c084fc">over_zmq_local_server</span>(
+    robot_config=<span style="color:#ffb454">"piper.yaml"</span>,
+    state_port=<span style="color:#4ea1ff">5555</span>, command_port=<span style="color:#4ea1ff">5556</span>,
+)
+<span style="color:#9aa3b2"># spawn a robot_server subprocess on localhost, talk to it via ZMQ</span>
+<span style="color:#9aa3b2"># useful when the robot lib needs a different env than atlas</span>
+
+<span style="color:#7fd1a8">RemoteRobotClient</span>.<span style="color:#c084fc">over_in_process</span>(robot_config=<span style="color:#ffb454">"dummy.yaml"</span>)
+<span style="color:#9aa3b2"># server runs in the SAME process, talks over InProcessBus</span>
+<span style="color:#9aa3b2"># useful for tests — exercises the proxy code path with zero IPC overhead</span>
+
+<span style="color:#7fd1a8">RemoteRobotClient</span>.<span style="color:#c084fc">over_mp_subprocess</span>(robot_config=<span style="color:#ffb454">"dummy.yaml"</span>)
+<span style="color:#9aa3b2"># mp.Process running RobotServer, talk over MpBus (mp.Queue pair)</span>
+<span style="color:#9aa3b2"># useful when you want process isolation without OS sockets</span></pre>
+</div>
+
+<p class="small muted">All four return a <code>RemoteRobotClient</code> — which IS a <code>Robot</code>. Pass it to <code>RobotNode</code> or call <code>real_robot.set_digital_twin(client)</code> just like any other Robot.</p>
+
+<h2>Where this sits in the abstraction stack</h2>
+
+<div class="diagram" style="background:var(--panel)">
+<svg viewBox="0 0 1180 280" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif">
+  <defs>
+    <marker id="st-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4ea1ff"/></marker>
+  </defs>
+
+  <rect x="40"  y="20" width="220" height="60" rx="8" fill="#1c2030" stroke="#4ea1ff"/>
+  <text x="150" y="44" text-anchor="middle" fill="#e7ecf3" font-size="13" font-weight="700">Orchestrator</text>
+  <text x="150" y="62" text-anchor="middle" fill="#9aa3b2" font-size="11">mode state machine</text>
+
+  <rect x="320" y="20" width="220" height="60" rx="8" fill="#1c2030" stroke="#7fd1a8"/>
+  <text x="430" y="44" text-anchor="middle" fill="#e7ecf3" font-size="13" font-weight="700">RobotNode</text>
+  <text x="430" y="62" text-anchor="middle" fill="#9aa3b2" font-size="11">owns ONE Robot (today)</text>
+
+  <rect x="600" y="20" width="240" height="60" rx="8" fill="#1c2030" stroke="#c084fc"/>
+  <text x="720" y="44" text-anchor="middle" fill="#e7ecf3" font-size="13" font-weight="700">Robot  (abstract contract)</text>
+  <text x="720" y="62" text-anchor="middle" fill="#9aa3b2" font-size="11">.set_state / .get_state</text>
+
+  <line x1="260" y1="50" x2="320" y2="50" stroke="#4ea1ff" stroke-width="1.5" marker-end="url(#st-arrow)"/>
+  <line x1="540" y1="50" x2="600" y2="50" stroke="#4ea1ff" stroke-width="1.5" marker-end="url(#st-arrow)"/>
+
+  <!-- What that Robot might be -->
+  <text x="600" y="118" fill="#9aa3b2" font-size="11" font-weight="700">…and "that Robot" might actually be:</text>
+
+  <rect x="600" y="130" width="240" height="50" rx="6" fill="#1c2030" stroke="#7fd1a8"/>
+  <text x="720" y="148" text-anchor="middle" fill="#7fd1a8" font-size="12" font-weight="700">PiperRobot</text>
+  <text x="720" y="166" text-anchor="middle" fill="#9aa3b2" font-size="11">talks to real arm directly</text>
+
+  <rect x="600" y="190" width="240" height="50" rx="6" fill="#1c2030" stroke="#c084fc"/>
+  <text x="720" y="208" text-anchor="middle" fill="#c084fc" font-size="12" font-weight="700">DigitalTwinPID</text>
+  <text x="720" y="226" text-anchor="middle" fill="#9aa3b2" font-size="11">P/D simulation</text>
+
+  <rect x="880" y="130" width="260" height="110" rx="6" fill="#1c2030" stroke="#ffb454"/>
+  <text x="1010" y="150" text-anchor="middle" fill="#ffb454" font-size="12" font-weight="700">RemoteRobotClient</text>
+  <text x="1010" y="166" text-anchor="middle" fill="#9aa3b2" font-size="11">→ bus → RobotServer (another proc/host)</text>
+  <text x="1010" y="186" text-anchor="middle" fill="#9aa3b2" font-size="11">                  ↓</text>
+  <text x="1010" y="204" text-anchor="middle" fill="#7fd1a8" font-size="12" font-weight="700">PiperRobot  (over there)</text>
+  <text x="1010" y="222" text-anchor="middle" fill="#9aa3b2" font-size="11">or DigitalTwinPID, or anything else</text>
+
+  <line x1="840" y1="155" x2="880" y2="155" stroke="#9aa3b2" stroke-width="1.2"/>
+  <line x1="840" y1="215" x2="880" y2="215" stroke="#9aa3b2" stroke-width="1.2"/>
+</svg>
+</div>
+
+<h2>Future direction</h2>
+
+<div class="panel purple">
+  <strong>Today:</strong> one <code>RobotNode</code> per follower; modularity lives at the <code>Robot</code> level. You can swap silicon for sim, swap local for remote, attach a twin — all without touching anything above <code>RobotNode</code>. But you can't yet teach a single <code>RobotNode</code> to look after multiple robots at once.
+  <p style="margin:8px 0 0"><strong>Where this is going:</strong> the long-term plan is <code>RobotNode</code> as a <em>collection</em>. The communication boundary already exists at the right place (per-Robot, not per-Node), so the future shape is additive — wrap each member of the collection in whatever transport it needs, the rest of the system keeps treating them as Robots.</p>
+</div>
+
+<div class="diagram" style="background:var(--panel)">
+<svg viewBox="0 0 1180 260" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif">
+  <!-- TODAY -->
+  <text x="40" y="32" fill="#9aa3b2" font-size="11" font-weight="700">TODAY</text>
+
+  <rect x="40" y="46" width="500" height="180" rx="12" fill="#161922" stroke="#7fd1a8" stroke-width="1.4"/>
+  <text x="56" y="68" fill="#7fd1a8" font-size="12" font-weight="700">Orchestrator</text>
+
+  <rect x="60" y="84" width="200" height="120" rx="8" fill="#1c2030" stroke="#7fd1a8"/>
+  <text x="160" y="106" text-anchor="middle" fill="#e7ecf3" font-size="13" font-weight="700">RobotNode</text>
+  <text x="160" y="122" text-anchor="middle" fill="#9aa3b2" font-size="11">(one robot)</text>
+  <rect x="76" y="138" width="168" height="50" rx="6" fill="#1c2030" stroke="#c084fc"/>
+  <text x="160" y="158" text-anchor="middle" fill="#c084fc" font-size="11">Robot</text>
+  <text x="160" y="174" text-anchor="middle" fill="#9aa3b2" font-size="10">(local / twin / remote-wrapped)</text>
+
+  <rect x="290" y="84" width="200" height="120" rx="8" fill="#1c2030" stroke="#7fd1a8"/>
+  <text x="390" y="106" text-anchor="middle" fill="#e7ecf3" font-size="13" font-weight="700">RobotNode</text>
+  <text x="390" y="122" text-anchor="middle" fill="#9aa3b2" font-size="11">(one robot)</text>
+  <rect x="306" y="138" width="168" height="50" rx="6" fill="#1c2030" stroke="#c084fc"/>
+  <text x="390" y="158" text-anchor="middle" fill="#c084fc" font-size="11">Robot</text>
+  <text x="390" y="174" text-anchor="middle" fill="#9aa3b2" font-size="10">(local / twin / remote-wrapped)</text>
+
+  <!-- FUTURE -->
+  <text x="600" y="32" fill="#9aa3b2" font-size="11" font-weight="700">FUTURE  (planned)</text>
+
+  <rect x="600" y="46" width="540" height="180" rx="12" fill="#161922" stroke="#c084fc" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="616" y="68" fill="#c084fc" font-size="12" font-weight="700">Orchestrator</text>
+
+  <rect x="620" y="84" width="500" height="120" rx="8" fill="#1c2030" stroke="#c084fc" stroke-dasharray="4 3"/>
+  <text x="870" y="106" text-anchor="middle" fill="#e7ecf3" font-size="13" font-weight="700">RobotNode  (collection)</text>
+
+  <rect x="636"  y="124" width="150" height="64" rx="6" fill="#1c2030" stroke="#c084fc"/>
+  <text x="711" y="146" text-anchor="middle" fill="#c084fc" font-size="11">Robot A</text>
+  <text x="711" y="162" text-anchor="middle" fill="#9aa3b2" font-size="10">local</text>
+  <text x="711" y="178" text-anchor="middle" fill="#9aa3b2" font-size="10">(PiperRobot)</text>
+
+  <rect x="800"  y="124" width="150" height="64" rx="6" fill="#1c2030" stroke="#ffb454"/>
+  <text x="875" y="146" text-anchor="middle" fill="#ffb454" font-size="11">Robot B</text>
+  <text x="875" y="162" text-anchor="middle" fill="#9aa3b2" font-size="10">remote (ZMQ)</text>
+  <text x="875" y="178" text-anchor="middle" fill="#9aa3b2" font-size="10">RemoteRobotClient</text>
+
+  <rect x="964"  y="124" width="150" height="64" rx="6" fill="#1c2030" stroke="#c084fc"/>
+  <text x="1039" y="146" text-anchor="middle" fill="#c084fc" font-size="11">Robot C</text>
+  <text x="1039" y="162" text-anchor="middle" fill="#9aa3b2" font-size="10">twin (in-process)</text>
+  <text x="1039" y="178" text-anchor="middle" fill="#9aa3b2" font-size="10">DigitalTwinPID</text>
+</svg>
+</div>
+
+<p class="small muted">The dashed boxes on the right haven't happened yet — that's the planned direction. The point of the diagram is to show that the building blocks (transport-agnostic <code>Robot</code> wrappers) are already in place to support it without changing the surface.</p>
+
+</section><!-- /tab comms -->
+
+<footer>
+  Source map from working tree on 2026-05-16. Interactive simulation is an abstraction — particles and queue counts are illustrative, not real-time taps. When the code drifts, edit this page (<code>knowledge/docs/assets/digital_twin_flow.html</code>) so the picture stays honest.
+</footer>
+
+</div>
+
+<script>
+// ---- tab switching ----
+(function() {
+  const btns = document.querySelectorAll('.tab-nav .tab-btn');
+  const tabs = document.querySelectorAll('section.tab');
+  btns.forEach(b => b.addEventListener('click', () => {
+    const target = b.dataset.target;
+    btns.forEach(x => x.classList.toggle('active', x === b));
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === target));
+  }));
+})();
+
+(function() {
+  const QUEUE_CAP = 32;
+  const state = {
+    mode: 'teleop',
+    dt: false,
+    recording: false,
+    queue: [],
+    auto: false,
+    autoTimer: null,
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const $$ = (sel) => document.querySelectorAll(sel);
+  const svg = $('flow-svg');
+
+  // ---------- queue DOM init ----------
+  const queueEl = $('queue-display');
+  for (let i = 0; i < QUEUE_CAP; i++) {
+    const s = document.createElement('div');
+    s.className = 'slot';
+    queueEl.appendChild(s);
+  }
+  $('queue-cap').textContent = QUEUE_CAP;
+
+  function renderQueue(flashIdx) {
+    const slots = queueEl.children;
+    for (let i = 0; i < QUEUE_CAP; i++) {
+      slots[i].classList.toggle('full', i < state.queue.length);
+      slots[i].classList.remove('flash');
+    }
+    if (typeof flashIdx === 'number' && flashIdx >= 0 && flashIdx < QUEUE_CAP) {
+      slots[flashIdx].classList.add('flash');
+      setTimeout(() => slots[flashIdx].classList.remove('flash'), 200);
+    }
+    $('queue-count').textContent = state.queue.length;
+    $('queue-svg-label').textContent = `depth: ${state.queue.length}`;
+    const stateText = state.mode === 'replay' ? 'draining (REPLAY)' :
+      state.recording ? 'recording' :
+      state.queue.length > 0 ? 'frozen' : 'idle';
+    $('queue-state').textContent = stateText;
+  }
+
+  // ---------- log ----------
+  const logEl = $('log');
+  function log(category, msg) {
+    const t = new Date().toLocaleTimeString('en-GB', { hour12: false });
+    const line = document.createElement('div');
+    line.className = `line ${category}`;
+    line.innerHTML = `<span class="t">${t}</span><span class="msg">${msg}</span>`;
+    logEl.prepend(line);
+    while (logEl.children.length > 60) logEl.removeChild(logEl.lastChild);
+  }
+
+  // ---------- highlight management ----------
+  function applyHighlights() {
+    // status pills
+    $('status-mode').textContent = 'mode: ' + state.mode;
+    $('status-mode').classList.toggle('live', state.mode !== 'estop');
+    $('status-dt').textContent = 'DT: ' + (state.dt ? 'on' : 'off');
+    $('status-dt').classList.toggle('live', state.dt);
+    $('status-rec').textContent = 'rec: ' + (state.recording ? 'on' : 'off');
+    $('status-rec').classList.toggle('live', state.recording);
+
+    // mode buttons
+    $$('button.mode').forEach(b => b.classList.toggle('on', b.dataset.mode === state.mode));
+    $('btn-dt').classList.toggle('on', state.dt);
+    $('btn-rec').classList.toggle('on', state.recording);
+    $('btn-rec').textContent = state.recording ? 'stop_recording' : 'start_recording';
+    $('btn-dt').textContent = state.dt ? 'enable_digital_twin(True)' : 'enable_digital_twin(False)';
+    $('btn-auto').classList.toggle('on', state.auto);
+    $('btn-auto').textContent = state.auto ? 'Auto ●' : 'Auto';
+
+    // svg in-diagram labels
+    $('orch-mode-label').textContent = 'mode: ' + state.mode;
+    $('gate-state').textContent = 'flag: ' + (state.dt ? 'ON' : 'OFF');
+    $('gate-state').setAttribute('fill', state.dt ? '#c084fc' : '#9aa3b2');
+
+    // recording badge
+    $('rec-dot').classList.toggle('on', state.recording);
+    $('rec-label').setAttribute('opacity', state.recording ? '1' : '0');
+
+    // HW frozen overlay (DT on means HW frozen)
+    $('hw-frozen').classList.toggle('show', state.dt);
+    $('hw-frozen-label').setAttribute('opacity', state.dt ? '1' : '0');
+
+    // leader nodes — only the active one bright; others dimmed
+    ['teleop','ai','ctrl','replay'].forEach(m => {
+      const node = svg.querySelector(`g.node[data-leader="${m}"]`);
+      const isActive = (state.mode === m) && state.mode !== 'estop';
+      node.classList.toggle('dim', !isActive);
+      node.classList.toggle('glow', isActive);
+      // their flow to orchestrator
+      const flow = svg.querySelector(`#p-${m}-orch`);
+      if (flow) {
+        flow.classList.toggle('dim', !isActive);
+        flow.classList.toggle('hot', isActive);
+      }
+    });
+
+    // viewer -> ctrl jog path: only meaningful when CONTROLLER mode
+    svg.querySelector('#p-viewer-ctrl').classList.toggle('dim', state.mode !== 'ctrl');
+    svg.querySelector('#p-viewer-ctrl').classList.toggle('hot', state.mode === 'ctrl');
+
+    // main flow (orch→bus→follower): hot when mode emits commands (not estop)
+    const emits = state.mode !== 'estop';
+    ['p-orch-bus','p-bus-follower'].forEach(id => {
+      const p = svg.querySelector('#' + id);
+      p.classList.toggle('dim', !emits);
+      p.classList.toggle('hot', emits);
+    });
+
+    // follower internal flows: DT toggle
+    svg.querySelector('#p-follower-hw').classList.toggle('dim', state.dt);
+    svg.querySelector('#p-follower-hw').classList.toggle('hot', !state.dt);
+    svg.querySelector('#p-follower-twin').classList.toggle('dim', !state.dt);
+    svg.querySelector('#p-follower-twin').classList.toggle('hot', state.dt);
+    svg.querySelector('#p-gate-twin').classList.toggle('dim', !state.dt);
+    svg.querySelector('#p-gate-twin').classList.toggle('hot', state.dt);
+    svg.querySelector('#p-hw-mirror').classList.toggle('dim', state.dt); // when DT on, HW is frozen, no mirror
+
+    // state publication: twin publishes when DT on, HW publishes when DT off
+    svg.querySelector('#p-twin-systate').classList.toggle('dim', !state.dt);
+    svg.querySelector('#p-twin-systate').classList.toggle('hot', state.dt);
+    svg.querySelector('#p-hw-systate').classList.toggle('dim', state.dt);
+    svg.querySelector('#p-hw-systate').classList.toggle('hot', !state.dt);
+
+    // record flow visible only when recording & DT on (the gating)
+    const recOK = state.recording && state.mode !== 'replay';
+    svg.querySelector('#p-twin-queue').classList.toggle('dim', !recOK);
+    svg.querySelector('#p-twin-queue').classList.toggle('hot', recOK);
+
+    // replay drain visible only when REPLAY
+    svg.querySelector('#p-queue-replay').classList.toggle('dim', state.mode !== 'replay');
+    svg.querySelector('#p-queue-replay').classList.toggle('hot', state.mode === 'replay');
+
+    // tick explainer
+    updateExplainer();
+  }
+
+  function updateExplainer() {
+    const e = $('tick-explainer');
+    if (state.mode === 'estop') {
+      e.textContent = 'E-STOP: no commands produced. Tick does nothing.';
+      return;
+    }
+    if (state.mode === 'replay') {
+      if (state.queue.length === 0) {
+        e.textContent = 'REPLAY: queue is empty. Switch to another mode, record some actions, then come back.';
+      } else {
+        e.innerHTML = `REPLAY: each tick pops one item (depth=${state.queue.length}) via <code>twin.get_action()</code>, retags type, smooths, publishes to bus. Recording is gated off.`;
+      }
+      return;
+    }
+    const leader = { teleop:'leader state-change callback', ai:'AINode.predict_sync()', ctrl:'controller.get_action()' }[state.mode];
+    const exec = state.dt ? 'twin.set_state() (HW frozen)' : '_set_state_impl() (HW moves) + mirror_to_twin()';
+    const rec = state.recording ? ` Recording on → action appended to <code>_record_queue</code>.` : '';
+    e.innerHTML = `${state.mode.toUpperCase()}: action originates at <code>${leader}</code>, hits the bus, then follower runs <code>${exec}</code>.${rec}`;
+  }
+
+  // ---------- particles ----------
+  function spawnParticle(pathId, color, durationMs, onDone) {
+    const path = svg.querySelector('#' + pathId);
+    if (!path) { onDone && onDone(); return; }
+    const total = path.getTotalLength();
+    const ns = 'http://www.w3.org/2000/svg';
+    const c = document.createElementNS(ns, 'circle');
+    c.setAttribute('r', '5');
+    c.setAttribute('fill', color);
+    c.setAttribute('filter', 'drop-shadow(0 0 4px ' + color + ')');
+    svg.appendChild(c);
+    const t0 = performance.now();
+    function step(t) {
+      const p = Math.min(1, (t - t0) / durationMs);
+      const pt = path.getPointAtLength(p * total);
+      c.setAttribute('cx', pt.x);
+      c.setAttribute('cy', pt.y);
+      if (p < 1) requestAnimationFrame(step);
+      else { svg.removeChild(c); onDone && onDone(); }
+    }
+    requestAnimationFrame(step);
+  }
+
+  function chainParticles(segments, doneFn) {
+    let i = 0;
+    function next() {
+      if (i >= segments.length) { doneFn && doneFn(); return; }
+      const seg = segments[i++];
+      spawnParticle(seg.path, seg.color, seg.dur, next);
+    }
+    next();
+  }
+
+  // ---------- the simulated tick ----------
+  function tick() {
+    if (state.mode === 'estop') {
+      log('estop', 'tick: e-stop active, no command produced');
+      return;
+    }
+
+    if (state.mode === 'replay') {
+      if (state.queue.length === 0) {
+        log('replay', 'tick: queue empty, nothing to drain');
+        return;
+      }
+      // FIFO drain: real code does deque.popleft() in twin.get_action()
+      state.queue.shift();
+      renderQueue(state.queue.length);
+      log('replay', `twin.get_action() popleft — depth ${state.queue.length+1}→${state.queue.length}`);
+      // animate: queue → replay leader → orch → bus → follower → (hw or twin)
+      const exec = state.dt
+        ? [{path:'p-follower-twin', color:'#c084fc', dur:300}, {path:'p-gate-twin', color:'#c084fc', dur:300}]
+        : [{path:'p-follower-hw', color:'#7fd1a8', dur:300}];
+      chainParticles([
+        {path:'p-queue-replay',  color:'#ffb454', dur:900},
+        {path:'p-replay-orch',   color:'#ffb454', dur:300},
+        {path:'p-orch-bus',      color:'#4ea1ff', dur:300},
+        {path:'p-bus-follower',  color:'#4ea1ff', dur:300},
+        ...exec,
+      ]);
+      return;
+    }
+
+    // teleop / ai / ctrl
+    const leaderPath = 'p-' + state.mode + '-orch';
+    const leaderColor = { teleop:'#4ea1ff', ai:'#7fd1a8', ctrl:'#c084fc' }[state.mode];
+    log(state.mode, `tick: ${state.mode.toUpperCase()} produces action → bus`);
+
+    const exec = state.dt
+      ? [
+          {path:'p-follower-twin', color:'#c084fc', dur:300},
+          {path:'p-gate-twin', color:'#c084fc', dur:300},
+        ]
+      : [
+          {path:'p-follower-hw', color:'#7fd1a8', dur:300},
+          {path:'p-hw-mirror', color:'#7fd1a8', dur:500},
+        ];
+
+    chainParticles([
+      {path:leaderPath, color:leaderColor, dur:400},
+      {path:'p-orch-bus', color:'#4ea1ff', dur:300},
+      {path:'p-bus-follower', color:'#4ea1ff', dur:300},
+      ...exec,
+    ], () => {
+      // after execute: optionally record & publish state
+      if (state.recording && state.queue.length < QUEUE_CAP) {
+        const newIdx = state.queue.length;
+        state.queue.push({ts: Date.now()});
+        renderQueue(newIdx);
+        spawnParticle('p-twin-queue', '#c084fc', 250);
+        log('ctrl', `_record(action) → queue depth ${state.queue.length-1}→${state.queue.length}`);
+      } else if (state.recording) {
+        log('system', 'queue full (cap ' + QUEUE_CAP + ')');
+      }
+      // state publish back to SystemState (which path depends on DT)
+      const publishPath = state.dt ? 'p-twin-systate' : 'p-hw-systate';
+      spawnParticle(publishPath, '#7fd1a8', 600, () => {
+        spawnParticle('p-systate-viewer', '#7fd1a8', 250);
+        // STATE_UPDATE @ 5Hz fans out to the React frontend (joint debug strip)
+        spawnParticle('p-systate-frontend', '#7fd1a8', 800);
+      });
+    });
+  }
+
+  // ---------- event handlers ----------
+  $$('button.mode').forEach(b => b.addEventListener('click', () => {
+    const newMode = b.dataset.mode;
+    if (newMode === state.mode) return;
+    log('system', `set_control_mode(${state.mode} → ${newMode})`);
+    state.mode = newMode;
+    // entering REPLAY auto-gates recording (begin_replay)
+    if (newMode === 'replay' && state.recording) {
+      log('replay', 'twin.begin_replay() — recording gate ON (recording temporarily suppressed)');
+    }
+    applyHighlights();
+  }));
+
+  $('btn-dt').addEventListener('click', () => {
+    state.dt = !state.dt;
+    log('system', `enable_digital_twin(${state.dt}) — ${state.dt ? 'commands route to twin, HW frozen' : 'commands drive HW, mirror to twin'}`);
+    if (!state.dt) log('system', 'snap_twin_to_self() — immediate teleport (soft-snap was reverted in WT)');
+    applyHighlights();
+  });
+
+  $('btn-rec').addEventListener('click', () => {
+    state.recording = !state.recording;
+    log('system', state.recording ? 'twin.start_recording()' : 'twin.stop_recording()');
+    applyHighlights();
+  });
+
+  $('btn-tick').addEventListener('click', () => tick());
+
+  $('btn-auto').addEventListener('click', () => {
+    state.auto = !state.auto;
+    if (state.auto) {
+      state.autoTimer = setInterval(tick, 700);
+      log('system', 'auto-tick ON (700ms)');
+    } else {
+      clearInterval(state.autoTimer);
+      state.autoTimer = null;
+      log('system', 'auto-tick OFF');
+    }
+    applyHighlights();
+  });
+
+  $('btn-clear').addEventListener('click', () => {
+    state.queue = [];
+    renderQueue();
+    logEl.innerHTML = '';
+    log('system', 'reset — queue cleared, log cleared');
+  });
+
+  // init
+  applyHighlights();
+  renderQueue();
+  log('system', 'ready — pick a mode and hit Tick (or Auto)');
+})();
+</script>
+</body>
+</html>
