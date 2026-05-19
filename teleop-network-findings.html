@@ -1283,6 +1283,7 @@ main
   <a href="#webrtc">WebRTC</a>
 
   <h4>Robotics middleware</h4>
+  <a href="#xmlrpc">XML-RPC</a>
   <a href="#ros1">ROS 1</a>
   <a href="#ros2">ROS 2 / DDS</a>
   <a href="#zmq">ZeroMQ</a>
@@ -1598,17 +1599,50 @@ main
 
 <hr/>
 
-<h2 id="ros1"><span class="section-num">17</span>ROS 1 networking</h2>
+<h2 id="xmlrpc"><span class="section-num">17</span>XML-RPC <span class="pill tcp">request/reply over HTTP</span></h2>
+<p>A 1998-era remote procedure call protocol. Function call &rarr; XML body &rarr; HTTP POST &rarr; XML response. Same idea as REST or JSON-RPC, older serialization. It refuses to die in robotics: Fairino's FR-series collaborative arms expose every motion, IO, and gripper command over XML-RPC on port 20003, and ROS 1's Master (covered next) uses XML-RPC for the discovery handshake before nodes switch to TCPROS for the actual data. A long tail of other industrial arms (Aubo, Elite, JAKA on earlier firmware) ship the same way, because the protocol is stateless, language-agnostic, and free to implement on top of any HTTP stack.</p>
+<p>What it looks like on the wire. Calling <code>MoveL(...)</code> with twelve doubles serializes to about 700 bytes of XML:</p>
+<pre><code>POST /RPC2 HTTP/1.1
+Content-Type: text/xml
+
+&lt;?xml version="1.0"?&gt;
+&lt;methodCall&gt;
+  &lt;methodName&gt;MoveL&lt;/methodName&gt;
+  &lt;params&gt;
+    &lt;param&gt;&lt;value&gt;&lt;array&gt;&lt;data&gt;
+      &lt;value&gt;&lt;double&gt;1.0&lt;/double&gt;&lt;/value&gt;
+      &lt;value&gt;&lt;double&gt;2.0&lt;/double&gt;&lt;/value&gt;
+      ...
+    &lt;/data&gt;&lt;/array&gt;&lt;/value&gt;&lt;/param&gt;
+  &lt;/params&gt;
+&lt;/methodCall&gt;</code></pre>
+<p>The response is more XML wrapping a single typed return value or a fault. Supported types are int, double, string, boolean, array, struct, dateTime, base64. That is the entire protocol.</p>
+<table class="compare">
+<thead><tr><th>Property</th><th>XML-RPC</th><th>JSON-RPC</th><th>Binary (gRPC/protobuf)</th></tr></thead>
+<tbody>
+<tr><td>Bytes per <code>MoveL</code> call</td><td>~700</td><td>~80</td><td>~40</td></tr>
+<tr><td>Transport</td><td>TCP + HTTP</td><td>TCP + HTTP (or WS)</td><td>HTTP/2 (TCP)</td></tr>
+<tr><td>Streaming</td><td>no</td><td>no</td><td>yes</td></tr>
+<tr><td>In Python stdlib</td><td>yes (<code>xmlrpc.client</code>)</td><td>no</td><td>no</td></tr>
+</tbody>
+</table>
+<p>125 Hz control loops run over XML-RPC just fine on a wired LAN. ~700 bytes per request &times; 125 Hz is ~87 KB/s, trivial bandwidth on any modern link. The constraint is per-call latency: every request is a TCP round-trip plus an XML parse on both ends, typically 1&ndash;3 ms on a switched LAN. That fits comfortably in the 8 ms budget at 125 Hz, and we have measured it holding 124.8 Hz against the Fairino simulator with zero overruns. Above ~200&ndash;300 Hz the per-call overhead eats the whole budget, which is why vendors that support kHz-rate streaming usually offer a separate UDP-transparent path (Fairino calls theirs <code>cmdType=1</code>) that skips both the XML parser and the TCP handshake.</p>
+<blockquote>
+<span class="label">Where it breaks down</span>
+<p>Verbose on the wire, fine for control at teleop rates over wired or low-jitter wireless, useless for high-rate streaming, and miserable over a lossy WAN where every retransmit adds an RTT. For anything past a single LAN, treat XML-RPC as the configuration channel and put real-time data on a different transport.</p>
+</blockquote>
+
+<h2 id="ros1"><span class="section-num">18</span>ROS 1 networking</h2>
 <p>ROS 1 is a centralized publish/subscribe system organized around a special process called <code>roscore</code>:</p>
 <ol>
-  <li><code>roscore</code> runs at a known address. It hosts a registry (the "Master") via XMLRPC.</li>
+  <li><code>roscore</code> runs at a known address. It hosts a registry (the "Master") via <a href="#xmlrpc">XML-RPC</a>.</li>
   <li>Every node, on startup, talks to <code>roscore</code> to <em>register</em> what topics it publishes/subscribes.</li>
   <li>The Master tells subscribers about matching publishers.</li>
   <li>Subscribers then connect <em>directly</em> to publishers, usually over <span class="pill tcp">TCPROS</span>, sometimes <span class="pill udp">UDPROS</span> for low-latency or lossy data.</li>
 </ol>
 <p>So the Master is in the discovery path but not the data path. Drawbacks: single point of failure (no Master, no graph), all nodes need direct TCP/UDP reachability to all others (bad over WAN/NAT), no QoS controls, no discovery without the Master.</p>
 
-<h2 id="ros2"><span class="section-num">18</span>ROS 2 / DDS / RTPS</h2>
+<h2 id="ros2"><span class="section-num">19</span>ROS 2 / DDS / RTPS</h2>
 <p>ROS 2 throws out the Master. Instead it uses <b>DDS (Data Distribution Service)</b>, an industrial pub/sub middleware standardized for years in defense and aerospace. The on-the-wire protocol is <b>RTPS (Real-Time Publish-Subscribe)</b>.</p>
 <p>How it discovers peers without a master: when a node starts, it sends UDP <b>multicast</b> "hello, I'm here, I publish topic X" announcements on a known multicast group. Other nodes listening on the same group hear them and reply. After discovery, data flows directly, peer-to-peer, over UDP.</p>
 <p>Each topic also has a <b>QoS profile</b>: reliability (best-effort vs reliable), durability, deadline, history depth, lifespan. You pick per-topic. Sensor streams might be best-effort, command topics reliable.</p>
@@ -1617,7 +1651,7 @@ main
 <p>Multicast doesn't traverse the public internet. ROS 2 over WAN needs a bridge: Zenoh, FastDDS Discovery Server, or DDS Router, to translate the discovery and forward the data. This is the main reason ROS 2 is great on a robot or a single LAN, and a project to deploy across continents.</p>
 </blockquote>
 
-<h2 id="zmq"><span class="section-num">19</span>ZeroMQ</h2>
+<h2 id="zmq"><span class="section-num">20</span>ZeroMQ</h2>
 <p>ZeroMQ is a messaging <em>library</em>, not a protocol. It gives you composable patterns:</p>
 <ul>
   <li><b>PUB/SUB</b>: one-to-many fanout (the <code>RemoteRobotClient</code> uses this).</li>
@@ -1633,7 +1667,7 @@ main
 
 <hr/>
 
-<h2 id="deploy"><span class="section-num">20</span>Deploying for real: routers, switches, access points</h2>
+<h2 id="deploy"><span class="section-num">21</span>Deploying for real: routers, switches, access points</h2>
 <p>So far this primer has been about packets and protocols. None of that helps you decide where to mount four pieces of hardware in a warehouse so a fleet of robots stays online. This section is the practical bridge between the abstractions and the concrete plant: what a "router" actually contains, why one box does not scale to a fleet, how VLANs keep robot traffic out of office traffic's way, what Wi-Fi 6 versus 7 actually gives you, how many bytes you can really push through the air, and what the gear costs.</p>
 
 <h3 id="deploy-router">What a "router" actually contains</h3>
