@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RFC: Pluggable Peripherals</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/github.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+<style>
+  body {
+    max-width: 86ch;
+    margin: 2em auto;
+    padding: 0 1.2em 4em;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55;
+    color: #1a1a1a;
+    background: #fff;
+  }
+  h1 {
+    border-bottom: 2px solid #1a1a1a;
+    padding-bottom: 0.3em;
+    margin-bottom: 0.4em;
+  }
+  h2 {
+    border-bottom: 1px solid #888;
+    padding-bottom: 0.2em;
+    margin-top: 2.4em;
+  }
+  h3 { margin-top: 1.6em; }
+  h4 { margin-top: 1.2em; margin-bottom: 0.4em; }
+  p { margin: 0.8em 0; }
+  code, pre {
+    font-family: "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  }
+  code {
+    background: #f4f4f4;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.92em;
+  }
+  pre {
+    border: 1px solid #e2e2e2;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 0.9em 0;
+  }
+  pre code,
+  pre code.hljs {
+    display: block;
+    padding: 0.9em 1.1em;
+    font-size: 0.88em;
+    line-height: 1.5;
+    background: #f6f8fa;
+    overflow-x: auto;
+  }
+  table {
+    border-collapse: collapse;
+    margin: 1em 0;
+    font-size: 0.94em;
+    width: 100%;
+  }
+  th, td {
+    border: 1px solid #ccc;
+    padding: 6px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: #f4f4f4; }
+  ul, ol { margin: 0.6em 0; padding-left: 1.6em; }
+  li { margin: 0.25em 0; }
+  .meta {
+    background: #f8f8f8;
+    border-left: 3px solid #888;
+    padding: 0.7em 1.1em;
+    margin: 1.2em 0 1.6em;
+    font-size: 0.95em;
+  }
+  .meta div { margin: 3px 0; }
+  .meta b { display: inline-block; min-width: 90px; }
+  .tldr {
+    background: #f0f6ff;
+    border-left: 4px solid #3a6cb8;
+    padding: 0.8em 1.2em;
+    margin: 1em 0 1.4em;
+    border-radius: 0 4px 4px 0;
+  }
+  .tldr p { margin: 0.4em 0; }
+  .goal {
+    background: #fff8e0;
+    border: 2px solid #b88914;
+    border-radius: 6px;
+    padding: 1em 1.4em 1.1em;
+    margin: 1.2em 0 2em;
+    box-shadow: 0 1px 3px rgba(184,137,20,0.15);
+  }
+  .goal-title {
+    color: #5a4109;
+    margin: 0 0 0.4em 0;
+    font-size: 1.1em;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .goal-statement {
+    font-size: 1.05em;
+    font-weight: 600;
+    color: #3d2c06;
+    margin: 0.3em 0 0.6em;
+  }
+  .goal ol {
+    margin: 0.4em 0;
+    padding-left: 1.6em;
+  }
+  .goal ol li {
+    margin: 0.25em 0;
+  }
+  .goal .extra {
+    margin-top: 0.7em;
+    padding-top: 0.6em;
+    border-top: 1px dashed #b88914;
+    font-size: 0.95em;
+    color: #5a4109;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid #ddd;
+    margin: 2.4em 0;
+  }
+  figure {
+    margin: 1.6em 0;
+    text-align: center;
+  }
+  figure svg {
+    max-width: 100%;
+    height: auto;
+    background: #fff;
+    border: 1px solid #e2e2e2;
+    border-radius: 4px;
+  }
+  figcaption {
+    font-size: 0.88em;
+    color: #555;
+    margin-top: 0.6em;
+    font-style: italic;
+  }
+  .pros-cons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.2em;
+    margin: 1em 0;
+  }
+  .pros, .cons {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 0.8em 1.1em;
+    background: #fafafa;
+  }
+  .pros { border-left: 4px solid #3d8b40; }
+  .cons { border-left: 4px solid #a8501a; }
+  .pros h4, .cons h4 { margin-top: 0; }
+</style>
+</head>
+<body>
+
+<h1>RFC: Pluggable Peripherals</h1>
+
+<div class="meta">
+  <div><b>Status</b> Draft</div>
+  <div><b>Author</b> Willem Momma</div>
+  <div><b>Scope</b> <code>servo7/robot</code>, new <code>servo7/sensors</code> and <code>servo7/actuators</code>, removal of <code>servo7/observation</code></div>
+</div>
+
+<h2>TL;DR</h2>
+
+<div class="goal">
+  <div class="goal-title">Goal</div>
+  <div class="goal-statement">
+    Swapping a peripheral on a robot is a launch-time selection, not a code edit.
+  </div>
+  <ol>
+    <li>Physically swap the actuator (or sensor) on the robot.</li>
+    <li>Relaunch <code>main</code> with the new driver name (CLI flag, or pick it in the launcher panel).</li>
+  </ol>
+  <div class="extra">
+    A single robot can carry multiple actuators and multiple sensors at the
+    same time. Different actuators speak different control languages (a
+    parallel gripper takes position, a vacuum takes on/off); the abstraction
+    handles that uniformly.
+  </div>
+</div>
+
+<div class="tldr">
+  <p>
+    Introduce two new abstractions, <code>Actuator</code> and <code>Sensor</code>,
+    both held directly as lists on the <code>Robot</code> instance. Drop the
+    <code>ObservationProvider</code> layer; its concrete subclasses collapse into
+    per-device <code>Sensor</code> classes.
+  </p>
+  <p>
+    The two abstractions are not merged into a common parent. They have
+    different lifecycles (read-only vs read/write) and different command
+    surfaces. A shared base would add inheritance complexity without removing
+    duplication.
+  </p>
+  <p>
+    First targeted drivers: an OpenCV camera, a Fairino-internal force-torque
+    sensor, and a Festo vacuum gripper. Enough to validate the shape on real
+    hardware against the Fairino FR3 before migrating the rest of the fleet.
+  </p>
+</div>
+
+<h2>Context</h2>
+
+<h3>The system today</h3>
+
+<p>
+A <code>Robot</code> ABC (<code>servo7/robot/hardware/base.py:21-803</code>) defines the
+hardware interface: <code>connect</code>, <code>disconnect</code>, <code>_get_state_impl</code>,
+<code>_set_state_impl</code>. Concrete subclasses live under
+<code>servo7/robot/hardware/</code>: <code>PiperRobot</code>, <code>FairinoRobot</code>,
+<code>R1RosRobot</code>, <code>SO100FollowerRobot</code>, plus dual variants and mocks.
+</p>
+
+<p>
+Cameras are partially abstracted, but only at a <em>provider</em> level. Every
+robot owns an optional <code>ObservationProvider</code>
+(<code>servo7/observation/provider.py:60-141</code>) built from the yaml
+<code>observation</code> block. Two concrete providers exist:
+<code>LeRobotObservationProvider</code> (OpenCV via LeRobot, with tenacity-driven
+reconnect) and <code>ROSObservationProvider</code> (ROS image topics). All cameras
+owned by a single robot must come from a single source type; there is no
+per-device camera abstraction and no path to add force-torque, lidar, or IMU
+into the same observation.
+</p>
+
+<p>
+Actuators have no abstraction at all. Every robot bakes its tool path into
+its <code>_set_state_impl</code> and <code>_get_state_impl</code>:
+</p>
+
+<table>
+<thead>
+<tr><th>Robot</th><th>Hardcoded path</th><th>Location</th></tr>
+</thead>
+<tbody>
+<tr><td>Piper</td><td><code>interface.GripperCtrl(pos, 1000, 0x01, 0)</code></td><td><code>piper.py:191</code></td></tr>
+<tr><td>R1</td><td>Two <code>JointState</code> publishers; joint indices 6 and 13</td><td><code>r1.py:340-345, 686-698</code></td></tr>
+<tr><td>SO100 Follower</td><td><code>"gripper.pos"</code> in LeRobot action dict; motor id 6</td><td><code>so100_follower.py:255-278</code></td></tr>
+<tr><td>Fairino</td><td>No end-effector implemented at all</td><td><code>fairino.py</code></td></tr>
+</tbody>
+</table>
+
+<p>
+Downstream consumers carry the same shape. <code>recorder/lerobot.py</code> has explicit
+TODOs at lines 967 and 997: "grippers and base should come from robot config."
+The <code>robot.config.gripper</code> yaml block exists (see <code>piper.yaml:23-25</code>)
+but its <code>type</code> field is metadata only; nothing reads it to pick a driver.
+</p>
+
+<figure>
+  <svg viewBox="0 0 760 540" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Current architecture">
+    <style>
+      .box { fill: #fff; stroke: #333; stroke-width: 1.5; }
+      .group { fill: #f9f9f9; stroke: #aaa; stroke-width: 1; stroke-dasharray: 4 3; }
+      .title { font-weight: bold; font-size: 13px; font-family: -apple-system, sans-serif; }
+      .abc { font-style: italic; }
+      .field { font-size: 11px; font-family: "SF Mono", Menlo, monospace; }
+      .note { font-size: 10px; fill: #777; font-style: italic; font-family: sans-serif; }
+      .arrow { stroke: #555; stroke-width: 1.4; fill: none; }
+      .compose { stroke: #555; stroke-width: 1.4; fill: none; stroke-dasharray: 5 3; }
+      .label { font-size: 11px; fill: #555; font-family: sans-serif; }
+    </style>
+
+    <text class="title" x="380" y="18" text-anchor="middle">Current architecture</text>
+
+    <rect class="box" x="265" y="40" width="230" height="80" rx="4"/>
+    <text class="title abc" x="380" y="62" text-anchor="middle">Robot  &#171;abstract&#187;</text>
+    <text class="field" x="380" y="82" text-anchor="middle">+ observation_provider</text>
+    <text class="note" x="380" y="104" text-anchor="middle">gripper logic baked into each subclass</text>
+
+    <line class="arrow" x1="380" y1="120" x2="105" y2="185"/>
+    <line class="arrow" x1="380" y1="120" x2="285" y2="185"/>
+    <line class="arrow" x1="380" y1="120" x2="480" y2="185"/>
+    <line class="arrow" x1="380" y1="120" x2="660" y2="185"/>
+
+    <rect class="box" x="20" y="185" width="170" height="100" rx="4"/>
+    <text class="title" x="105" y="205" text-anchor="middle">PiperRobot</text>
+    <text class="field" x="105" y="228" text-anchor="middle">interface.GripperCtrl(</text>
+    <text class="field" x="105" y="244" text-anchor="middle">  pos, 1000, 0x01, 0)</text>
+    <text class="note" x="105" y="270" text-anchor="middle">native SDK call</text>
+
+    <rect class="box" x="200" y="185" width="170" height="100" rx="4"/>
+    <text class="title" x="285" y="205" text-anchor="middle">FairinoRobot</text>
+    <text class="field" x="285" y="228" text-anchor="middle">no end-effector</text>
+    <text class="field" x="285" y="244" text-anchor="middle">implemented</text>
+    <text class="note" x="285" y="270" text-anchor="middle">arm only</text>
+
+    <rect class="box" x="395" y="185" width="170" height="100" rx="4"/>
+    <text class="title" x="480" y="205" text-anchor="middle">R1RosRobot</text>
+    <text class="field" x="480" y="228" text-anchor="middle">2x JointState pub</text>
+    <text class="field" x="480" y="244" text-anchor="middle">_create_gripper_message</text>
+    <text class="note" x="480" y="270" text-anchor="middle">fixed indices 6, 13</text>
+
+    <rect class="box" x="575" y="185" width="170" height="100" rx="4"/>
+    <text class="title" x="660" y="205" text-anchor="middle">SO100FollowerRobot</text>
+    <text class="field" x="660" y="228" text-anchor="middle">"gripper.pos" key in</text>
+    <text class="field" x="660" y="244" text-anchor="middle">motor action dict</text>
+    <text class="note" x="660" y="270" text-anchor="middle">motor id 6</text>
+
+    <text class="label" x="380" y="345" text-anchor="middle">Robot composes one observation provider:</text>
+    <path class="compose" d="M 380 290 L 380 360"/>
+    <polygon points="376,294 384,294 380,302" fill="#555"/>
+
+    <rect class="group" x="170" y="370" width="420" height="130" rx="4"/>
+    <text class="title abc" x="380" y="395" text-anchor="middle">ObservationProvider  &#171;abstract&#187;</text>
+    <text class="field" x="380" y="422" text-anchor="middle">LeRobotObservationProvider  (OpenCV only)</text>
+    <text class="field" x="380" y="442" text-anchor="middle">ROSObservationProvider  (ROS topics only)</text>
+    <text class="note" x="380" y="478" text-anchor="middle">all cameras must share one source type; no mixing</text>
+  </svg>
+  <figcaption>Figure 1. Current composition. Each robot subclass owns its gripper code; the provider is source-locked.</figcaption>
+</figure>
+
+<h3>The problem</h3>
+
+<p>
+Cobots are physically the same chassis with interchangeable tools. The same
+Fairino FR3 can carry a Robotiq 2F-85, a Festo vacuum cup, or a magnetic
+gripper. A workcell might run a parallel gripper on the left arm and a suction
+cup on the right. A research arm might pick up a force-torque sensor for a
+contact-rich task that didn't need one yesterday.
+</p>
+
+<p>This shape is hard to support today, for four reasons:</p>
+
+<ol>
+  <li>
+    <b>Swapping a tool requires editing the robot subclass.</b> Putting a
+    Robotiq on a Piper means writing gripper code in <code>piper.py</code> next to
+    <code>GripperCtrl</code>. Putting one on a Fairino means writing it from scratch
+    in <code>fairino.py</code>. Same tool, two subclass edits.
+  </li>
+  <li>
+    <b>Different tools speak different control languages.</b> A parallel
+    gripper takes a position scalar. A vacuum gripper takes a boolean. There is
+    no shared interface to dispatch any of them, so each subclass invents its
+    own.
+  </li>
+  <li>
+    <b>Multiple actuators per robot is not expressible.</b> The current shape
+    assumes one gripper per arm.
+  </li>
+  <li>
+    <b>Sensor diversity is bottlenecked at the provider.</b> A robot that
+    wants RGB + force-torque on the same arm cannot mix them: all cameras must
+    come from one source type, and force-torque has no producer at all even
+    though <code>RobotObservation.force_torque</code> is in the dataclass at
+    <code>robot_types.py:417</code>.
+  </li>
+</ol>
+
+<h2>Proposed Solution</h2>
+
+<h3>Architecture overview</h3>
+
+<p>
+<code>Robot</code> stops owning peripheral implementations directly. At
+<code>connect</code> time it builds two parallel lists, one of <code>Sensor</code>
+instances and one of <code>Actuator</code> instances, both from yaml, both via
+factories. The existing <code>ObservationProvider</code> layer disappears.
+</p>
+
+<figure>
+  <svg viewBox="0 0 760 700" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Proposed architecture">
+    <style>
+      .box { fill: #fff; stroke: #333; stroke-width: 1.5; }
+      .new { fill: #fff7e0; stroke: #b88914; stroke-width: 1.5; }
+      .sensors-group { fill: #f1f6fa; stroke: #6a8bb0; stroke-width: 1; stroke-dasharray: 4 3; }
+      .actuators-group { fill: #f3faf3; stroke: #6aa46a; stroke-width: 1; stroke-dasharray: 4 3; }
+      .title { font-weight: bold; font-size: 13px; font-family: -apple-system, sans-serif; }
+      .abc { font-style: italic; }
+      .field { font-size: 11px; font-family: "SF Mono", Menlo, monospace; }
+      .field-new { font-size: 11px; font-family: "SF Mono", Menlo, monospace; fill: #815e0a; font-weight: 600; }
+      .note { font-size: 10px; fill: #777; font-style: italic; font-family: sans-serif; }
+      .arrow { stroke: #555; stroke-width: 1.4; fill: none; }
+      .compose { stroke: #555; stroke-width: 1.4; fill: none; stroke-dasharray: 5 3; }
+      .label { font-size: 11px; fill: #555; font-family: sans-serif; }
+      .header { font-size: 12px; font-weight: bold; font-family: sans-serif; }
+    </style>
+
+    <text class="title" x="380" y="18" text-anchor="middle">Proposed architecture</text>
+
+    <rect class="box" x="220" y="40" width="320" height="125" rx="4"/>
+    <text class="title abc" x="380" y="62" text-anchor="middle">Robot  &#171;abstract&#187;</text>
+    <text class="field-new" x="380" y="84" text-anchor="middle">+ sensors: list[Sensor]   (new)</text>
+    <text class="field-new" x="380" y="102" text-anchor="middle">+ actuators: list[Actuator]   (new)</text>
+    <text class="field-new" x="380" y="120" text-anchor="middle">+ _read_arm_state()   (new abstract)</text>
+    <text class="field-new" x="380" y="138" text-anchor="middle">+ _write_arm_state()   (new abstract)</text>
+    <text class="note" x="380" y="158" text-anchor="middle">peripherals built by factories at connect()</text>
+
+    <line class="arrow" x1="380" y1="165" x2="105" y2="230"/>
+    <line class="arrow" x1="380" y1="165" x2="285" y2="230"/>
+    <line class="arrow" x1="380" y1="165" x2="480" y2="230"/>
+    <line class="arrow" x1="380" y1="165" x2="660" y2="230"/>
+
+    <rect class="box" x="20" y="230" width="170" height="68" rx="4"/>
+    <text class="title" x="105" y="250" text-anchor="middle">PiperRobot</text>
+    <text class="note" x="105" y="272" text-anchor="middle">arm only</text>
+    <text class="note" x="105" y="286" text-anchor="middle">(gripper code removed)</text>
+
+    <rect class="box" x="200" y="230" width="170" height="68" rx="4"/>
+    <text class="title" x="285" y="250" text-anchor="middle">FairinoRobot</text>
+    <text class="note" x="285" y="272" text-anchor="middle">arm only</text>
+    <text class="note" x="285" y="286" text-anchor="middle">(now supports any tool)</text>
+
+    <rect class="box" x="395" y="230" width="170" height="68" rx="4"/>
+    <text class="title" x="480" y="250" text-anchor="middle">R1RosRobot</text>
+    <text class="note" x="480" y="272" text-anchor="middle">arm only</text>
+    <text class="note" x="480" y="286" text-anchor="middle">(gripper pubs removed)</text>
+
+    <rect class="box" x="575" y="230" width="170" height="68" rx="4"/>
+    <text class="title" x="660" y="250" text-anchor="middle">SO100FollowerRobot</text>
+    <text class="note" x="660" y="272" text-anchor="middle">arm only</text>
+    <text class="note" x="660" y="286" text-anchor="middle">(motor 6 split out)</text>
+
+    <text class="label" x="380" y="335" text-anchor="middle">Robot.connect() composes both lists directly from yaml:</text>
+
+    <path class="compose" d="M 290 165 Q 200 280 195 360"/>
+    <polygon points="190,353 200,353 195,363" fill="#555"/>
+
+    <path class="compose" d="M 470 165 Q 560 280 565 360"/>
+    <polygon points="560,353 570,353 565,363" fill="#555"/>
+
+    <rect class="actuators-group" x="20" y="365" width="350" height="320" rx="4"/>
+    <text class="header" x="195" y="388" text-anchor="middle" fill="#3d6a3d">Actuators track</text>
+
+    <rect class="box" x="40" y="405" width="310" height="40" rx="4"/>
+    <text class="field" x="195" y="430" text-anchor="middle" font-weight="bold">Robot.actuators: list[Actuator]</text>
+
+    <path class="compose" d="M 195 445 L 195 475"/>
+    <polygon points="190,468 200,468 195,478" fill="#555"/>
+
+    <rect class="box" x="40" y="480" width="310" height="190" rx="4"/>
+    <text class="title abc" x="195" y="500" text-anchor="middle">Actuator  &#171;abstract&#187;</text>
+    <text class="field" x="195" y="528" text-anchor="middle">PiperGripper</text>
+    <text class="field" x="195" y="548" text-anchor="middle">FestoVacuum</text>
+    <text class="field" x="195" y="568" text-anchor="middle">Robotiq2F85   (future)</text>
+    <text class="field" x="195" y="588" text-anchor="middle">RosPositionGripper   (future)</text>
+    <text class="note" x="195" y="615" text-anchor="middle">command(target) + read() -&gt; ActuatorState</text>
+    <text class="note" x="195" y="635" text-anchor="middle">v1 kinds: parallel_gripper, vacuum</text>
+
+    <rect class="sensors-group" x="390" y="365" width="350" height="320" rx="4"/>
+    <text class="header" x="565" y="388" text-anchor="middle" fill="#3a5a82">Sensors track</text>
+
+    <rect class="box" x="410" y="405" width="310" height="40" rx="4"/>
+    <text class="field" x="565" y="430" text-anchor="middle" font-weight="bold">Robot.sensors: list[Sensor]</text>
+
+    <path class="compose" d="M 565 445 L 565 475"/>
+    <polygon points="560,468 570,468 565,478" fill="#555"/>
+
+    <rect class="box" x="410" y="480" width="310" height="190" rx="4"/>
+    <text class="title abc" x="565" y="500" text-anchor="middle">Sensor  &#171;abstract&#187;</text>
+    <text class="field" x="565" y="528" text-anchor="middle">OpenCVCamera</text>
+    <text class="field" x="565" y="548" text-anchor="middle">FairinoForceTorque</text>
+    <text class="field" x="565" y="568" text-anchor="middle">RealSenseCamera   (future)</text>
+    <text class="field" x="565" y="588" text-anchor="middle">RosImageCamera   (future)</text>
+    <text class="note" x="565" y="615" text-anchor="middle">read() -&gt; SensorReading (tagged by kind)</text>
+    <text class="note" x="565" y="635" text-anchor="middle">v1 kinds: rgb_camera, force_torque</text>
+  </svg>
+  <figcaption>Figure 2. Proposed composition. Symmetric: Robot owns both lists directly, no provider layer.</figcaption>
+</figure>
+
+<h3>Why two abstractions and not one</h3>
+
+<p>
+<code>Sensor</code> and <code>Actuator</code> both have <code>connect</code> and
+<code>disconnect</code>. The shared surface stops there.
+</p>
+
+<table>
+<thead>
+<tr><th></th><th>Sensor</th><th>Actuator</th></tr>
+</thead>
+<tbody>
+<tr><td>Direction</td><td>Read-only</td><td>Read and write</td></tr>
+<tr><td>Failure mode</td><td>Drop a sample, fault-isolated</td><td>Latches into robot status, safety-relevant</td></tr>
+<tr><td>Routing target</td><td><code>RobotObservation</code> slots by kind</td><td><code>ActuatorState</code> back into <code>RobotState</code></td></tr>
+</tbody>
+</table>
+
+<p>
+A common parent ABC would push abstract methods into one or both that the other
+does not need. Two narrow hierarchies match the actual shape.
+</p>
+
+<p>
+Terminology: in this RFC, "Actuator" means a tool-side peripheral (grippers,
+vacuum, etc.). The robot's joint motors are part of the arm and stay inside
+the robot subclass.
+</p>
+
+<h3>Actuator abstraction</h3>
+
+<h4>Layout</h4>
+
+<p>
+Drivers live flat under <code>servo7/actuators/</code> next to the ABC. A
+per-kind subpackage (<code>gripper/</code>, <code>vacuum/</code>) can be extracted
+later if a kind grows enough shared logic to justify a kind-level base. With
+two or three drivers the flat layout is fewer files and fewer concepts.
+</p>
+
+<pre><code>servo7/actuators/
+  base.py              # Actuator ABC + ActuatorCommand + ActuatorState + ActuatorKind
+  festo_vacuum.py      # Festo vacuum via robot digital IO
+  piper_gripper.py     # wraps interface.GripperCtrl
+  factory.py           # build_actuator(config, ctx) -&gt; Actuator</code></pre>
+
+<h4>ABC</h4>
+
+<pre><code class="language-python">class ActuatorKind(str, Enum):
+    PARALLEL_GRIPPER = "parallel_gripper"
+    VACUUM           = "vacuum"
+
+
+@dataclass
+class ActuatorCommand:
+    position: float | None = None        # parallel grippers
+    engaged: bool | None = None          # vacuum
+    force_limit: float | None = None     # optional safety
+
+
+@dataclass
+class ActuatorState:
+    timestamp: float
+    position: float | None = None
+    engaged: bool | None = None
+    is_holding: bool | None = None       # object-present, when available
+
+
+class Actuator(ABC):
+    def __init__(self, config: "ActuatorConfig") -> None:
+        self.name = config.name
+        self.config = config
+        self.connected = False
+
+    @property
+    @abstractmethod
+    def kind(self) -> ActuatorKind: ...
+
+    @abstractmethod
+    def connect(self, ctx: "RobotContext") -> bool: ...
+
+    @abstractmethod
+    def disconnect(self) -> bool: ...
+
+    @abstractmethod
+    def read(self) -> ActuatorState: ...
+
+    @abstractmethod
+    def command(self, target: ActuatorCommand) -> bool: ...
+
+    @abstractmethod
+    def is_safe(self, target: ActuatorCommand) -> bool: ...</code></pre>
+
+<p>
+Future kinds (adaptive grippers, magnets, tool changers) extend
+<code>ActuatorKind</code> and add fields to <code>ActuatorCommand</code> /
+<code>ActuatorState</code> when their first driver lands. Out of scope for v1.
+</p>
+
+<h3>Sensor abstraction</h3>
+
+<h4>Layout</h4>
+
+<p>Same flat shape:</p>
+
+<pre><code>servo7/sensors/
+  base.py              # Sensor ABC + SensorReading hierarchy + SensorKind
+  camera_opencv.py
+  ft_fairino.py        # via Fairino SDK GetForceTorqueRCS
+  factory.py           # build_sensor(config, ctx) -&gt; Sensor</code></pre>
+
+<p>
+The existing <code>servo7/observation/</code> directory is deleted. The shared
+<code>shared_memory.py</code> file moves to <code>servo7/utils/</code> since it's a
+transport concern, not an observation concern.
+</p>
+
+<h4>ABC</h4>
+
+<pre><code class="language-python">class SensorKind(str, Enum):
+    RGB_CAMERA   = "rgb_camera"
+    FORCE_TORQUE = "force_torque"
+
+
+@dataclass
+class SensorConfig:
+    name: str
+    type: str
+    params: dict[str, Any]
+
+
+class Sensor(ABC):
+    def __init__(self, config: SensorConfig) -> None:
+        self.name = config.name
+        self.config = config
+        self.connected = False
+
+    @property
+    @abstractmethod
+    def kind(self) -> SensorKind: ...
+
+    @abstractmethod
+    def connect(self, ctx: "RobotContext") -> bool: ...
+
+    @abstractmethod
+    def disconnect(self) -> bool: ...
+
+    @abstractmethod
+    def read(self) -> "SensorReading": ...
+
+
+@dataclass
+class SensorReading:
+    timestamp: float
+    kind: SensorKind
+
+@dataclass
+class CameraReading(SensorReading):
+    image: np.ndarray
+
+@dataclass
+class ForceTorqueReading(SensorReading):
+    wrench: list[float]        # [Fx, Fy, Fz, Tx, Ty, Tz]
+    frame: str = "tcp"</code></pre>
+
+<p>
+Adding depth, lidar, or IMU is additive: extend <code>SensorKind</code>, add a
+reading subclass, write a driver. The ABC does not change.
+</p>
+
+<h4>Where the provider's responsibilities go</h4>
+
+<p>
+<code>Robot.get_observation()</code> becomes a small loop that iterates
+<code>self.sensors</code>, catches per-sensor failures, populates the matching
+slot on <code>RobotObservation</code> by kind, and stashes failed names in
+<code>obs.failed_sensors</code>:
+</p>
+
+<pre><code class="language-python">def get_observation(self) -> RobotObservation:
+    obs = RobotObservation(timestamp=time.time(), robot_id=self.name)
+    failed: set[str] = set()
+    for sensor in self.sensors:
+        try:
+            self._route_reading_into_obs(sensor.read(), obs)
+        except Exception as e:
+            failed.add(sensor.name)
+            self.logger.warning(f"sensor {sensor.name} read failed: {e}")
+    obs.failed_sensors = failed
+    return obs</code></pre>
+
+<p>
+Per-sensor reconnect (with tenacity, when the driver opts in) lives inside
+each <code>Sensor.connect()</code>. The base class provides a small helper that
+subclasses opt into; it's not on the ABC because some sensors (network-mapped
+F-T, ROS topic) connect instantly and never benefit from backoff.
+</p>
+
+<h3>Shared RobotContext</h3>
+
+<p>
+Both sensors and actuators may need access to the host robot's SDK interface
+or a shared bus lock. A single typed dataclass serves both:
+</p>
+
+<pre><code class="language-python">@dataclass
+class RobotContext:
+    interface: Any = None                # PiperSDK, FairinoSDK.RPC, lerobot.Robot, ...
+    bus_lock: Any = None                 # threading.Lock for shared SDK buses
+    logger: logging.Logger | None = None</code></pre>
+
+<p>
+USB cameras don't touch <code>ctx</code>. A Festo vacuum on a Fairino reads
+<code>ctx.interface</code> to call <code>SetDO</code>. The dataclass widens as new
+transport needs appear (a ROS node field for R1-style robots, EtherCAT, etc.);
+the peripheral ABCs do not.
+</p>
+
+<h3>Robot integration</h3>
+
+<p>
+The base <code>Robot.__init__</code> adds two lists, populated at connect time:
+</p>
+
+<pre><code class="language-python">self.sensors: list[Sensor] = []
+self.actuators: list[Actuator] = []
+
+def connect(self) -> bool:
+    # ...subclass-specific arm connect happens first (e.g. open SDK port)...
+    ctx = self._build_robot_context()
+
+    for cfg in self.config.get("sensors", []):
+        sensor = build_sensor(cfg)
+        if sensor.connect(ctx):
+            self.sensors.append(sensor)
+
+    for cfg in self.config.get("actuators", []):
+        actuator = build_actuator(cfg)
+        if actuator.connect(ctx):
+            self.actuators.append(actuator)
+
+    return True</code></pre>
+
+<p>
+Read and write paths on <code>Robot</code> become:
+</p>
+
+<pre><code class="language-python">def _get_state_impl(self) -> RobotState:
+    state = self._read_arm_state()                  # subclass implements
+    self._merge_actuator_state(state)               # base class fills gripper_* fields
+    return state
+
+def _set_state_impl(self, action: RobotState) -> bool:
+    ok_arm = self._write_arm_state(action)          # subclass implements
+    ok_act = self._command_actuators(action)        # base class dispatches
+    return ok_arm and ok_act</code></pre>
+
+<p>
+Subclasses now implement <code>_read_arm_state</code> and <code>_write_arm_state</code>:
+the arm-only halves of today's <code>_get_state_impl</code> and
+<code>_set_state_impl</code>. The base class owns the actuator merge, the actuator
+command dispatch, and the sensor read loop.
+</p>
+
+<h3>Config layout and composition</h3>
+
+<p>
+Peripherals live in their own yaml files, organised as a library, and are
+composed onto a robot at launch time by name. This avoids copy-pasting full
+sensor or actuator blocks across every robot config when the underlying device
+is the same.
+</p>
+
+<pre><code>configs/
+  robots/
+    fairino_fr3.yaml
+    piper.yaml
+  actuators/
+    festo_vacuum.yaml
+    piper_gripper.yaml
+  sensors/
+    opencv_wrist.yaml
+    fairino_ft.yaml</code></pre>
+
+<p>Composition happens at the command line (the launcher panel calls the same
+composition function under the hood):</p>
+
+<pre><code>scripts/main.py --robot fairino_fr3 --sensors opencv_wrist fairino_ft --actuators festo_vacuum</code></pre>
+
+<p>
+Swapping a Piper's native gripper for a Festo vacuum is a one-flag change after
+the physical swap:
+</p>
+
+<pre><code># was:
+scripts/main.py --robot piper --actuators piper_gripper
+# is:
+scripts/main.py --robot piper --actuators festo_vacuum</code></pre>
+
+<p>
+Each peripheral yaml is robot-agnostic. The device knows its own protocol. Any
+wiring detail that IS robot-specific (an output pin number) lives in the
+peripheral yaml as a default. Many cases need no wiring detail at all: the
+Fairino's vendor SDK auto-detects connected grippers and IO; an OpenCV camera
+connects to <code>/dev/videoN</code> and never talks to the robot at all.
+</p>
+
+<p>
+The legacy top-level <code>observation:</code> block in robot yamls is read as a
+backward-compat shim and translated to the library shape at load time, so
+existing configs keep working until they get migrated.
+</p>
+
+<h3>Mapping ActuatorState onto RobotState</h3>
+
+<p>
+<code>RobotState</code> keeps <code>gripper_position</code> (single) and
+<code>gripper_positions</code> (<code>list[2]</code>) for downstream compatibility with
+the recorder and AI worker. The base class populates them from
+<code>Actuator.read()</code>:
+</p>
+
+<ul>
+  <li>
+    Single actuator: <code>gripper_position</code> is filled from
+    <code>actuators[0].read()</code>. Parallel grippers map <code>position</code>
+    directly. Vacuum maps <code>engaged</code> to a normalised scalar (1.0
+    engaged, 0.0 disengaged).
+  </li>
+  <li>
+    Multiple actuators: <code>gripper_positions[i]</code> is filled from
+    <code>actuators[i].read()</code> on the same scheme; <code>gripper_position</code>
+    stays <code>None</code>.
+  </li>
+  <li>
+    Consumers that want richer features (force reading, holding flag) read
+    <code>actuators[i].read()</code> directly via <code>Robot.actuators</code>. This
+    is the path that closes the recorder TODOs at
+    <code>recorder/lerobot.py:967, 997</code>.
+  </li>
+</ul>
+
+<p>
+Multi-actuator dispatch beyond index-based (e.g., a per-name
+<code>actuator_commands</code> dict on <code>RobotState</code>) is a follow-up: the
+list shape allows it; v1 does not require it.
+</p>
+
+<h3>Frontend control integration</h3>
+
+<p>
+A direct payoff: operators get a per-actuator control widget in the Atlas
+frontend that is decoupled from arm teleoperation. Today, toggling a Piper's
+gripper from the UI routes through the same teleop path the arm uses. With
+actuators as named, kind-tagged peripherals, the orchestrator can dispatch a
+command to a single actuator on a single robot without touching arm state.
+</p>
+
+<p>
+The mechanism reuses the existing orchestrator websocket
+(<code>servo7/nodes/websocket_server.py</code>,
+<code>servo7/nodes/message_protocol.py</code>):
+</p>
+
+<ul>
+  <li>
+    The existing <code>ROBOT_METADATA</code> broadcast grows an
+    <code>actuators</code> field listing each actuator's name, kind, and
+    optional range/unit hints. The frontend renders one widget per actuator,
+    dispatched on <code>ActuatorKind</code> (slider for
+    <code>PARALLEL_GRIPPER</code>, toggle for <code>VACUUM</code>).
+  </li>
+  <li>
+    A new <code>SET_ACTUATOR_COMMAND</code> message type carries
+    <code>{robot_id, actuator_name, command}</code>. The orchestrator handler
+    builds an <code>ActuatorCommand</code> and routes it to the named actuator
+    on the target robot.
+  </li>
+</ul>
+
+<p>
+No new transport, no separate lifecycle. Detailed payload schemas and
+rendering land in a follow-up frontend PR once the backend is in place.
+</p>
+
+<h3>Safety and bounds</h3>
+
+<p>
+<code>Actuator.is_safe</code> owns its own range and command-shape validation.
+The current gripper-name-masking trick in
+<code>Robot._check_bounds_vectorised</code> (<code>base.py:114-117</code>) goes
+away: the arm's joint-limit logic only sees arm joints. The base class calls
+<code>is_safe</code> on each actuator before dispatching.
+</p>
+
+<h3>Concrete driver shape</h3>
+
+<p>
+One sketch to make the ABC concrete:
+</p>
+
+<pre><code class="language-python">class FestoVacuumViaRobotIO(Actuator):
+    @property
+    def kind(self) -&gt; ActuatorKind:
+        return ActuatorKind.VACUUM
+
+    def connect(self, ctx: RobotContext) -&gt; bool:
+        self._interface = ctx.interface
+        self._bus_lock  = ctx.bus_lock
+        self._activate  = int(self.config.params["activate_output"])
+        self._engaged_cache: bool = False
+        self.connected = True
+        return True
+
+    def command(self, target: ActuatorCommand) -&gt; bool:
+        if target.engaged is None:
+            return True
+        return self._set_output(bool(target.engaged))
+
+    def read(self) -&gt; ActuatorState:
+        return ActuatorState(
+            timestamp=time.time(),
+            engaged=self._engaged_cache,
+            is_holding=self._engaged_cache,
+        )
+
+    def is_safe(self, target: ActuatorCommand) -&gt; bool:
+        return target.position is None</code></pre>
+
+<p>
+The transport-specific call (<code>_set_output</code>) wraps whatever the host
+robot's SDK exposes for tool-side digital IO (for Fairino, <code>SetDO</code>
+on <code>ctx.interface</code>). A standalone <code>FestoVacuumViaModbus</code>
+can be added later for Modbus generators without changing the ABC or the yaml
+shape.
+</p>
+
+<h2>Alternatives Considered</h2>
+
+<h4>Single <code>Peripheral</code> parent ABC</h4>
+
+<p>
+Both sides have <code>connect / disconnect</code>. The shared surface stops there.
+Sensor is read-only and fault-isolated. Actuator is read-write with safety
+state and atomic stop semantics that read-only sensors do not have. A common
+base would push abstract methods into one or both that the other does not need.
+</p>
+
+<h4>One driver per (robot, tool) pair</h4>
+
+<p>
+Worst option. The matrix explodes: Piper+Festo, Fairino+Festo, R1+Festo,
+Piper+Robotiq, Fairino+Robotiq, and so on. The chosen design has one driver
+per tool, parameterised by the <code>RobotContext</code> it gets at connect time.
+Count stays linear in tool count rather than quadratic.
+</p>
+
+<h2>Non-Goals</h2>
+
+<ul>
+  <li>
+    Full physics simulation of actuators. Sim continues to run through the
+    existing <code>DigitalTwin</code> path (<code>servo7/digital_twin/</code>).
+  </li>
+  <li>
+    Closed-loop force control via F-T feedback. F-T sensors only stream
+    readings under this RFC.
+  </li>
+  <li>
+    Auto-discovery of peripherals on a bus. Everything is declared in yaml.
+  </li>
+  <li>
+    Unifying <code>Sensor</code> and <code>Actuator</code> under a common parent ABC.
+  </li>
+  <li>
+    Replacing the joint-motor (arm) control path. The Robot subclass keeps full
+    ownership of arm joint reads and writes.
+  </li>
+  <li>
+    Migrating every existing robot subclass in one PR. The base-class refactor
+    and the first three drivers (camera, F-T, vacuum) land first, validated on
+    Fairino FR3. Per-robot migration of Piper, R1, SO100, and the dual variants
+    follows incrementally, each re-validated against real hardware.
+  </li>
+</ul>
+
+<h2>Trade-offs</h2>
+
+<div class="pros-cons">
+
+<div class="pros">
+  <h4>Pros</h4>
+  <ul>
+    <li>
+      Tool swap is a config edit, not a code edit. Physical swap + one CLI
+      flag + relaunch.
+    </li>
+    <li>
+      Symmetric architecture: sensors and actuators live as parallel lists on
+      <code>Robot</code>. Same factory pattern, same <code>RobotContext</code>, same
+      dispatch shape.
+    </li>
+    <li>
+      Different tools speak different control languages cleanly through one
+      <code>ActuatorCommand</code> with optional fields and per-driver
+      <code>is_safe</code>.
+    </li>
+    <li>
+      Multiple sensors of different kinds is first-class. RGB + F-T side by
+      side, each fault-isolated independently.
+    </li>
+    <li>
+      Frontend gets per-actuator control widgets decoupled from arm teleop, by
+      kind, with no new transport.
+    </li>
+    <li>
+      Per-sensor retry replaces batch retry. One flaky USB device no longer
+      stalls every other camera's bring-up.
+    </li>
+    <li>
+      Robot subclasses shrink: each becomes arm-only. Adding a new cobot only
+      writes its arm read/write path; it inherits the full sensor and actuator
+      ecosystem.
+    </li>
+    <li>
+      Roughly 150 lines of <code>servo7/observation/provider.py</code> +
+      provider subclasses get deleted, not just rearranged. Closes long-standing
+      TODOs at <code>recorder/lerobot.py:967, 997</code> and unlocks F-T sensing.
+    </li>
+  </ul>
+</div>
+
+<div class="cons">
+  <h4>Cons</h4>
+  <ul>
+    <li>
+      Net new abstraction layers. Two new ABCs, two new directory trees, two
+      new factories.
+    </li>
+    <li>
+      <code>Robot</code> base class owns more code (sensor read loop, actuator
+      dispatch, state merge). Bugs in the base class ripple wider.
+    </li>
+    <li>
+      <code>ActuatorCommand</code> with optional fields needs per-driver
+      validation. A vacuum that gets <code>position=0.5</code> in its command
+      must reject it explicitly via <code>is_safe</code>; the type system will
+      not catch it.
+    </li>
+    <li>
+      Subclass split (<code>_get_state_impl</code> -&gt; <code>_read_arm_state</code>
+      + base merge) is a non-trivial refactor across every robot in
+      <code>servo7/robot/hardware/</code>. Each one has to be re-validated
+      against real hardware (mitigated by the incremental migration in
+      non-goals).
+    </li>
+    <li>
+      Backward-compat mapping from legacy <code>gripper_position</code> to
+      <code>actuators[0]</code> works for the common case but hides assumptions.
+      A dual-arm config that reorders actuators silently breaks recorder
+      checkpoints.
+    </li>
+  </ul>
+</div>
+
+</div>
+
+<script>
+  if (typeof hljs !== "undefined") { hljs.highlightAll(); }
+</script>
+</body>
+</html>
