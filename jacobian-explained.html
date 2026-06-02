@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The Jacobian, demystified — how joint velocities map to end-effector twist</title>
+<script>
+  MathJax = {
+    tex: { inlineMath: [['$','$'],['\\(','\\)']], displayMath: [['$$','$$'],['\\[','\\]']] },
+    svg: { fontCache: 'global' }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --ink: #e7ebf3;
+    --muted: #97a2b6;
+    --accent: #ffb454;
+    --link: #6ec1ff;
+    --joint1: #ff6b6b;
+    --joint2: #6ec1ff;
+    --ee: #ffb454;
+    --grid: #23262e;
+  }
+  html, body { background: var(--bg); color: var(--ink); }
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.65;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 48px 28px 96px; }
+  h1 { font-size: 30px; line-height: 1.25; margin-bottom: 6px; }
+  h2 { font-size: 22px; margin-top: 44px; border-bottom: 1px solid #2a2f3a; padding-bottom: 6px; }
+  h3 { font-size: 17px; margin-top: 28px; color: var(--accent); }
+  p, li { color: var(--ink); }
+  .lede { color: var(--muted); font-size: 17px; margin-top: 0; }
+  code, pre {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13.5px;
+  }
+  code { background: #20242d; padding: 1px 5px; border-radius: 3px; }
+  pre {
+    background: var(--panel);
+    padding: 14px 16px;
+    border-radius: 6px;
+    border: 1px solid #2a2f3a;
+    overflow-x: auto;
+    line-height: 1.5;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid #2a2f3a;
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin: 20px 0;
+  }
+  .panel.tight { padding: 12px 16px; }
+  .panel .label {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+  .pill {
+    display: inline-block;
+    background: #20242d;
+    color: var(--muted);
+    border-radius: 99px;
+    padding: 2px 10px;
+    font-size: 12px;
+  }
+  a { color: var(--link); }
+  .demo {
+    background: var(--panel);
+    border: 1px solid #2a2f3a;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 20px 0;
+  }
+  canvas { display: block; background: #0a0c10; border-radius: 6px; cursor: crosshair; width: 100%; height: auto; }
+  .controls {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    margin-top: 12px; font-size: 13px; color: var(--muted);
+  }
+  .controls label { display: flex; align-items: center; gap: 8px; }
+  .controls input[type=range] { width: 130px; }
+  .legend { display: flex; gap: 16px; margin-top: 10px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .kbd { background: #20242d; border: 1px solid #2a2f3a; padding: 1px 6px; border-radius: 3px; font-family: monospace; font-size: 12px; }
+  .footnote { color: var(--muted); font-size: 14px; }
+  .tag { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>The Jacobian, demystified</h1>
+<p class="lede">
+  How joint velocities map to end-effector velocities — both translation <em>and</em> rotation —
+  and why the rotation half needs a special trick. Pitched at your <code>numeric_ik.py</code> /
+  <code>_diff_ik_step</code> in <code>sim_sales</code>.
+</p>
+
+<h2>1. The setup: what are we even mapping?</h2>
+
+<p>
+  You have $n$ joint angles $q = (q_1, \dots, q_n)$. Forward kinematics is a
+  function $f$ that turns joints into an end-effector pose:
+</p>
+
+\[
+  T_{\text{ee}}(q) \;=\; f(q) \;\in\; SE(3)
+\]
+
+<p>
+  $T_{\text{ee}}$ is a 4×4 homogeneous matrix — a 3×3 rotation $R(q)$ and a 3-vector position $p(q)$.
+  Differentiating $f$ gives you the <strong>Jacobian</strong> $J(q)$ — the linear map from
+  <em>joint velocities</em> to <em>end-effector velocity</em>:
+</p>
+
+\[
+  \underbrace{\begin{bmatrix} v \\ \omega \end{bmatrix}}_{6 \times 1\ \text{twist}}
+  \;=\;
+  \underbrace{J(q)}_{6 \times n}
+  \;\underbrace{\dot q}_{n \times 1}
+\]
+
+<p>
+  The top three rows of $J$ are the <span class="tag">linear</span> Jacobian $J_v$,
+  the bottom three are the <span class="tag">angular</span> Jacobian $J_\omega$.
+  This is exactly the matrix Pinocchio gives you with <code>pin.computeFrameJacobian(...)</code>
+  at <code>robot.py:336</code>.
+</p>
+
+<div class="panel tight">
+  <div class="label">Sanity check</div>
+  For $p(q)$ the linear part is just $\dot p = \frac{\partial p}{\partial q}\,\dot q$ — that's
+  ordinary calculus. The angular part is sneakier, because $R(q)$ doesn't live in $\mathbb{R}^9$,
+  it lives on the manifold $SO(3)$. You can't naively take $\dot R$ and call it &ldquo;rotational velocity&rdquo;.
+  We'll fix that in §3.
+</div>
+
+<h2>2. The geometric construction (column by column)</h2>
+
+<p>
+  The clean way to <em>build</em> the Jacobian — instead of symbolically
+  differentiating the FK — is to ask: <strong>if I rotate <em>only</em> joint $i$ by a tiny
+  amount, what twist does that produce at the end-effector?</strong> The answer becomes
+  column $i$ of $J$.
+</p>
+
+<p>For a <strong>revolute joint</strong> $i$ with axis unit vector $\hat z_i$ (expressed in the world frame)
+  located at point $p_i$:</p>
+
+\[
+  J_i \;=\;
+  \begin{bmatrix}
+    J_{v,i} \\[2pt] J_{\omega,i}
+  \end{bmatrix}
+  \;=\;
+  \begin{bmatrix}
+    \hat z_i \times (p_{\text{ee}} - p_i) \\[2pt]
+    \hat z_i
+  \end{bmatrix}
+\]
+
+<p>For a <strong>prismatic joint</strong> $i$ sliding along $\hat z_i$:</p>
+
+\[
+  J_i \;=\; \begin{bmatrix} \hat z_i \\[2pt] 0 \end{bmatrix}
+\]
+
+<p>That's it. Stack those columns for every unlocked joint and you have a 6×$n$ matrix.</p>
+
+<h3>Why does $\hat z_i \times (p_{\text{ee}} - p_i)$ show up?</h3>
+
+<p>
+  Rotating about an axis $\hat z_i$ passing through $p_i$ at angular speed $\dot q_i$
+  produces, at <em>any</em> point $p$, the velocity
+</p>
+
+\[
+  v_p \;=\; (\dot q_i\, \hat z_i) \times (p - p_i)
+\]
+
+<p>
+  This is just the formula for rigid-body rotation: <em>angular velocity cross radius</em>.
+  Set $p = p_{\text{ee}}$, factor out $\dot q_i$, and you've got the linear-Jacobian column.
+  The angular part is dead simple — turning joint $i$ contributes its <em>own</em> axis
+  $\hat z_i$ to the EE's angular velocity. So $J_{\omega,i} = \hat z_i$.
+</p>
+
+<h3>Where do $\hat z_i$ and $p_i$ come from?</h3>
+
+<p>
+  Walk the kinematic chain. Each joint $i$ has a transform $T_i(q_i)$ from its parent.
+  Compose them to get the joint's world placement
+  $T^w_i = T_0 \cdot T_1(q_1) \cdots T_i(q_i)$. Then $p_i$ is the translation part of
+  $T^w_i$, and $\hat z_i$ is the third column of its rotation block (the local joint
+  axis, rotated into world coordinates). This is exactly what
+  <code>pin.forwardKinematics</code> + <code>pin.updateFramePlacements</code> computes
+  before you call <code>computeFrameJacobian</code>.
+</p>
+
+<div class="demo">
+  <div class="label" style="color: var(--accent); font-size: 12px; letter-spacing: 0.08em; margin-bottom: 8px;">
+    INTERACTIVE: 2-LINK PLANAR ARM
+  </div>
+  <canvas id="armCanvas" width="820" height="440"></canvas>
+  <div class="legend">
+    <span><span class="sw" style="background: var(--joint1)"></span>joint 1 contribution: $\hat z_1 \times (p_{ee}-p_1)\,\dot q_1$</span>
+    <span><span class="sw" style="background: var(--joint2)"></span>joint 2 contribution: $\hat z_2 \times (p_{ee}-p_2)\,\dot q_2$</span>
+    <span><span class="sw" style="background: var(--ee)"></span>resulting EE velocity (sum)</span>
+  </div>
+  <div class="controls">
+    <label>$q_1$ <input type="range" id="q1" min="-3.14" max="3.14" step="0.01" value="0.6"></label>
+    <label>$q_2$ <input type="range" id="q2" min="-3.14" max="3.14" step="0.01" value="-1.0"></label>
+    <label>$\dot q_1$ <input type="range" id="dq1" min="-2" max="2" step="0.05" value="1"></label>
+    <label>$\dot q_2$ <input type="range" id="dq2" min="-2" max="2" step="0.05" value="0.5"></label>
+  </div>
+  <p class="footnote" style="margin-bottom: 0;">
+    Both joints have axis $\hat z = (0,0,1)$ (out of the page), so $\hat z \times r$ is just
+    a 90&deg; CCW rotation of the in-plane vector from joint to EE. The two coloured arrows
+    are each joint's contribution; the orange arrow at the EE is their sum — that's
+    $\dot p_{\text{ee}} = J_v\,\dot q$. Numbers on the right show the actual $J$ matrix
+    for the current pose.
+  </p>
+</div>
+
+<h2>3. The rotation half — why it's harder, and how the log map saves you</h2>
+
+<p>
+  Here's the question you asked: how does the <em>rotation</em> of the EE map to joints?
+  The angular part of the Jacobian, $J_\omega$, is easy to <em>build</em> ($\hat z_i$ per
+  revolute joint). The hard part is using it, because <strong>orientation error is not a vector</strong>.
+</p>
+
+<p>
+  If positions $p$ live in $\mathbb{R}^3$, you can subtract them: $p_{\text{target}} - p_{\text{current}}$
+  is a vector you can shove into your loop. But for rotations $R \in SO(3)$,
+  $R_{\text{target}} - R_{\text{current}}$ is meaningless — it's not a rotation, it's some random 3&times;3 matrix.
+  You can't iterate on it.
+</p>
+
+<h3>The fix: the matrix logarithm on $SO(3)$</h3>
+
+<p>
+  Every rotation can be written as &ldquo;rotate by angle $\theta$ around unit axis $\hat u$&rdquo;.
+  Pack that into a single 3-vector $\theta \hat u \in \mathbb{R}^3$. That's the
+  <strong>axis-angle</strong> representation — and it's the log map on $SO(3)$:
+</p>
+
+\[
+  \log_{SO(3)} : SO(3) \to \mathbb{R}^3, \qquad
+  \log(R) \;=\; \theta\,\hat u
+\]
+
+<p>
+  To get an <em>orientation error</em> as a usable 3-vector, you compute the rotation
+  that takes you from current to target, then take its log:
+</p>
+
+\[
+  e_\omega \;=\; \log\!\bigl(R_{\text{current}}^{-1}\, R_{\text{target}}\bigr)
+\]
+
+<p>
+  Now $e_\omega$ has the same shape as $\omega$ in your twist — it's just &ldquo;the angular
+  velocity you'd need to apply for 1 second to get from current orientation to target&rdquo;.
+  And that's exactly the thing $J_\omega \dot q$ produces.
+</p>
+
+<p>
+  Pinocchio's <code>log6</code> does this for the full pose: it takes
+  $T_{\text{current}}^{-1} T_{\text{target}}$ (a 4&times;4) and returns a 6-vector
+  $[v;\,\omega]$ — the twist that bridges the two poses. That is line 334 of your
+  <code>robot.py</code>:
+</p>
+
+<pre><code>error = pin.log6(current_se3.inverse() * desired_se3).vector
+J     = pin.computeFrameJacobian(model, data, q_actual, ee_id, pin.LOCAL)</code></pre>
+
+<div class="panel tight">
+  <div class="label">Why <code>pin.LOCAL</code></div>
+  Both <code>log6</code> and the Jacobian have to live in the same reference frame.
+  Because you computed the error as $T_{\text{cur}}^{-1} T_{\text{tgt}}$ — left-multiplied by the
+  current frame inverse — the resulting twist is expressed in the <em>current EE frame</em>,
+  not the world frame. So you ask Pinocchio for the local-frame Jacobian. Mix the conventions
+  up and IK will move sideways. (Pinocchio also has <code>LOCAL_WORLD_ALIGNED</code> and
+  <code>WORLD</code>; they're all the same matrix up to an adjoint.)
+</div>
+
+<h2>4. From error to joint update: damped least squares</h2>
+
+<p>
+  Now we have $J(q)$ and $e = \log_6(T_c^{-1}T_t)$, and we want $\dot q$. The
+  Jacobian equation $e \approx J\,\dot q$ usually has more unknowns than equations
+  (most arms have $n \ge 6$) or fewer (a 5-DOF arm trying to hit a 6-DOF pose).
+  Either way, we use the pseudo-inverse:
+</p>
+
+\[
+  \dot q \;=\; J^\dagger\, e
+\]
+
+<p>
+  Plain $J^\dagger = J^T(JJ^T)^{-1}$ blows up near singularities. The fix in your
+  code is <em>damped least squares</em>: add a tiny regulariser inside the inverse:
+</p>
+
+\[
+  \dot q \;=\; J^T\,(J J^T + \lambda^2 I)^{-1}\, e
+\]
+
+<p>
+  Which is line 343–345 verbatim:
+</p>
+
+<pre><code>JJt    = J @ J.T + params.damping * np.eye(6)
+J_pinv = J.T @ np.linalg.inv(JJt)
+dq     = J_pinv @ (gain * error)</code></pre>
+
+<p>
+  Then you step: $q \leftarrow q + \dot q$, recompute everything, repeat until $e$
+  is small. Each iteration the linearisation is fresh, so you can chase non-trivial
+  pose changes.
+</p>
+
+<h3>The null-space term</h3>
+
+<p>
+  For a 7-DOF arm, $J^\dagger J \ne I$ — there's a 1-dimensional null space of joint
+  motions that don't move the EE at all. You exploit that to bias the elbow toward
+  &ldquo;home&rdquo; without disturbing the EE:
+</p>
+
+\[
+  \dot q \;=\; J^\dagger e \;+\; (I - J^\dagger J)\,k(q_{\text{home}} - q)
+\]
+
+<p>That's <code>dq_secondary</code> at <code>robot.py:347</code>. The projector $(I - J^\dagger J)$
+  kills anything in the row-space of $J$, so it can't fight the primary task.</p>
+
+<h2>5. What's different in <code>numeric_ik.py</code>?</h2>
+
+<p>
+  <code>numeric_ik.py</code> never writes $J$ explicitly. Instead it formulates IK as
+  an optimisation problem:
+</p>
+
+\[
+  \min_q \;\; \underbrace{w_p\,\|e_v\|^2 + w_o\,\|e_\omega\|^2}_{\text{tracking}}
+  \;+\; w_r \|q\|^2 \;+\; w_s \|q - q_{\text{prev}}\|^2
+\]
+
+<p>
+  with $[e_v;\,e_\omega] = \log_6(T_c^{-1}T_t)$. CasADi differentiates the entire
+  cost symbolically and hands the Jacobian (and Hessian) to IPOPT — so the same maths
+  is happening, just behind the abstraction. The advantage is that joint limits become
+  hard constraints and you can add regularisation/smoothness terms cleanly. The cost
+  is that each <code>opti.solve()</code> is heavier than one damped-LS step.
+</p>
+
+<p>Rule of thumb in your codebase:</p>
+<ul>
+  <li><strong>Big jumps</strong> (planner waypoints, place poses) → <code>ArmIK.solve()</code>.</li>
+  <li><strong>Smooth trajectory following</strong> (your slerp-driven carry) → <code>_diff_ik_step</code> with a 6&times;n Jacobian.</li>
+</ul>
+
+<h2>6. TL;DR cheat sheet</h2>
+
+<div class="panel">
+  <p style="margin-top: 0;">$J$ is built column-by-column. For revolute joint $i$:</p>
+  $$ J_i = \begin{bmatrix} \hat z_i \times (p_{\text{ee}} - p_i) \\[1pt] \hat z_i \end{bmatrix} $$
+  <p>$\hat z_i$ and $p_i$ come from forward kinematics — composing the per-joint transforms.</p>
+  <p>Orientation error needs the log map:</p>
+  $$ e_\omega = \log(R_c^{-1} R_t), \qquad e = \log_6(T_c^{-1} T_t) $$
+  <p>Joint update via damped least squares:</p>
+  $$ \dot q = J^T (J J^T + \lambda^2 I)^{-1} e $$
+  <p style="margin-bottom: 0;">Iterate. That's the entire pipeline.</p>
+</div>
+
+<p class="footnote">
+  Generated for the IK in <code>sim_sales/servo7/utils/numeric_ik.py</code> and
+  <code>sim_sales/servo7/sim/scene_api/robot.py</code>. Open with any browser; MathJax
+  loads from CDN.
+</p>
+
+</div>
+
+<script>
+(() => {
+  const c = document.getElementById('armCanvas');
+  const ctx = c.getContext('2d');
+
+  // Make canvas hi-dpi friendly
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth;
+    const h = 440;
+    c.width = w * dpr;
+    c.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  const L1 = 140, L2 = 110;   // link lengths (px)
+  const ARROW_SCALE = 60;     // px per (rad/s) for visualization
+
+  const sliders = {
+    q1:  document.getElementById('q1'),
+    q2:  document.getElementById('q2'),
+    dq1: document.getElementById('dq1'),
+    dq2: document.getElementById('dq2'),
+  };
+
+  function world() {
+    const w = c.clientWidth;
+    return { ox: w * 0.32, oy: 250 };
+  }
+
+  function fk(q1, q2) {
+    const {ox, oy} = world();
+    const p0 = { x: ox, y: oy };
+    const p1 = { x: ox + L1 * Math.cos(q1),         y: oy - L1 * Math.sin(q1) };
+    const p2 = { x: p1.x + L2 * Math.cos(q1 + q2),  y: p1.y - L2 * Math.sin(q1 + q2) };
+    return { p0, p1, p2 };
+  }
+
+  // z-hat is out of page in canvas (we're using image y-down but treating math y-up).
+  // For each revolute joint, contribution to EE linear vel is dq * (z × r),
+  // and in 2D z × (rx, ry, 0) = (-ry, rx, 0) (mathematical, y-up). On canvas y is flipped,
+  // so we flip sign on the y component when drawing.
+  function jacColLinear(pee, pjoint) {
+    const rx = pee.x - pjoint.x;
+    const ry_canvas = pee.y - pjoint.y;
+    const ry_math = -ry_canvas; // math y-up
+    // z × r in math frame:
+    const vx_math = -ry_math;
+    const vy_math =  rx;
+    // back to canvas (flip y):
+    return { vx: vx_math, vy: -vy_math };
+  }
+
+  function drawArrow(x, y, dx, dy, color, label) {
+    const len = Math.hypot(dx, dy);
+    if (len < 0.5) return;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + dx, y + dy);
+    ctx.stroke();
+    // arrowhead
+    const ang = Math.atan2(dy, dx);
+    const ah = 8;
+    ctx.beginPath();
+    ctx.moveTo(x + dx, y + dy);
+    ctx.lineTo(x + dx - ah * Math.cos(ang - 0.4), y + dy - ah * Math.sin(ang - 0.4));
+    ctx.lineTo(x + dx - ah * Math.cos(ang + 0.4), y + dy - ah * Math.sin(ang + 0.4));
+    ctx.closePath();
+    ctx.fill();
+    if (label) {
+      ctx.font = '12px monospace';
+      ctx.fillStyle = color;
+      ctx.fillText(label, x + dx + 6, y + dy + 4);
+    }
+  }
+
+  function drawJointDot(p, color, label) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    if (label) {
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = '#e7ebf3';
+      ctx.fillText(label, p.x + 9, p.y - 9);
+    }
+  }
+
+  function draw() {
+    const w = c.clientWidth;
+    const h = 440;
+    ctx.fillStyle = '#0a0c10';
+    ctx.fillRect(0, 0, w, h);
+
+    // grid
+    ctx.strokeStyle = '#161a22';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < w; x += 30) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+    for (let y = 0; y < h; y += 30) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+
+    const q1 = parseFloat(sliders.q1.value);
+    const q2 = parseFloat(sliders.q2.value);
+    const dq1 = parseFloat(sliders.dq1.value);
+    const dq2 = parseFloat(sliders.dq2.value);
+
+    const { p0, p1, p2 } = fk(q1, q2);
+
+    // links
+    ctx.strokeStyle = '#3a4252';
+    ctx.lineWidth = 10;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+
+    // Jacobian columns at the EE (each is z × r per joint)
+    const Jcol1 = jacColLinear(p2, p0);
+    const Jcol2 = jacColLinear(p2, p1);
+
+    // contribution arrows: dq_i * J_i (pixels)
+    const c1 = { x: ARROW_SCALE * dq1 * Jcol1.vx, y: ARROW_SCALE * dq1 * Jcol1.vy };
+    const c2 = { x: ARROW_SCALE * dq2 * Jcol2.vx, y: ARROW_SCALE * dq2 * Jcol2.vy };
+
+    // sum
+    const sum = { x: c1.x + c2.x, y: c1.y + c2.y };
+
+    // draw contribution from joint 1 (anchored at EE)
+    drawArrow(p2.x, p2.y, c1.x, c1.y, getCSS('--joint1'), 'q̇₁ · J₁');
+    // contribution from joint 2 (anchored at EE, but shifted for clarity by offset)
+    drawArrow(p2.x, p2.y, c2.x, c2.y, getCSS('--joint2'), 'q̇₂ · J₂');
+    // sum
+    drawArrow(p2.x, p2.y, sum.x, sum.y, getCSS('--ee'), 'ṗ_ee');
+
+    // joints
+    drawJointDot(p0, '#888', 'joint 1 (p₁)');
+    drawJointDot(p1, '#888', 'joint 2 (p₂)');
+    drawJointDot(p2, '#ffb454', 'ee');
+
+    // Info panel on the right
+    const tx = w - 320;
+    ctx.font = '12.5px "SF Mono", Menlo, monospace';
+    ctx.fillStyle = '#97a2b6';
+    ctx.fillText('Forward kinematics:', tx, 26);
+    ctx.fillStyle = '#e7ebf3';
+    ctx.fillText('p₁  = ' + fmt2(L1*Math.cos(q1)) + ',  ' + fmt2(L1*Math.sin(q1)),     tx, 44);
+    ctx.fillText('p_ee= ' + fmt2(L1*Math.cos(q1)+L2*Math.cos(q1+q2)) + ',  ' +
+                              fmt2(L1*Math.sin(q1)+L2*Math.sin(q1+q2)), tx, 62);
+
+    ctx.fillStyle = '#97a2b6';
+    ctx.fillText('Geometric Jacobian (linear part):', tx, 92);
+    ctx.fillStyle = '#e7ebf3';
+    // express in math coordinates (y-up)
+    const J1x = Jcol1.vx,  J1y = -Jcol1.vy;
+    const J2x = Jcol2.vx,  J2y = -Jcol2.vy;
+    ctx.fillText('J_v = ⎡ ' + fmt2(J1x) + '   ' + fmt2(J2x) + ' ⎤', tx, 112);
+    ctx.fillText('       ⎣ ' + fmt2(J1y) + '   ' + fmt2(J2y) + ' ⎦', tx, 130);
+
+    ctx.fillStyle = '#97a2b6';
+    ctx.fillText('Angular part (axes out of page):', tx, 158);
+    ctx.fillStyle = '#e7ebf3';
+    ctx.fillText('J_ω = [ 1   1 ]', tx, 176);
+
+    ctx.fillStyle = '#97a2b6';
+    ctx.fillText('Resulting EE velocity:', tx, 208);
+    ctx.fillStyle = '#ffb454';
+    const vx_math = J1x*dq1 + J2x*dq2;
+    const vy_math = J1y*dq1 + J2y*dq2;
+    const w_math  = dq1 + dq2;
+    ctx.fillText('v = ( ' + fmt2(vx_math) + ',  ' + fmt2(vy_math) + ' )', tx, 228);
+    ctx.fillText('ω =  ' + fmt2(w_math),  tx, 246);
+
+    ctx.fillStyle = '#97a2b6';
+    ctx.fillText('Note: each col of J_v is ẑ × (p_ee − p_i),', tx, 280);
+    ctx.fillText('which in 2D = 90° CCW of (p_ee − p_i).',     tx, 298);
+  }
+
+  function fmt2(v) { return (v >= 0 ? ' ' : '') + v.toFixed(2); }
+  function getCSS(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#fff';
+  }
+
+  Object.values(sliders).forEach(s => s.addEventListener('input', draw));
+  window.addEventListener('resize', draw);
+  draw();
+})();
+</script>
+</body>
+</html>
