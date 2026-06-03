@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pressure vs Flow — Sizing Air for a Vacuum Gripper</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0b1015;
+    --ink-2:#111922;
+    --ink-3:#16212c;
+    --grid:rgba(95,150,180,0.06);
+    --paper:#e9eef2;
+    --muted:#8a9aa9;
+    --muted-2:#5f7180;
+    --amber:#f0a955;
+    --amber-deep:#d8842f;
+    --cyan:#54d2d8;
+    --cyan-deep:#2fa6ad;
+    --line:rgba(150,180,200,0.16);
+    --line-soft:rgba(150,180,200,0.09);
+    --danger:#e5604d;
+    --ok:#7cc98f;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--ink);
+    color:var(--paper);
+    font-family:'Spectral',Georgia,serif;
+    font-size:18px;
+    line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      linear-gradient(var(--grid) 1px,transparent 1px),
+      linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:42px 42px;
+    overflow-x:hidden;
+  }
+  .wrap{max-width:880px;margin:0 auto;padding:0 28px}
+  .mono{font-family:'JetBrains Mono',monospace}
+
+  /* ---------- HERO ---------- */
+  header.hero{
+    min-height:88vh;display:flex;flex-direction:column;justify-content:center;
+    padding:80px 0 60px;position:relative;
+  }
+  .tag{
+    font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.32em;
+    text-transform:uppercase;color:var(--cyan);margin-bottom:26px;
+    opacity:0;transform:translateY(14px);animation:rise .8s .1s forwards cubic-bezier(.2,.7,.2,1);
+  }
+  .tag::before{content:"◢ ";color:var(--amber)}
+  h1{
+    font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(2.6rem,7vw,4.7rem);
+    line-height:1.02;letter-spacing:-.02em;margin-bottom:28px;
+  }
+  h1 .l{display:block;opacity:0;transform:translateY(22px);animation:rise .9s forwards cubic-bezier(.2,.7,.2,1)}
+  h1 .l:nth-child(1){animation-delay:.18s}
+  h1 .l:nth-child(2){animation-delay:.30s}
+  h1 .amber{color:var(--amber)}
+  h1 .cyan{color:var(--cyan)}
+  .lede{
+    font-size:clamp(1.1rem,2.4vw,1.4rem);color:var(--muted);max-width:620px;
+    opacity:0;transform:translateY(16px);animation:rise .9s .46s forwards cubic-bezier(.2,.7,.2,1);
+  }
+  .lede b{color:var(--paper);font-weight:600}
+  .scrollcue{
+    margin-top:48px;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;
+    color:var(--muted-2);opacity:0;animation:fade 1s 1s forwards;
+  }
+  @keyframes rise{to{opacity:1;transform:none}}
+  @keyframes fade{to{opacity:1}}
+
+  /* ---------- SECTIONS ---------- */
+  section{padding:64px 0;border-top:1px solid var(--line-soft)}
+  .num{
+    font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.28em;
+    color:var(--amber);text-transform:uppercase;display:block;margin-bottom:16px;
+  }
+  h2{font-family:'Syne',sans-serif;font-weight:700;font-size:clamp(1.7rem,4vw,2.5rem);
+     line-height:1.08;letter-spacing:-.015em;margin-bottom:24px}
+  h3{font-family:'Syne',sans-serif;font-weight:600;font-size:1.3rem;margin:30px 0 12px;color:var(--paper)}
+  p{margin-bottom:18px;color:#d2dbe2}
+  p .hp{color:var(--amber);font-weight:600}
+  p .hf{color:var(--cyan);font-weight:600}
+  strong{color:var(--paper);font-weight:600}
+  em{color:var(--muted);font-style:italic}
+
+  .reveal{opacity:0;transform:translateY(26px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+
+  /* two-up definition cards */
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:28px 0}
+  @media(max-width:680px){.duo{grid-template-columns:1fr}}
+  .card{
+    background:linear-gradient(160deg,var(--ink-2),var(--ink));
+    border:1px solid var(--line);border-radius:6px;padding:26px 24px;position:relative;overflow:hidden;
+  }
+  .card.p{border-top:3px solid var(--amber)}
+  .card.f{border-top:3px solid var(--cyan)}
+  .card .k{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+  .card .v{font-family:'Syne',sans-serif;font-weight:700;font-size:1.7rem;margin:6px 0 4px}
+  .card.p .v{color:var(--amber)} .card.f .v{color:var(--cyan)}
+  .card .u{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--muted)}
+  .card .d{margin-top:14px;font-size:.96rem;color:#c3ccd3}
+
+  /* analogy table */
+  .analogy{width:100%;border-collapse:collapse;margin:22px 0;font-size:.96rem}
+  .analogy th,.analogy td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line-soft)}
+  .analogy th{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .analogy td:first-child{font-family:'JetBrains Mono',monospace;color:var(--paper);font-size:.9rem}
+  .analogy .e{color:var(--cyan)}
+
+  /* callout */
+  .call{
+    border-left:3px solid var(--amber);background:rgba(240,169,85,.06);
+    padding:20px 22px;border-radius:0 6px 6px 0;margin:26px 0;
+  }
+  .call.f{border-left-color:var(--cyan);background:rgba(84,210,216,.06)}
+  .call.danger{border-left-color:var(--danger);background:rgba(229,96,77,.07)}
+  .call .lab{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);display:block;margin-bottom:8px}
+  .call.f .lab{color:var(--cyan)} .call.danger .lab{color:var(--danger)}
+  .call p{margin-bottom:0}
+
+  /* SVG figure */
+  figure{margin:30px 0;text-align:center}
+  figure svg{max-width:100%;height:auto}
+  figcaption{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);margin-top:12px;letter-spacing:.04em}
+
+  /* equation */
+  .eq{
+    font-family:'JetBrains Mono',monospace;background:var(--ink-2);border:1px solid var(--line);
+    border-radius:6px;padding:18px 22px;margin:22px 0;font-size:1rem;text-align:center;
+    color:var(--paper);overflow-x:auto;
+  }
+  .eq .op{color:var(--amber)} .eq .var{color:var(--cyan)}
+
+  /* calculator */
+  .calc{background:linear-gradient(165deg,var(--ink-3),var(--ink-2));border:1px solid var(--line);border-radius:10px;padding:30px 26px;margin:30px 0}
+  .calc h3{margin-top:0}
+  .grid-in{display:grid;grid-template-columns:1fr 1fr;gap:22px 28px;margin:24px 0}
+  @media(max-width:600px){.grid-in{grid-template-columns:1fr}}
+  .field label{display:block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .field .row{display:flex;align-items:center;gap:12px}
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:3px;background:var(--line);border-radius:3px;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--amber);cursor:pointer;border:3px solid var(--ink-2);box-shadow:0 0 0 1px var(--amber)}
+  input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--amber);cursor:pointer;border:3px solid var(--ink-2)}
+  .field.flow input[type=range]::-webkit-slider-thumb{background:var(--cyan);box-shadow:0 0 0 1px var(--cyan)}
+  .field .val{font-family:'JetBrains Mono',monospace;font-size:1.05rem;font-weight:700;color:var(--paper);min-width:84px;text-align:right}
+  .field .val .un{color:var(--muted);font-weight:400;font-size:.8rem;margin-left:3px}
+
+  .out{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px}
+  @media(max-width:600px){.out{grid-template-columns:1fr}}
+  .stat{background:var(--ink);border:1px solid var(--line);border-radius:8px;padding:18px 20px}
+  .stat .sk{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .stat .sv{font-family:'Syne',sans-serif;font-weight:800;font-size:2rem;line-height:1.1;margin-top:6px}
+  .stat .sn{font-size:.85rem;color:var(--muted);margin-top:6px}
+  .stat.amber .sv{color:var(--amber)} .stat.cyan .sv{color:var(--cyan)}
+  .verdict{margin-top:18px;padding:18px 20px;border-radius:8px;font-size:.98rem;line-height:1.6;border:1px solid var(--line)}
+  .verdict.go{background:rgba(124,201,143,.08);border-color:rgba(124,201,143,.4)}
+  .verdict.warn{background:rgba(229,96,77,.08);border-color:rgba(229,96,77,.4)}
+  .verdict b{color:var(--paper)}
+
+  ul.check{list-style:none;margin:20px 0}
+  ul.check li{position:relative;padding-left:30px;margin-bottom:16px;color:#d2dbe2}
+  ul.check li::before{content:"▸";position:absolute;left:6px;color:var(--amber);font-size:1rem}
+  ul.check li b{color:var(--paper)}
+
+  footer{padding:60px 0 90px;border-top:1px solid var(--line-soft);color:var(--muted);font-size:.92rem}
+  footer .mono{color:var(--muted-2)}
+  .pill{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;padding:3px 10px;border:1px solid var(--line);border-radius:30px;color:var(--cyan);margin:0 4px 6px 0}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="tag">Pneumatics · First principles · Sizing your air supply</div>
+    <h1>
+      <span class="l"><span class="amber">Pressure</span> and <span class="cyan">flow</span></span>
+      <span class="l">are not the same thing.</span>
+    </h1>
+    <p class="lede">Your gripper asks for <b>two numbers</b> — a pressure (bar) and an air consumption (L/min). They answer two different questions, and confusing them is exactly why the tank idea feels slippery. Let's build the intuition from the ground up.</p>
+    <div class="scrollcue mono">↓ scroll — section 01 of 09</div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- 01 -->
+  <section class="reveal">
+    <span class="num">01 — The two numbers</span>
+    <h2>One is a <span style="color:var(--amber)">push</span>. One is a <span style="color:var(--cyan)">delivery rate</span>.</h2>
+    <p>Almost everything downstream falls out of grasping this single distinction, so it's worth slowing down on.</p>
+    <div class="duo">
+      <div class="card p">
+        <div class="k">Pressure</div>
+        <div class="v">bar</div>
+        <div class="u">force ÷ area · "the push"</div>
+        <div class="d">How <em>hard</em> the air pushes against a surface. It's a state — air just sitting in a sealed bottle has pressure even though nothing is moving. It sets whether the gripper <em>can</em> do its job at all.</div>
+      </div>
+      <div class="card f">
+        <div class="k">Flow rate</div>
+        <div class="v">L / min</div>
+        <div class="u">volume ÷ time · "the delivery"</div>
+        <div class="d">How <em>much</em> air moves past a point each minute. It's a rate — it only exists while air is actually moving. It sets whether you can <em>keep</em> the gripper fed.</div>
+      </div>
+    </div>
+    <div class="call">
+      <span class="lab">The key idea</span>
+      <p>You can have <span class="hp">pressure with zero flow</span> (a closed, pressurised tank), and you can have <span class="hf">flow at falling pressure</span> (a tank emptying out faster than it's refilled). Your gripper needs <strong>both held at once</strong>: the right pressure <em>and</em> enough flow to sustain it.</p>
+    </div>
+  </section>
+
+  <!-- 02 -->
+  <section class="reveal">
+    <span class="num">02 — What pressure actually is</span>
+    <h2>Potential, not movement.</h2>
+    <p>Pressure is force spread over an area. One bar ≈ 100,000 newtons pressing on every square metre — roughly the weight of the whole atmosphere above your head. It is <span class="hp">stored potential</span>: a gauge reading 6 bar in a sealed vessel stays at 6 bar forever, with no air going anywhere.</p>
+    <figure>
+      <svg viewBox="0 0 360 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pressure gauge dial">
+        <circle cx="120" cy="110" r="78" fill="none" stroke="var(--line)" stroke-width="2"/>
+        <circle cx="120" cy="110" r="70" fill="var(--ink-2)" stroke="var(--line-soft)" stroke-width="1"/>
+        <g stroke="var(--muted-2)" stroke-width="1.5">
+          <line x1="120" y1="40" x2="120" y2="50"/><line x1="190" y1="110" x2="180" y2="110"/>
+          <line x1="120" y1="180" x2="120" y2="170"/><line x1="50" y1="110" x2="60" y2="110"/>
+          <line x1="71" y1="61" x2="78" y2="68"/><line x1="169" y1="61" x2="162" y2="68"/>
+        </g>
+        <line id="needle" x1="120" y1="110" x2="120" y2="52" stroke="var(--amber)" stroke-width="3.5" stroke-linecap="round" transform="rotate(38 120 110)"/>
+        <circle cx="120" cy="110" r="7" fill="var(--amber)"/>
+        <text x="120" y="150" text-anchor="middle" fill="var(--muted)" font-family="JetBrains Mono" font-size="11" letter-spacing="2">BAR</text>
+        <text x="278" y="92" fill="var(--paper)" font-family="Syne" font-weight="700" font-size="34">6.0</text>
+        <text x="278" y="112" fill="var(--muted)" font-family="JetBrains Mono" font-size="11">stored,</text>
+        <text x="278" y="128" fill="var(--muted)" font-family="JetBrains Mono" font-size="11">not moving</text>
+      </svg>
+      <figcaption>Pressure = the gauge reading. It persists whether or not air is flowing.</figcaption>
+    </figure>
+    <p>For your venturi gripper, the supply pressure is a <strong>threshold</strong>. Below the rated pressure the nozzle can't generate proper suction and the part drops — no amount of extra flow fixes a pressure that's too low.</p>
+  </section>
+
+  <!-- 03 -->
+  <section class="reveal">
+    <span class="num">03 — What flow actually is</span>
+    <h2>Movement, measured per minute.</h2>
+    <p>Flow only exists when air is in motion. Your "240 L/min" means: while the gripper is running, it swallows 240 litres of air every minute. Crucially, that's almost always quoted as <span class="hf">free air</span> — the volume that air would occupy out in the open at normal atmospheric pressure, <em>before</em> it gets squeezed into your pipe.</p>
+    <div class="call f">
+      <span class="lab">Why "free air" matters</span>
+      <p>Compressor specs use the same currency. A compressor's <strong>FAD</strong> (Free Air Delivery) is also in litres of free air per minute. So you can compare them directly: the gripper wants 240 L/min FAD → the compressor must be able to <em>make</em> at least 240 L/min FAD. Same units, fair fight.</p>
+    </div>
+    <figure>
+      <svg viewBox="0 0 460 110" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Air flowing through a pipe">
+        <rect x="20" y="38" width="420" height="34" rx="4" fill="var(--ink-2)" stroke="var(--line)"/>
+        <g fill="var(--cyan)" opacity="0.9">
+          <polygon class="pk" points="70,55 90,45 90,65"/>
+          <polygon class="pk" points="150,55 170,45 170,65"/>
+          <polygon class="pk" points="230,55 250,45 250,65"/>
+          <polygon class="pk" points="310,55 330,45 330,65"/>
+          <polygon class="pk" points="390,55 410,45 410,65"/>
+        </g>
+        <text x="230" y="98" text-anchor="middle" fill="var(--muted)" font-family="JetBrains Mono" font-size="12">240 litres of free air ⟶ every minute</text>
+      </svg>
+      <figcaption>Flow = how much passes this point per minute, only while running.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 04 -->
+  <section class="reveal">
+    <span class="num">04 — The water-tower picture</span>
+    <h2>Height is pressure. The tap is flow.</h2>
+    <p>This is the intuition that makes the tank click. Picture a water tower on stilts feeding a tap.</p>
+    <figure>
+      <svg viewBox="0 0 480 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Water tower analogy">
+        <!-- tank -->
+        <rect x="120" y="30" width="150" height="110" rx="6" fill="var(--ink-2)" stroke="var(--line)" stroke-width="2"/>
+        <rect x="124" y="78" width="142" height="58" rx="2" fill="rgba(84,210,216,.18)"/>
+        <line x1="124" y1="78" x2="266" y2="78" stroke="var(--cyan)" stroke-width="2"/>
+        <text x="195" y="60" text-anchor="middle" fill="var(--muted)" font-family="JetBrains Mono" font-size="11">VOLUME = how much air</text>
+        <!-- stilts / column = pressure -->
+        <line x1="140" y1="140" x2="140" y2="250" stroke="var(--line)" stroke-width="2"/>
+        <line x1="250" y1="140" x2="250" y2="250" stroke="var(--line)" stroke-width="2"/>
+        <line x1="300" y1="78" x2="300" y2="250" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="4 4"/>
+        <text x="312" y="168" fill="var(--amber)" font-family="JetBrains Mono" font-size="11">HEIGHT</text>
+        <text x="312" y="184" fill="var(--amber)" font-family="JetBrains Mono" font-size="11">= pressure</text>
+        <!-- ground -->
+        <line x1="60" y1="250" x2="430" y2="250" stroke="var(--line)" stroke-width="2"/>
+        <!-- tap -->
+        <rect x="186" y="250" width="18" height="30" fill="var(--ink-3)" stroke="var(--line)"/>
+        <polygon points="195,280 205,295 185,295" fill="var(--cyan)"/>
+        <text x="230" y="292" fill="var(--muted)" font-family="JetBrains Mono" font-size="11">TAP = flow out</text>
+      </svg>
+      <figcaption>The same body of air carries both numbers at once.</figcaption>
+    </figure>
+    <p><strong>The water level (height)</strong> is your pressure — it sets how hard water shoots out of the tap. <strong>The amount of water</strong> is the volume stored. <strong>The tap</strong> is your flow demand. Open the tap and water flows — but as the tank drains, the level drops, so the pressure drops. That's <em>exactly</em> the effect you spotted: draw air from a fixed tank and the bar falls.</p>
+    <div class="call">
+      <span class="lab">Your instinct, examined</span>
+      <p>You're right that a bigger tank stores more — it drops more slowly. But a tank, on its own, <strong>always drains eventually</strong>. To hold the level steady you need something refilling it as fast as the tap empties it. That refiller is the compressor.</p>
+    </div>
+  </section>
+
+  <!-- 05 -->
+  <section class="reveal">
+    <span class="num">05 — The electrician's shortcut</span>
+    <h2>If circuits are more your language.</h2>
+    <p>The same maths shows up in electronics, and the mapping is exact enough to reason with:</p>
+    <table class="analogy">
+      <tr><th>Pneumatics</th><th>Electrical equivalent</th><th>Behaviour</th></tr>
+      <tr><td>Pressure (bar)</td><td class="e">Voltage (V)</td><td>the potential / push</td></tr>
+      <tr><td>Flow (L/min)</td><td class="e">Current (A)</td><td>the rate of delivery</td></tr>
+      <tr><td>Storage tank</td><td class="e">Capacitor</td><td>buffers spikes, then sags</td></tr>
+      <tr><td>Compressor</td><td class="e">Power supply</td><td>sets sustainable current</td></tr>
+      <tr><td>Pipe / fitting restriction</td><td class="e">Resistance</td><td>causes pressure drop under flow</td></tr>
+    </table>
+    <p>A capacitor can dump a big current spike instantly — but if you keep drawing, it's the <strong>power supply's</strong> continuous rating that decides whether the voltage holds. A bigger capacitor buys you a longer spike, not a bigger supply. The tank is your capacitor; the compressor is your supply.</p>
+  </section>
+
+  <!-- 06 -->
+  <section class="reveal">
+    <span class="num">06 — What the tank really stores</span>
+    <h2>Not "air" — <span style="color:var(--amber)">usable</span> air.</h2>
+    <p>Here's the part that makes sizing concrete. A tank doesn't give you all its air; it only gives you the air sitting <em>above</em> your minimum working pressure. Squeeze air into a tank and the free-air volume it holds is roughly:</p>
+    <div class="eq">free air in tank ≈ tank volume <span class="op">×</span> absolute pressure</div>
+    <p>So the <strong>usable</strong> buffer — the air you can draw before pressure sags below what the gripper needs — is the slice between your compressor's cut-out pressure and the gripper's minimum:</p>
+    <div class="eq"><span class="var">usable air</span> = tank&nbsp;(L) <span class="op">×</span> ( P<sub>cut-out</sub> <span class="op">−</span> P<sub>min</sub> )&nbsp;(bar)</div>
+    <figure>
+      <svg viewBox="0 0 360 230" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Usable air band in a tank">
+        <rect x="120" y="20" width="120" height="190" rx="10" fill="var(--ink-2)" stroke="var(--line)" stroke-width="2"/>
+        <rect x="124" y="40" width="112" height="50" fill="rgba(240,169,85,.22)"/>
+        <line x1="124" y1="40" x2="236" y2="40" stroke="var(--amber)" stroke-width="2"/>
+        <line x1="124" y1="90" x2="236" y2="90" stroke="var(--danger)" stroke-width="2" stroke-dasharray="5 4"/>
+        <rect x="124" y="90" width="112" height="116" fill="rgba(150,180,200,.05)"/>
+        <text x="250" y="44" fill="var(--amber)" font-family="JetBrains Mono" font-size="12">cut-out P</text>
+        <text x="250" y="70" fill="var(--paper)" font-family="JetBrains Mono" font-size="11">↕ usable</text>
+        <text x="250" y="84" fill="var(--paper)" font-family="JetBrains Mono" font-size="11">&nbsp;&nbsp;band</text>
+        <text x="250" y="94" fill="var(--danger)" font-family="JetBrains Mono" font-size="12">min P</text>
+        <text x="180" y="160" text-anchor="middle" fill="var(--muted-2)" font-family="JetBrains Mono" font-size="11">"dead" air</text>
+        <text x="180" y="176" text-anchor="middle" fill="var(--muted-2)" font-family="JetBrains Mono" font-size="11">below min</text>
+      </svg>
+      <figcaption>Only the amber band is yours to spend before pressure goes too low.</figcaption>
+    </figure>
+    <p>Divide that usable air by the flow rate and you get your <strong>buffer time</strong> — how long the tank alone can feed the gripper if the compressor stopped. Play with it below.</p>
+  </section>
+
+  <!-- 07 — CALCULATOR -->
+  <section class="reveal">
+    <span class="num">07 — Put numbers on it</span>
+    <h2>Sizing sandbox.</h2>
+    <p>Pull these from your real datasheets. Defaults are typical venturi-gripper figures — change the minimum pressure and consumption to match yours.</p>
+    <div class="calc">
+      <div class="grid-in">
+        <div class="field flow">
+          <label>Gripper air consumption (free air)</label>
+          <div class="row"><input type="range" id="flow" min="20" max="600" step="10" value="240"><span class="val"><span id="flowV">240</span><span class="un">L/min</span></span></div>
+        </div>
+        <div class="field">
+          <label>Duty cycle — fraction of time actually drawing air</label>
+          <div class="row"><input type="range" id="duty" min="10" max="100" step="5" value="100"><span class="val"><span id="dutyV">100</span><span class="un">%</span></span></div>
+        </div>
+        <div class="field">
+          <label>Tank size</label>
+          <div class="row"><input type="range" id="tank" min="5" max="500" step="5" value="50"><span class="val"><span id="tankV">50</span><span class="un">L</span></span></div>
+        </div>
+        <div class="field">
+          <label>Compressor cut-out (tank fill) pressure</label>
+          <div class="row"><input type="range" id="pcut" min="2" max="12" step="0.5" value="8"><span class="val"><span id="pcutV">8.0</span><span class="un">bar</span></span></div>
+        </div>
+        <div class="field">
+          <label>Gripper minimum working pressure</label>
+          <div class="row"><input type="range" id="pmin" min="0.5" max="10" step="0.5" value="4"><span class="val"><span id="pminV">4.0</span><span class="un">bar</span></span></div>
+        </div>
+      </div>
+      <div class="out">
+        <div class="stat amber"><div class="sk">Usable air in tank</div><div class="sv" id="oAir">200</div><div class="sn">litres of free air above minimum pressure</div></div>
+        <div class="stat amber"><div class="sk">Buffer if compressor stops</div><div class="sv" id="oBuf">50s</div><div class="sn">how long the tank alone keeps it fed at full draw</div></div>
+        <div class="stat cyan"><div class="sk">Sustained demand (avg)</div><div class="sv" id="oAvg">240</div><div class="sn">L/min FAD the supply must average</div></div>
+        <div class="stat cyan"><div class="sk">Recommended compressor</div><div class="sv" id="oFad">312</div><div class="sn">L/min FAD with 30% headroom</div></div>
+      </div>
+      <div class="verdict" id="verdict"></div>
+    </div>
+  </section>
+
+  <!-- 08 -->
+  <section class="reveal">
+    <span class="num">08 — The misconception, dissolved</span>
+    <h2>The tank changes the <span style="color:var(--cyan)">shape</span>, never the <span style="color:var(--amber)">average</span>.</h2>
+    <p>Your worry — "draw from a fixed tank and the bar drops, so it doesn't make sense" — is correct physics. Here's the resolution in one line:</p>
+    <div class="call">
+      <span class="lab">The rule</span>
+      <p>A tank <strong>buffers peaks</strong> and rides out short bursts; it does <em>not</em> add capacity over time. For anything you run continuously, your compressor's <span class="hf">FAD must meet or beat the average draw</span>, or the tank slowly empties and the pressure collapses — no matter how big the tank is.</p>
+    </div>
+    <p>So two genuinely different cases:</p>
+    <h3 style="color:var(--cyan)">Bursty / intermittent gripping</h3>
+    <p>If the gripper only pulls air for a couple of seconds per pick and rests in between, your <em>average</em> demand is far below 240 L/min. Here a generous tank does real work — it covers each spike while a modest compressor lazily refills between picks. Tank size is your friend.</p>
+    <h3 style="color:var(--amber)">Continuous gripping</h3>
+    <p>If the gripper draws steadily (continuous-flow venturi, long hold times), the average <em>is</em> ~240 L/min. The tank only smooths ripples and stops the compressor short-cycling; the compressor itself must deliver ≥ 240 L/min FAD at your working pressure. A huge tank just delays the inevitable sag.</p>
+    <div class="call danger">
+      <span class="lab">The trap</span>
+      <p>"Buy a big tank and it won't matter how weak the pump is" is only true for <strong>bursts shorter than your buffer time</strong>. Run longer than that and you're back to needing real compressor capacity.</p>
+    </div>
+  </section>
+
+  <!-- 09 -->
+  <section class="reveal">
+    <span class="num">09 — What you actually need to spec</span>
+    <h2>The shopping checklist.</h2>
+    <ul class="check">
+      <li><b>Working pressure required.</b> Read the gripper/ejector datasheet — most venturi units want 4–6 bar, not 1. Your compressor's max (cut-out) pressure must clear this comfortably.</li>
+      <li><b>Air consumption (FAD).</b> The 240 L/min figure, confirmed as free air. This is the number to match against compressor FAD.</li>
+      <li><b>Duty cycle.</b> How much of the time is the gripper actually drawing? This is what separates "small compressor + big tank" from "big compressor." Measure or estimate it honestly.</li>
+      <li><b>Compressor FAD ≥ average draw, with headroom.</b> Size FAD to (consumption × duty), then add ~30% so it isn't running at 100% forever. Check FAD is quoted <em>at your working pressure</em>, not at zero.</li>
+      <li><b>Tank sized to your bursts.</b> Big enough that buffer time comfortably exceeds your longest continuous draw and to stop the compressor short-cycling — not as a substitute for FAD.</li>
+      <li><b>Mind the plumbing.</b> Undersized hose and fittings cause pressure drop under flow (the "resistance" in the analogy). A correctly sized supply can still starve the gripper through a thin line.</li>
+    </ul>
+    <div class="call f">
+      <span class="lab">One-line summary</span>
+      <p><strong>Pressure</strong> decides if the gripper works at all. <strong>Flow (FAD)</strong> decides if it keeps working. <strong>The tank</strong> only buys you time between the two.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="wrap">
+  <div class="mono" style="margin-bottom:14px">// open questions to settle your real spec</div>
+  <span class="pill">true min working pressure?</span>
+  <span class="pill">continuous or per-pick?</span>
+  <span class="pill">seconds per draw?</span>
+  <span class="pill">picks per minute?</span>
+  <span class="pill">hose ID & length?</span>
+  <p style="margin-top:18px">Bring me those and we'll size the exact compressor + tank combination together.</p>
+</footer>
+
+<script>
+  // scroll reveal
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} });
+  },{threshold:0.12});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+  // calculator
+  const ids=['flow','duty','tank','pcut','pmin'];
+  const el={}; ids.forEach(i=>el[i]=document.getElementById(i));
+  const fmtTime=s=>{
+    if(!isFinite(s)||s<=0) return '0s';
+    if(s<90) return s.toFixed(0)+'s';
+    return (s/60).toFixed(1)+' min';
+  };
+  function calc(){
+    const flow=+el.flow.value, duty=+el.duty.value, tank=+el.tank.value, pcut=+el.pcut.value, pmin=+el.pmin.value;
+    document.getElementById('flowV').textContent=flow;
+    document.getElementById('dutyV').textContent=duty;
+    document.getElementById('tankV').textContent=tank;
+    document.getElementById('pcutV').textContent=pcut.toFixed(1);
+    document.getElementById('pminV').textContent=pmin.toFixed(1);
+
+    const dP=Math.max(0,pcut-pmin);
+    const usable=tank*dP;                  // litres free air
+    const bufferSec=flow>0 ? usable/flow*60 : 0;
+    const avg=flow*duty/100;
+    const fad=avg*1.3;
+
+    document.getElementById('oAir').textContent=Math.round(usable)+' L';
+    document.getElementById('oBuf').textContent=fmtTime(bufferSec);
+    document.getElementById('oAvg').textContent=Math.round(avg);
+    document.getElementById('oFad').textContent=Math.round(fad);
+
+    const v=document.getElementById('verdict');
+    if(dP<=0){
+      v.className='verdict warn';
+      v.innerHTML='<b>Impossible band.</b> Your minimum pressure meets or exceeds the cut-out pressure — the tank holds <b>zero</b> usable air and the gripper can never reach working pressure. Raise the compressor pressure or lower the gripper requirement.';
+    } else if(duty>=95){
+      v.className='verdict warn';
+      v.innerHTML='<b>Continuous duty.</b> At ~full-time draw the tank only gives you <b>'+fmtTime(bufferSec)+'</b> of grace. The compressor must sustain <b>'+Math.round(avg)+' L/min FAD</b> (buy ~'+Math.round(fad)+' for headroom). A bigger tank will <i>not</i> rescue an undersized compressor here.';
+    } else {
+      v.className='verdict go';
+      v.innerHTML='<b>Intermittent duty.</b> Because you only draw '+duty+'% of the time, average demand is just <b>'+Math.round(avg)+' L/min</b>. A compressor around <b>'+Math.round(fad)+' L/min FAD</b> plus this tank (~'+fmtTime(bufferSec)+' burst buffer) is a sensible pairing — provided each continuous draw is shorter than that buffer.';
+    }
+  }
+  ids.forEach(i=>el[i].addEventListener('input',calc));
+  calc();
+</script>
+</body>
+</html>

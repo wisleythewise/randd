@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trajectory Replay &amp; the Per-Action RPC — analysis</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161922;
+    --panel-2: #1c2030;
+    --text: #e7ecf3;
+    --muted: #9aa3b2;
+    --accent: #4ea1ff;
+    --accent-2: #7fd1a8;
+    --warn: #ffb454;
+    --bad: #ff6b6b;
+    --line: #262b39;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.55; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 48px 28px 120px; }
+  header.hero { padding: 32px 0 24px; border-bottom: 1px solid var(--line); margin-bottom: 40px; }
+  header.hero .tag { color: var(--accent); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; }
+  header.hero h1 { font-size: 38px; margin: 6px 0 8px; letter-spacing: -.01em; }
+  header.hero p.sub { color: var(--muted); font-size: 17px; margin: 0; max-width: 800px; }
+  header.hero .meta { color: var(--muted); font-size: 13px; margin-top: 18px; }
+  h2 { font-size: 24px; margin: 56px 0 16px; letter-spacing: -.005em; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  h3 { font-size: 18px; margin: 28px 0 10px; }
+  h4 { font-size: 14px; margin: 18px 0 6px; color: var(--accent-2); text-transform: uppercase; letter-spacing: .05em; }
+  p { margin: 10px 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+  code { background: #20242f; padding: 1px 6px; border-radius: 4px; font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; }
+  pre { background: #0a0c11; border: 1px solid var(--line); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.45; }
+  pre code { background: none; padding: 0; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; margin: 18px 0; }
+  .panel.compact { padding: 14px 18px; }
+  .panel.accent { border-left: 3px solid var(--accent); }
+  .panel.warn { border-left: 3px solid var(--warn); }
+  .panel.good { border-left: 3px solid var(--accent-2); }
+  .panel.bad { border-left: 3px solid var(--bad); }
+  .grid { display: grid; gap: 18px; }
+  .grid.cards-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid.cards-3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 880px) { .grid.cards-2, .grid.cards-3 { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  td.good { color: var(--accent-2); }
+  td.bad { color: var(--bad); }
+  td.warn { color: var(--warn); }
+  .diagram { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 22px; overflow-x: auto; margin: 18px 0; }
+  .diagram pre { background: transparent; border: none; padding: 0; color: var(--text); font-size: 12.5px; line-height: 1.5; }
+  .diagram .cap { color: var(--muted); font-size: 12px; margin-top: 12px; }
+  .pillrow { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
+  .pill.on { color: var(--accent-2); border-color: var(--accent-2); }
+  .pill.off { color: var(--bad); border-color: rgba(255,107,107,0.4); }
+  .pill.warn { color: var(--warn); border-color: var(--warn); }
+  .fileref { color: var(--accent); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; }
+  .toc { columns: 2; column-gap: 32px; }
+  .toc a { display: block; padding: 3px 0; }
+  @media (max-width: 700px) { .toc { columns: 1; } }
+  footer { margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .hl-bad { color: var(--bad); }
+  .hl-good { color: var(--accent-2); }
+  .hl-warn { color: var(--warn); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="tag">Atlas · Servo7</div>
+  <h1>Trajectory Replay &amp; the Per-Action RPC</h1>
+  <p class="sub">How recorded trajectories are stored, armed, and drained — and why the orchestrator currently fetches the replay one frame at a time over a blocking bus RPC at 30&nbsp;Hz. End-to-end walkthrough, the request/response mechanism that backs it, the overhead it costs, and three concrete ways to fix it.</p>
+  <div class="meta">Draft · 2026-06-02 · Companion to <a href="bus-and-digital-twin.html">bus &amp; digital twin</a> and <a href="digital-twin-flow.html">digital-twin flow</a></div>
+</header>
+
+<h2>Contents</h2>
+<div class="panel compact toc">
+  <a href="#tldr">0 · TL;DR</a>
+  <a href="#data">1 · The data: a frame, the queue, the library</a>
+  <a href="#ownership">2 · Ownership: who holds the trajectory</a>
+  <a href="#lifecycle">3 · The replay lifecycle</a>
+  <a href="#rpc">4 · How request() works (corr + reply_to + Event)</a>
+  <a href="#inproc">5 · The in-process nuance</a>
+  <a href="#overhead">6 · The overhead, counted</a>
+  <a href="#remote">7 · The remote special case</a>
+  <a href="#fixes">8 · Three ways to fix it</a>
+  <a href="#reco">9 · Recommendation</a>
+</div>
+
+<h2 id="tldr">0 · TL;DR</h2>
+<div class="panel accent">
+  <p>A recorded trajectory is a <strong>list of <code>RobotState</code> frames</strong> living in a <code>deque</code> inside a <code>TrajectoryManager</code>, which is owned by the follower's <code>DigitalTwin</code> — which is owned by the follower <code>RobotNode</code>. <strong>The orchestrator has no direct handle on it.</strong> So to play it back, the orchestrator's 30&nbsp;Hz dispatch worker calls <code>command_router.request(follower, GET_REPLAY_ACTION)</code> <em>once per frame</em> — a blocking request/response over the pub/sub bus. A 300-frame trajectory = <strong>301 RPC round-trips</strong>, each serializing one <code>RobotState</code> to JSON and back, each blocking the calling thread.</p>
+  <p class="small">The intuition in the question is right: it would be cheaper to ship the whole trajectory to the orchestrator once at arm-time and iterate locally — <em>or</em> to stop pulling entirely and let the node push frames itself. §8 lays out both, plus the smaller async fix. The catch is the <span class="hl-warn">remote</span> case (§7), where the node already drains its own queue server-side — any fix has to keep that path working.</p>
+</div>
+
+<h2 id="data">1 · The data: a frame, the queue, the library</h2>
+
+<h3>A single "replay action" is a <code>RobotState</code></h3>
+<p>Every frame in a trajectory is a full <code>RobotState</code> dataclass <span class="fileref">servo7/robot/robot_types.py</span> — the same object that flows everywhere else in the system. The replay-relevant fields:</p>
+<pre><code>@dataclass
+class RobotState:
+    timestamp: float
+    joint_positions:  list[float] | None    # the core payload — N joint angles
+    joint_velocities: list[float] | None
+    joint_efforts:    list[float] | None
+    gripper_position: float | None
+    end_effector_pose: list[float] | None   # [x,y,z, qx,qy,qz,qw]
+    robot_type: RobotType | None             # retagged on the way out (see §3)
+    units: str = "radians"
+    trace_id: str = ...                      # profiling
+    hops: list[list] = ...                   # per-hop timestamps
+    extras: dict[str, Any] = ...
+    # ... + to_dict() / from_dict() for the wire</code></pre>
+<p>Serialized to JSON, one frame is <strong>~1–2&nbsp;KB</strong>. It already round-trips through <code>to_dict()</code>/<code>from_dict()</code>, so the whole trajectory is trivially serializable.</p>
+
+<h3>The queue and the library</h3>
+<p>The <code>TrajectoryManager</code> <span class="fileref">servo7/control/trajectory_manager.py</span> keeps two things:</p>
+<table>
+  <thead><tr><th>Field</th><th>Type</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>_record_queue</code></td><td><code>deque[RobotState]</code></td><td>The <strong>live playback queue</strong>. Replay drains it one <code>popleft()</code> at a time. Recording appends to it.</td></tr>
+    <tr><td><code>_trajectories</code></td><td><code>dict[str, list[RobotState]]</code></td><td>The <strong>named library</strong> of saved trajectories. "Load" copies a named entry (plus interpolated bridges) into <code>_record_queue</code>.</td></tr>
+    <tr><td><code>_replay_active</code></td><td><code>bool</code></td><td>The gate. Only set by an explicit Play (<code>begin_replay()</code>); <code>get_action()</code> returns <code>None</code> unless it's true.</td></tr>
+    <tr><td><code>_sequence_template</code></td><td><code>list[RobotState]</code></td><td>Loop buffer — when a looping sequence drains, the queue refills from this.</td></tr>
+  </tbody>
+</table>
+
+<p>The single drain primitive — note it pops <strong>exactly one frame</strong> and is lock-guarded:</p>
+<pre><code>def get_action(self) -> "RobotState | None":
+    with self._record_lock:
+        if not self._record_queue:
+            if self._loop_sequence and self._sequence_template:
+                self._record_queue.extend(self._sequence_template)   # refill on loop
+                ...
+            else:
+                return None
+        return self._record_queue.popleft()</code></pre>
+
+<div class="panel compact"><p class="small muted">Interpolation (the smooth bridge from the current pose to the first frame, and between chained trajectories) is computed <strong>once at load time</strong> by <code>_build_layout()</code> and baked into <code>_record_queue</code> as ordinary frames. So by the time replay drains, every element is just a frame to pop — no per-tick math on the robot side.</p></div>
+
+<h2 id="ownership">2 · Ownership: who holds the trajectory</h2>
+<p>This is the whole reason the RPC exists. The trajectory lives several layers deep inside the follower node, and the orchestrator sits in a different object graph:</p>
+
+<div class="diagram"><pre>
+        ORCHESTRATOR NODE                         FOLLOWER ROBOT NODE
+        ─────────────────                         ───────────────────
+   OrchestratorNode                          RobotNode
+     └─ command_router : CommandRouter          └─ robot : DigitalTwinPID   (a Robot)
+            │                                          └─ trajectories : TrajectoryManager
+            │   no direct reference                          ├─ _record_queue : deque[RobotState]
+            │   ───────✗──────────►                          ├─ _trajectories : dict[str,list]
+            │                                                └─ _replay_active : bool
+            │
+            └──────────  bus (PubSub)  ──────────────► _on_robot_command()  ──► handler ──► twin
+                 cmd.follower / reply.orch
+</pre>
+  <div class="cap">The orchestrator can only reach the queue by sending a command over the bus. There is no shared pointer — by design, so the exact same code works when the follower is in another process or another host (§7).</div>
+</div>
+
+<h2 id="lifecycle">3 · The replay lifecycle</h2>
+<p>Three phases: <strong>arm</strong> (once), <strong>drain</strong> (per frame, the hot path), <strong>stop</strong> (once).</p>
+
+<h3>Phase 1 — Arm (one RPC)</h3>
+<p><code>OrchestratorNode.trigger_replay()</code> <span class="fileref">orchestrator_node.py:1064</span> sends one <code>TRIGGER_REPLAY</code> request. On the node, <code>_trigger_replay()</code> loads the named trajectory/sequence into <code>_record_queue</code>, calls <code>begin_replay()</code>, and returns the loaded frame count. The orchestrator then flips its own <code>control_mode = TRAJECTORIES</code> and starts a mode blend.</p>
+
+<h3>Phase 2 — Drain (the hot path: one RPC <em>per frame</em>)</h3>
+<p>A dedicated sync thread, <code>command_dispatch_worker()</code> <span class="fileref">orchestrator_node.py:396</span>, spins at a fixed <strong>30&nbsp;Hz</strong>. In <code>TRAJECTORIES</code> mode each tick does:</p>
+<pre><code># orchestrator_node.py — command_dispatch_worker(), 30 Hz loop
+elif self.control_mode == ControlMode.TRAJECTORIES:
+    action = self._pop_replay_action()           # &lt;-- blocking RPC, EVERY tick
+    if action is not None:
+        self.smooth_and_publish_action(action, source="controller")
+
+# _pop_replay_action(), orchestrator_node.py:695
+def _pop_replay_action(self) -> "RobotState | None":
+    raw = self.command_router.request(self.follower_robot_id,
+                                      RobotCommand.GET_REPLAY_ACTION)   # round-trip
+    if raw is None:
+        return None
+    return RobotState.from_dict(raw)</code></pre>
+<p>On the node side the handler pops one frame and retags its <code>robot_type</code> so the follower's converter passes it through unchanged:</p>
+<pre><code># robot_node.py:446 — _get_replay_action()
+twin = self._twin()
+if twin is None or not getattr(twin, "_replay_active", False):
+    return None
+action = twin.get_action()         # popleft() one frame
+if action is None:
+    return None
+d = action.to_dict()
+d["robot_type"] = self.robot.type.value
+return d</code></pre>
+
+<div class="diagram"><pre>
+   ORCH dispatch thread (30 Hz)                       FOLLOWER node
+   ────────────────────────────                       ─────────────
+   tick ──► _pop_replay_action()
+              request(GET_REPLAY_ACTION) ──cmd.follower──► _on_robot_command
+                                                              _get_replay_action()
+                                                                twin.get_action() → frame
+                                                                frame.to_dict()
+                          reply.orch ◄────────────────────── publish {corr, value}
+              RobotState.from_dict(raw)
+            smooth_and_publish_action ──action.follower──► _on_command_received
+   wait 33 ms                                                robot.set_state(...)
+   tick ──► (repeat, once per frame, for the whole trajectory)
+</pre>
+  <div class="cap">Every frame: one serialize on the node, one deserialize on the orchestrator, one blocking wait. Then the popped frame is re-serialized and published again on <code>action.follower</code> to actually move the robot.</div>
+</div>
+
+<h3>Phase 3 — Stop (one RPC)</h3>
+<p><code>stop_replay()</code> → <code>STOP_REPLAY</code> → <code>_stop_replay()</code> calls <code>end_replay()</code> and optionally <code>clear_recording()</code>. Sibling arming commands ride the same channel: <code>GOTO_TRAJECTORY</code> (smooth move to start/end), <code>SNAP_TWIN_ANCHOR</code>, <code>GET_TRAJECTORY_FRAMES</code> (scrub).</p>
+
+<h2 id="rpc">4 · How <code>request()</code> works — corr + reply_to + Event</h2>
+<p>The bus only does fire-and-forget pub/sub. <code>CommandRouter.request()</code> <span class="fileref">command_router.py:125</span> fakes a synchronous RPC on top of it with two tricks: a <strong>correlation id</strong> stamped on the message and echoed on the reply, and a <strong>reply_to topic</strong> the node publishes the answer on. A per-request <code>threading.Event</code> blocks the caller until the answer lands.</p>
+
+<pre><code>def request(self, robot_id, action, params=None, timeout=2.0) -> Any:
+    self._ensure_reply_subscription()                       # subscribe reply.orch once
+    corr = next(self._corr)                                 # unique id: 1,2,3,...
+    slot = {"event": threading.Event(), "value": None}      # this request's mailbox
+    with self._pending_lock:
+        self._pending[corr] = slot                          # register by corr
+    self.bus.publish(command_topic(robot_id), dumps({
+        "action": act, "params": params or {},
+        "reply_to": self._reply_topic, "corr": corr }))     # ask
+    slot["event"].wait(timeout)                             # &lt;-- BLOCKS here (≤ 2s)
+    with self._pending_lock:
+        self._pending.pop(corr, None)
+    return slot["value"]                                    # answer, or None on timeout
+
+def _on_reply(self, raw):                                   # fires on reply.orch
+    msg = loads(raw)
+    slot = self._pending.get(msg.get("corr"))               # find the right mailbox
+    if slot is not None:
+        slot["value"] = msg.get("value")                    # drop the answer in
+        slot["event"].set()                                 # ring the doorbell</code></pre>
+
+<div class="grid cards-2">
+  <div class="panel compact"><h4>slot</h4><p class="small">A per-request mailbox: <code>{event, value}</code>. Stored in <code>_pending[corr]</code> so the reply handler (running later, maybe on another thread) can find the exact caller that's waiting. <code>value</code> starts <code>None</code> — which is also what you get on timeout.</p></div>
+  <div class="panel compact"><h4>threading.Event</h4><p class="small">A flag + waiting room. <code>wait(timeout)</code> parks the caller; <code>set()</code> (rung by <code>_on_reply</code>) wakes it. The <code>timeout</code> means a node that never answers can't hang you forever. Handles both orderings — see §5.</p></div>
+</div>
+
+<h2 id="inproc">5 · The in-process nuance (important before "fixing the threading")</h2>
+<div class="panel warn">
+  <p>With the default <code>InProcessBus</code>, <code>publish()</code> invokes subscriber callbacks <strong>synchronously, on the caller's own thread</strong> <span class="fileref">in_process_bus.py:30</span>. So a "request" is really one deep synchronous call stack — the robot handler runs <em>inside</em> the publish on line&nbsp;142, sets the event, and only <em>then</em> does control reach the <code>wait()</code> on line&nbsp;148.</p>
+</div>
+<div class="diagram"><pre>
+   ONE THREAD, ONE CALL STACK (InProcessBus)
+
+   request ─► bus.publish("cmd.follower") ─► _on_robot_command ─► get_action()
+                                                                 ─► bus.publish("reply.orch")
+                                                                       ─► _on_reply ─► event.set()  ★
+   request (cont.) ─► event.wait(2.0)   ← event ALREADY set at ★, returns instantly
+                   ─► return value
+</pre>
+  <div class="cap">In-process, the Event/Lock/_pending machinery does almost nothing — the answer is in the box before you wait. The threading only earns its keep on ZmqBus / MpBus / UdpBus, where <code>_on_reply</code> genuinely fires on a different receiver thread and <code>wait()</code> actually sleeps.</div>
+</div>
+<p>Two consequences worth holding onto:</p>
+<ul>
+  <li><strong>The cost in-process is not "threading"</strong> — it's the <em>indirection</em>: <code>dumps</code> → bus → <code>loads</code> → handler → <code>dumps</code> → bus → <code>loads</code>, per frame, for what is morally a local <code>deque.popleft()</code>.</li>
+  <li><strong>It runs on the dispatch worker thread, not the asyncio loop.</strong> <code>command_dispatch_worker</code> is a dedicated sync thread, so the per-frame block doesn't freeze the event loop. (The arm/stop calls <em>are</em> made from async context, though — those are the ones that can stall the loop for up to the 2&nbsp;s timeout.)</li>
+</ul>
+
+<h2 id="overhead">6 · The overhead, counted</h2>
+<table>
+  <thead><tr><th>Trajectory</th><th>Frames</th><th>RPC round-trips</th><th>JSON (de)serializations</th><th>Wall time @30Hz</th></tr></thead>
+  <tbody>
+    <tr><td>Short pick</td><td>~90</td><td class="warn">91</td><td>~360</td><td>3 s</td></tr>
+    <tr><td>Typical</td><td>~300</td><td class="warn">301</td><td>~1200</td><td>10 s</td></tr>
+    <tr><td>Looping sequence</td><td>∞</td><td class="bad">unbounded</td><td>unbounded</td><td>until stopped</td></tr>
+  </tbody>
+  <tbody><tr><td colspan="5" class="small muted">Per frame the payload is serialized twice on the orchestrator's behalf: once for the <code>GET_REPLAY_ACTION</code> reply, once again when <code>smooth_and_publish_action</code> republishes it on <code>action.follower</code>. The replay pull is the redundant half.</td></tr></tbody>
+</table>
+<div class="panel"><p>None of this is <em>latency-critical</em> — the frames were captured at 30&nbsp;Hz and replay just paces them back out at 30&nbsp;Hz, so a few hundred µs of serialization per tick is comfortably inside the 33&nbsp;ms budget. The objection is <strong>architectural</strong>, not a measured stall: a chatty N-round-trip pull where one transfer (or zero) would do, with the queue's natural owner reduced to answering "give me the next one" 300 times.</p></div>
+
+<h2 id="remote">7 · The remote special case (the constraint any fix must respect)</h2>
+<div class="panel bad">
+  <p>When the follower is a <strong>remote</strong> robot, <code>RobotNode.robot</code> is a <code>RemoteRobotClient</code> proxy whose twin is <code>_RemoteDigitalTwin</code> <span class="fileref">robot/remote/robot_client.py:650</span>. Its <code>get_action()</code> <strong>returns <code>None</code> on purpose</strong> — the <em>remote server</em> drains its own queue locally and streams frames out. The orchestrator's per-tick pull is already a no-op in that mode; arming commands (<code>load_*_to_queue</code>, <code>begin_replay</code>) forward as ZMQ sideband messages.</p>
+</div>
+<p>So there are really two replay engines today:</p>
+<ul>
+  <li><strong>Local twin:</strong> orchestrator pulls frame-by-frame over the bus (the chatty path).</li>
+  <li><strong>Remote twin:</strong> server pushes; orchestrator's pull returns <code>None</code> and is ignored.</li>
+</ul>
+<p class="muted">The remote path is the proof that a <em>push</em> model already works in this codebase — which points at the cleanest fix.</p>
+
+<h2 id="fixes">8 · Three ways to fix it</h2>
+
+<div class="grid cards-3">
+  <div class="panel accent">
+    <h4>Option A — ship it once</h4>
+    <p class="small">Make <code>TRIGGER_REPLAY</code> (or a new <code>GET_TRAJECTORY_FRAMES</code> at arm-time) return the <strong>entire loaded queue</strong> as a list of dicts. The orchestrator caches it locally and the 30&nbsp;Hz worker iterates an in-memory list — zero per-frame RPC.</p>
+    <p class="small"><span class="pill on">1 transfer</span> <span class="pill">simple</span></p>
+    <p class="small muted">Cost: one ~300&nbsp;KB message at arm. Looping = re-iterate the local list. Must decide who owns loop-refill/interp once it's client-side, and remote still drains server-side so the orchestrator just skips local iteration there.</p>
+  </div>
+  <div class="panel good">
+    <h4>Option B — node pushes</h4>
+    <p class="small">Stop pulling entirely. After arm, the follower node drains its own queue on its publish worker and emits frames straight onto <code>action.follower</code> at 30&nbsp;Hz — exactly what the <strong>remote</strong> path already does. The orchestrator only sends arm/stop.</p>
+    <p class="small"><span class="pill on">0 pull RPCs</span> <span class="pill on">unifies local + remote</span></p>
+    <p class="small muted">Cost: smoothing/mode-blend currently lives in the orchestrator (<code>smooth_and_publish_action</code>); pushing means moving that onto the node or applying it downstream. Biggest change, best end state.</p>
+  </div>
+  <div class="panel">
+    <h4>Option C — async the RPC</h4>
+    <p class="small">Keep the pull, but add <code>await request_async()</code> backed by an <code>asyncio.Future</code> resolved via <code>loop.call_soon_threadsafe</code>. Removes the event-loop stall on arm/stop and any future async callers.</p>
+    <p class="small"><span class="pill warn">still N round-trips</span> <span class="pill">smallest diff</span></p>
+    <p class="small muted">Doesn't reduce chattiness — it only stops the blocking <code>wait()</code> from freezing the loop. Orthogonal to A/B; worth doing regardless for the arm/stop calls made from async context.</p>
+  </div>
+</div>
+
+<h2 id="reco">9 · Recommendation</h2>
+<div class="panel good">
+  <p><strong>Aim for Option B, land Option A first.</strong></p>
+  <ol>
+    <li><strong>A as the quick win:</strong> have arm return the full frame list; iterate locally. Kills the 300× round-trips with a contained diff and no change to where smoothing lives. Immediately makes local replay behave like one transfer.</li>
+    <li><strong>B as the real target:</strong> a push-drain on the node unifies local and remote replay into one engine — the orchestrator just arms and stops. This is where the architecture wants to be; the remote path already proves it works.</li>
+    <li><strong>C regardless:</strong> the arm/stop/snap calls are issued from the async orchestrator and block the loop up to the 2&nbsp;s timeout. An <code>asyncio.Future</code>-backed <code>request_async</code> fixes that independent of A/B.</li>
+  </ol>
+  <p class="small muted">Whatever path we pick, keep the <code>InProcessBus</code> "everything goes through the bus" profiling story in mind (§5) — it's why the per-frame detour exists in the first place. Option B preserves it (frames still publish on <code>action.follower</code>); Option A bypasses the pull but keeps the publish.</p>
+</div>
+
+<footer>
+  <p>Atlas · Servo7 — internal R&amp;D note. Sources: <span class="fileref">command_router.py</span>, <span class="fileref">in_process_bus.py</span>, <span class="fileref">orchestrator_node.py</span>, <span class="fileref">robot_node.py</span>, <span class="fileref">control/trajectory_manager.py</span>, <span class="fileref">robot/remote/robot_client.py</span>.</p>
+</footer>
+
+</div>
+</body>
+</html>
