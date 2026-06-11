@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Teleop FR3→FR20 latency-jitter report</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#1a2027; --panel2:#222b35; --text:#e6edf3; --muted:#9aa7b4;
+    --accent:#4ea1ff; --good:#3fb950; --warn:#d29922; --bad:#f85149; --grid:#2d3742;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  html,body{margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:980px;margin:0 auto;padding:40px 24px 80px;}
+  h1{font-size:30px;margin:0 0 4px;letter-spacing:-.5px;}
+  h2{font-size:21px;margin:44px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--grid);}
+  h3{font-size:16px;margin:26px 0 10px;color:var(--accent);}
+  .sub{color:var(--muted);margin:0 0 26px;}
+  code,.mono{font-family:var(--mono);font-size:.9em;}
+  code{background:var(--panel2);padding:1px 6px;border-radius:4px;color:#cdd9e5;}
+  .card{background:var(--panel);border:1px solid var(--grid);border-radius:10px;padding:18px 22px;margin:16px 0;}
+  .tldr{background:linear-gradient(180deg,#16202b,#141b22);border-left:4px solid var(--accent);}
+  .verdict{border-left:4px solid var(--good);}
+  .verdict.bad{border-left-color:var(--bad);}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px;}
+  th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid);}
+  th:first-child,td:first-child{text-align:left;}
+  th{color:var(--muted);font-weight:600;}
+  td.mono{font-family:var(--mono);}
+  tr.hi td{background:rgba(248,81,73,.10);}
+  tr.hi2 td{background:rgba(210,153,34,.10);}
+  tr.ok td{background:rgba(63,185,80,.08);}
+  .bar{height:13px;border-radius:3px;background:var(--accent);display:inline-block;vertical-align:middle;}
+  .barwrap{display:flex;align-items:center;gap:8px;}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:600;}
+  .pill.good{background:rgba(63,185,80,.18);color:var(--good);}
+  .pill.bad{background:rgba(248,81,73,.18);color:var(--bad);}
+  .pill.warn{background:rgba(210,153,34,.18);color:var(--warn);}
+  .muted{color:var(--muted);}
+  .flow{font-family:var(--mono);font-size:12.5px;line-height:1.9;background:var(--panel2);
+    border-radius:8px;padding:16px 18px;overflow-x:auto;white-space:pre;}
+  ul{margin:8px 0;padding-left:22px;} li{margin:5px 0;}
+  .big{font-size:34px;font-weight:700;letter-spacing:-1px;}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:14px 0;}
+  .grid3 .card{margin:0;text-align:center;}
+  .kpi .big{display:block;} .kpi .lbl{color:var(--muted);font-size:12.5px;}
+  .hist{display:flex;align-items:flex-end;gap:6px;height:160px;margin:18px 0 6px;}
+  .hist .col{flex:1;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px;position:relative;}
+  .hist .col span{position:absolute;top:-18px;left:0;right:0;text-align:center;font-size:10.5px;color:var(--muted);}
+  .histx{display:flex;gap:6px;} .histx div{flex:1;text-align:center;font-size:10px;color:var(--muted);}
+  .foot{margin-top:50px;color:var(--muted);font-size:12.5px;border-top:1px solid var(--grid);padding-top:16px;}
+  a{color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Teleoperation latency-jitter report</h1>
+<p class="sub">FR3 (leader) → FR20 (follower) ServoJ teleop loop · Fairino SimMachine pair · measured end-to-end with <code>ROBOT_TRACE=1</code></p>
+
+<div class="card tldr">
+  <h3 style="margin-top:0">TL;DR</h3>
+  <ul>
+    <li><b>The lock-contention hypothesis is not supported.</b> The shared SDK lock (<code>_sdk_lock</code>) on the follower's command-apply path is acquired in <b>~1&nbsp;µs</b> (p50 0.001 ms, max 0.01 ms over 869 ServoJ writes). It is essentially uncontended.</li>
+    <li><b>The dominant jitter source is callback scheduling on the leader→convert side</b> — the hop <code>sysstate.pre_callback → orch.cb_enter</code>: median 1.2 ms but p99 6.5 ms, max 9.2 ms, contributing the largest share of the end-to-end PDV (jitter). This is Python thread / GIL dispatch latency, not I/O.</li>
+    <li><b>Two secondary contributors, comparable in size:</b> the ServoJ XML-RPC round-trip (p99 4.4 ms) and per-command safety validation (<code>validate_command</code>, p99 3.6 ms).</li>
+    <li><b>Side finding:</b> only <b>~29%</b> of teleop setpoints (869 of 3021) actually issued a ServoJ; the other ~71% were rejected by <code>safety.validate_command</code> before reaching hardware — a likely source of <i>motion</i> stutter worth a separate look.</li>
+    <li><b>This jitter has a real consequence:</b> on the slow 2-core CI runner it inflates the follower's measured TCP-speed estimate (Δpos/Δt) enough to <b>falsely trip the <code>eef_speed</code> guard</b> and e-stop, even at a gentle commanded velocity. The jitter is not just a smoothness issue — it makes the safety gate flaky.</li>
+  </ul>
+</div>
+
+<h2>1 · How this was measured</h2>
+<div class="card">
+<p>The full stack was booted headless (no frontend) against two freshly-recreated Fairino SimMachine containers via <code>scripts/profile_teleop_jitter.py</code>, which sets <code>ROBOT_TRACE=1</code>, enters <code>teleoperation</code>, and drives the FR3 leader through <b>120 back-to-back circle laps over 60 s</b>. The follower mirrors the leader through the normal ServoJ command path.</p>
+<p>Every command carries a <code>RobotState</code> that is stamped with <code>time.perf_counter()</code> at each pipeline hop (<code>robot_types.py:stamp</code>, a no-op unless <code>ROBOT_TRACE=1</code>). Stamps are flushed to <code>traces/robot_trace_*.jsonl</code> and reshaped into per-hop deltas by <code>servo7/utils/trace_stats.py</code>. <b>3021 teleop commands</b> were captured. To isolate the SDK lock specifically, an extra <code>command_pre_lock</code> stamp was added immediately before <code>with self._sdk_lock:</code> and <code>command_lock_acquired</code> immediately after, so lock-wait is separated from validation and from the RPC itself.</p>
+<p class="muted">Environment: simulated controllers (CNDE realtime stream at 10 ms, publish loop 50 Hz). Absolute numbers will differ on real arms and on faster/slower hosts, but the <i>relative</i> breakdown and the contention conclusions hold. One 46.8 ms startup outlier (first command) is excluded from percentiles below.</p>
+</div>
+
+<h2>2 · The command pipeline</h2>
+<div class="card">
+<p>A single teleop command travels leader→follower through these stamped hops (file:line of each stamp):</p>
+<div class="flow">leader robot node          <span class="muted">robot_node.py:268</span>   publish.pre_read
+  └ read CNDE state        <span class="muted">robot_node.py:269</span>   publish.got_state
+system-state manager       <span class="muted">system_state_node.py:40</span> ssm.deserialized
+                           <span class="muted">system_state.py:69</span>     sysstate.pre_callback   ──┐
+orchestrator teleop cb     <span class="muted">orchestrator_node.py:362</span> orch.cb_enter           ◄─┘  ← scheduling gap
+  └ leader→follower map    <span class="muted">orchestrator_node.py:368</span> orch.cb_converted
+  └ publish to follower    <span class="muted">orchestrator_node.py:374</span> orch.cb_pre_serialize
+follower robot node        <span class="muted">robot_node.py:334</span>      follower.command_parsed
+                           <span class="muted">robot_node.py:339</span>      follower.command_pre_hardware_write
+  └ safety validate        <span class="muted">base.py:294</span>           (validate_command)
+  └ pre-lock               <span class="muted">fairino.py</span>            follower.command_pre_lock
+  └ acquire _sdk_lock      <span class="muted">fairino.py:842</span>        follower.command_lock_acquired
+  └ ServoJ RPC             <span class="muted">fairino.py:843</span>        follower.command_applied</div>
+</div>
+
+<h2>3 · End-to-end result</h2>
+<div class="grid3 kpi">
+  <div class="card"><span class="big">2.43<span style="font-size:16px"> ms</span></span><span class="lbl">median (p50) latency</span></div>
+  <div class="card"><span class="big" style="color:var(--warn)">11.0<span style="font-size:16px"> ms</span></span><span class="lbl">p99 latency</span></div>
+  <div class="card"><span class="big" style="color:var(--bad)">±2.49<span style="font-size:16px"> ms</span></span><span class="lbl">std dev (the jitter)</span></div>
+</div>
+<div class="card">
+<p style="margin-top:0">End-to-end leader-read → follower-ServoJ latency, n=3021: mean <b>3.20</b>, p50 <b>2.43</b>, p90 <b>7.09</b>, p99 <b>10.98</b>, max 46.8 ms. The distribution is heavily right-skewed — most commands are fast (~1–2 ms) but a long tail reaches 7–11 ms. That spread <i>is</i> the jitter the operator feels.</p>
+<div class="hist">
+  <div class="col" style="height:7%"><span>21</span></div>
+  <div class="col" style="height:100%"><span>1261</span></div>
+  <div class="col" style="height:40%"><span>509</span></div>
+  <div class="col" style="height:33%"><span>422</span></div>
+  <div class="col" style="height:20%"><span>255</span></div>
+  <div class="col" style="height:24%"><span>299</span></div>
+  <div class="col" style="height:17%"><span>213</span></div>
+  <div class="col" style="height:4%"><span>40</span></div>
+</div>
+<div class="histx"><div>0–1</div><div>1–2</div><div>2–3</div><div>3–4</div><div>4–5</div><div>5–7.5</div><div>7.5–10</div><div>10–15</div></div>
+<p class="muted" style="text-align:center;margin:8px 0 0">end-to-end latency (ms) — command count per bucket</p>
+</div>
+
+<h2>4 · Where the time (and jitter) goes — per hop</h2>
+<div class="card">
+<p>Per-hop latency across all 3021 commands. The two highlighted rows are the jitter drivers; the green row is the SDK lock (the hypothesised culprit).</p>
+<table>
+<thead><tr><th>hop</th><th>p50</th><th>p95</th><th>p99</th><th>max</th><th>PDV&nbsp;p99</th><th>contribution</th></tr></thead>
+<tbody>
+<tr><td>leader CNDE read</td><td class="mono">0.07</td><td class="mono">0.85</td><td class="mono">1.93</td><td class="mono">45.3*</td><td class="mono">2.52</td><td><div class="barwrap"><span class="bar" style="width:6%"></span></div></td></tr>
+<tr><td>state deserialize</td><td class="mono">0.10</td><td class="mono">0.38</td><td class="mono">1.61</td><td class="mono">2.20</td><td class="mono">1.37</td><td><div class="barwrap"><span class="bar" style="width:5%"></span></div></td></tr>
+<tr><td>state-mgr → callback handoff</td><td class="mono">0.02</td><td class="mono">0.10</td><td class="mono">0.14</td><td class="mono">0.20</td><td class="mono">0.07</td><td><div class="barwrap"><span class="bar" style="width:1%"></span></div></td></tr>
+<tr class="hi"><td><b>callback scheduling</b> <span class="muted">pre_callback→cb_enter</span></td><td class="mono">1.22</td><td class="mono">5.35</td><td class="mono">6.45</td><td class="mono">9.24</td><td class="mono">3.24</td><td><div class="barwrap"><span class="bar" style="width:50%;background:var(--bad)"></span></div></td></tr>
+<tr class="hi2"><td>leader→follower convert</td><td class="mono">0.06</td><td class="mono">1.53</td><td class="mono">2.69</td><td class="mono">6.94</td><td class="mono">2.80</td><td><div class="barwrap"><span class="bar" style="width:21%;background:var(--warn)"></span></div></td></tr>
+<tr><td>serialize + bus publish</td><td class="mono">0.04</td><td class="mono">0.20</td><td class="mono">0.24</td><td class="mono">0.50</td><td class="mono">0.17</td><td><div class="barwrap"><span class="bar" style="width:2%"></span></div></td></tr>
+<tr class="hi2"><td>safety validate + servo-mode <span class="muted">pre_hw→pre_lock</span></td><td class="mono">0.59</td><td class="mono">2.16</td><td class="mono">3.62</td><td class="mono">8.26</td><td class="mono">3.21</td><td><div class="barwrap"><span class="bar" style="width:28%;background:var(--warn)"></span></div></td></tr>
+<tr class="ok"><td><b>_sdk_lock wait</b> <span class="muted">pre_lock→lock_acquired</span></td><td class="mono">0.001</td><td class="mono">0.001</td><td class="mono">0.004</td><td class="mono">0.01</td><td class="mono">~0</td><td><div class="barwrap"><span class="bar" style="width:0.5%;background:var(--good)"></span><span class="pill good">~0&nbsp;µs</span></div></td></tr>
+<tr class="hi2"><td>ServoJ RPC <span class="muted">lock_acquired→applied</span></td><td class="mono">1.06</td><td class="mono">3.52</td><td class="mono">4.43</td><td class="mono">8.78</td><td class="mono">3.82</td><td><div class="barwrap"><span class="bar" style="width:34%;background:var(--warn)"></span></div></td></tr>
+</tbody>
+</table>
+<p class="muted">Apply-path rows (validate / lock / ServoJ) are over the 869 commands that actually issued a ServoJ. *the 45.3 ms CNDE-read max is the single startup outlier. Bars show p99 relative to the largest hop.</p>
+</div>
+
+<h2>5 · Verdict on the lock-contention hypothesis</h2>
+<div class="card verdict">
+<p style="margin-top:0"><span class="pill good">NOT CONTENDED</span> &nbsp;The follower's <code>_sdk_lock</code> is taken between the <code>command_pre_lock</code> and <code>command_lock_acquired</code> stamps in <b>p50 0.001 ms / p99 0.004 ms / max 0.01 ms</b> across 869 ServoJ writes. There is effectively no queue.</p>
+<p>Why the original intuition was reasonable but wrong: the apply hop (<code>command_pre_hardware_write → command_applied</code>) <i>is</i> visibly variable (p99 ≈ 5 ms), so it looks like the apply method stalls. Splitting it shows the variance lives in <b>(a) <code>safety.validate_command</code></b> (numpy bound-checks, <code>base.py:294</code>) and <b>(b) the ServoJ XML-RPC round-trip</b> (<code>fairino.py:843</code>) — never in lock acquisition. On the follower, the only other <code>_sdk_lock</code> taker on the hot path would be the 50 Hz <code>annotate()</code> pass, but on a follower that path reads cached/packet data and does <i>not</i> take the lock (<code>_poll_controller_drag</code> early-returns; wrench/guidance read the CNDE packet). So there is simply nothing to contend with.</p>
+</div>
+
+<h2>6 · Root causes, ranked</h2>
+<div class="card">
+<h3 style="margin-top:0">① Callback scheduling latency (primary) — p99 6.5 ms, PDV max 8.3 ms</h3>
+<p>The gap between <code>sysstate.pre_callback</code> (<code>system_state.py:69</code>, just before the state-change callbacks fire) and <code>orch.cb_enter</code> (<code>orchestrator_node.py:362</code>, the teleop conversion callback actually starting). The callback is invoked directly (<code>system_state.py:71-73</code>), so this gap is <b>not</b> code work — it is the time the leader's update waits for the Python interpreter to schedule the work, i.e. GIL hand-off / thread contention between the leader publish thread, the follower publish thread, the orchestrator, and the command-apply path all competing in one process. It is both the largest median hop and the largest jitter contributor.</p>
+<h3>② ServoJ XML-RPC round-trip (secondary) — p99 4.4 ms</h3>
+<p>The blocking <code>interface.ServoJ(...)</code> call (<code>fairino.py:843</code>) to the controller. Median ~1 ms but tails to ~9 ms; this is genuine I/O variance to the (simulated) controller and is expected to differ on real hardware.</p>
+<h3>③ Per-command safety validation (secondary) — p99 3.6 ms</h3>
+<p><code>safety.validate_command</code> runs on every setpoint inside <code>base.set_state</code> (<code>base.py:294</code>) before the write. Its numpy bound/speed checks add ~0.6 ms typical, ~8 ms worst-case, and run on the same contended thread.</p>
+<h3>④ Leader→follower conversion spikes — p99 2.7 ms, max 6.9 ms</h3>
+<p><code>cb_enter → cb_converted</code> (<code>orchestrator_node.py:362→368</code>): usually ~60 µs, but occasional multi-ms spikes, again consistent with GIL pauses rather than steady cost.</p>
+</div>
+
+<h2>7 · Side finding — 71% of setpoints never reach the arm</h2>
+<div class="card">
+<p>Of 3021 teleop commands, only <b>869 (29%)</b> issued a ServoJ; the remaining <b>2152 (71%)</b> returned from <code>set_state</code> in ~8 µs without a hardware write. That path is taken when <code>safety.validate_command</code> returns <code>not ok</code> (<code>base.py:294-296</code>) — the setpoint is dropped, no e-stop. Dropping two of every three frames will read as <i>motion</i> stutter on the follower independent of the latency numbers above. The drop reason (speed/limit/workarea clamp, or duplicate frames) was not isolated here and is the most valuable next investigation. <span class="muted">(This is measured behaviour, not yet a confirmed defect.)</span></p>
+</div>
+
+<h2>8 · Consequence — the jitter makes the CI safety gate flaky</h2>
+<div class="card verdict bad">
+<p style="margin-top:0">The follower's <code>eef_speed</code> / <code>joint_space_speed</code> guards estimate speed as Δposition/Δtime from the incoming state stream. When a state frame is delayed by the scheduling jitter above, the next frame lands a large Δposition over a small Δt, so the <i>estimated</i> speed spikes far above the real commanded speed and trips an e-stop on a single over-threshold sample (1/1). The identical runs on the faster local host completed 120 laps with no trip.</p>
+<p><b>The CI evidence is unambiguous — and proves the trip is jitter, not motion:</b></p>
+<table>
+<thead><tr><th>commanded vel</th><th>CI result</th><th>guard tripped</th><th>reported speed</th></tr></thead>
+<tbody>
+<tr class="hi"><td class="mono">70</td><td><span class="pill bad">trip</span></td><td>joint_space_speed</td><td class="mono">joint 1 = 114.9 °/s &gt; 70</td></tr>
+<tr class="hi"><td class="mono">40</td><td><span class="pill bad">trip</span></td><td>eef_speed</td><td class="mono">1.099 m/s &gt; 1.0</td></tr>
+<tr class="hi"><td class="mono">40 (retry)</td><td><span class="pill bad">trip</span></td><td>joint_space_speed</td><td class="mono">joint 0 = 81.9 °/s &gt; 70</td></tr>
+<tr class="hi"><td class="mono">20</td><td><span class="pill bad">trip</span></td><td>eef_speed</td><td class="mono">3.049 m/s &gt; 1.0</td></tr>
+</tbody>
+</table>
+<p>Halving the velocity from 40 to 20 made the reported speed <b>worse</b> (1.099 → 3.049 m/s) and the guard varies run-to-run — both impossible for a real, velocity-scaled motion. The trip is a delayed-frame artifact. <b>No commanded velocity reliably passes on the stock runner</b>, so a <i>blocking</i> safe-check gate would fail every PR. Until a mitigation lands, the CI step is therefore configured <b>non-blocking (informational)</b>; see §9.</p>
+</div>
+
+<h2>9 · Recommendations</h2>
+<div class="card">
+<ul>
+  <li><b>Attack the callback-scheduling gap first (biggest win).</b> The leader→convert→publish chain hops several threads in one GIL'd process. Options: run the teleop conversion on a dedicated high-priority thread fed by a bounded queue; minimise other Python work on the publish threads; or move the hot path off the shared interpreter. Re-measure <code>pre_callback→cb_enter</code> after any change.</li>
+  <li><b>Make the <code>eef_speed</code> guard jitter-robust</b> so latency spikes don't cause false e-stops: compute speed over a short rolling window rather than a single Δt, require N consecutive over-threshold samples (not 1/1), or clamp Δt to the nominal period. This is what makes the CI gate deterministic.</li>
+  <li><b>Investigate the 71% setpoint-drop rate</b> (§7) — log the <code>validate_command</code> rejection reason; if frames are being dropped for transient/duplicate reasons, fixing it will smooth the actual motion.</li>
+  <li><b>Trim per-command validation cost</b> on the apply thread (§6③) — cache/vectorise the bound checks, or move them off the command thread.</li>
+  <li><b>Leave <code>_sdk_lock</code> alone</b> — it is not the problem. Effort spent on finer locking would not move the numbers.</li>
+  <li><b>Velocity is not the lever for the CI gate</b> — 70/40/20 all tripped and 20 was worst (§8). Keep the safe-check <b>non-blocking</b> in CI until either (a) the speed guards are made jitter-robust, or (b) it runs on a larger/faster runner with enough headroom to suppress the scheduling jitter. Only then flip it back to a hard gate.</li>
+</ul>
+</div>
+
+<h2>10 · Reproduce</h2>
+<div class="card">
+<div class="flow"># fresh sims, then a 60 s traced teleop run with the per-hop breakdown
+docker rm -f fairino-fr3 fairino-fr20
+uv run scripts/profile_teleop_jitter.py --duration-s 60
+
+# render the standard interactive profiler HTML from the raw trace
+uv run python tools/profiler.py --last 1</div>
+<p class="muted" style="margin-bottom:0">Instrumentation is gated by <code>ROBOT_TRACE=1</code> (set automatically by the profiler script) and is a no-op in production. The <code>command_pre_lock</code> / <code>command_lock_acquired</code> stamps used for the lock analysis live in <code>fairino.py:_set_state_impl</code>.</p>
+</div>
+
+<div class="foot">
+Generated for the <code>fairino-sim-ci-and-jitter</code> branch · data: 3021 teleop commands, 60 s, FR3→FR20 SimMachine pair · all latencies in milliseconds.
+</div>
+
+</div>
+</body>
+</html>
