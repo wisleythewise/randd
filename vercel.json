@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/comments.py": {
+      "excludeFiles": "{mp4/**,hannover-messe-assets/**,assets/**,dagger/**,*.html,*.md,*.pdf,*.js,api/__pycache__/**}"
+    }
+  }
+}
