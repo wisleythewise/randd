@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>camera-node — design report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1c2126;
+    --muted: #5a636d;
+    --faint: #8b939c;
+    --line: #dde2e6;
+    --paper: #fbfbf9;
+    --card: #ffffff;
+    --accent: #0f6e56;
+    --accent-soft: #e1f5ee;
+    --depth: linear-gradient(90deg, #30123b, #4145ab, #1fc8de, #a4fc3c, #fabd23, #e4460a, #7a0403);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+  }
+  .page { max-width: 780px; margin: 0 auto; padding: 56px 28px 80px; }
+
+  .meta-row {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    color: var(--faint);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  h1 {
+    font-size: 34px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 14px 0 6px;
+  }
+  .subtitle { color: var(--muted); margin: 0 0 18px; font-size: 17px; }
+  .depth-rule { height: 5px; border-radius: 3px; background: var(--depth); margin: 0 0 44px; }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 44px 0 6px;
+  }
+  h2 { font-size: 21px; font-weight: 600; margin: 0 0 12px; letter-spacing: -0.01em; }
+  p { margin: 0 0 14px; }
+  strong { font-weight: 600; }
+  .tag {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13.5px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 1px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  /* architecture figure */
+  .fig { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 26px 22px 20px; margin: 20px 0 10px; }
+  .fig-row { display: flex; align-items: stretch; gap: 0; }
+  .node {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: var(--paper);
+    flex: 1;
+    min-width: 0;
+  }
+  .node .n-title { font-weight: 600; font-size: 14.5px; }
+  .node .n-sub { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+  .node.host { background: var(--card); border-color: #c6cdd3; }
+  .node.host .inner { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .subnode { border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; background: var(--paper); }
+  .subnode .n-title { font-size: 13.5px; font-weight: 500; }
+  .arrow-col { display: flex; flex-direction: column; justify-content: center; padding: 0 10px; gap: 14px; }
+  .arrow { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--muted); text-align: center; white-space: nowrap; }
+  .arrow .line { display: block; font-size: 15px; color: var(--faint); letter-spacing: -1px; }
+  .arrow.media .line { color: var(--accent); }
+  .fig-caption { font-size: 13px; color: var(--muted); margin-top: 14px; }
+  @media (max-width: 640px) {
+    .fig-row { flex-direction: column; }
+    .arrow-col { padding: 10px 0; }
+  }
+
+  table { width: 100%; border-collapse: collapse; margin: 18px 0 8px; font-size: 14.5px; }
+  th {
+    text-align: left;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--faint);
+    font-weight: 500;
+    padding: 0 12px 8px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td:first-child { font-family: "IBM Plex Mono", monospace; font-size: 13px; white-space: nowrap; color: var(--ink); }
+  td:last-child { color: var(--muted); }
+
+  .decision { border-left: 3px solid var(--accent); padding: 2px 0 2px 16px; margin: 18px 0; }
+  .decision p { margin-bottom: 8px; }
+  .alt { color: var(--muted); font-size: 14.5px; }
+  .alt b { color: var(--ink); font-weight: 600; }
+
+  footer { margin-top: 56px; font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--faint); }
+  @media print { body { background: #fff; } .page { padding-top: 20px; } }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="meta-row">
+    <span>RFC · Design report · edge services</span>
+    <span>July 2026 · v1</span>
+  </div>
+  <h1>camera-node</h1>
+  <p class="subtitle">Streaming RealSense RGB and depth from the robot's mini PC to the browser-based operator panel.</p>
+  <div class="depth-rule" title="Turbo colormap, how the operator sees depth"></div>
+
+  <div class="eyebrow">01 · Context</div>
+  <h2>Why this exists</h2>
+  <p>Our teleoperation system (FR20 controlled via FR3, with controller, digital twin and operator UI) gains a second compute node: a mini PC mounted on the robot, intended to offload workloads from the operator PC. <span class="tag">camera-node</span> is the first service running on it, and the first of several planned Rust applications. It lives in a Cargo workspace (<span class="tag">edge/</span>) so future services can share crates.</p>
+  <p>Its job is narrow on purpose: capture RGB and depth from Intel RealSense cameras connected to the mini PC and deliver low-latency live video to the operator's browser over the robot's wired LAN. Vision processing, recording and point clouds are explicitly out of scope for v1 and slot in later without restructuring.</p>
+
+  <div class="eyebrow">02 · Architecture</div>
+  <h2>One binary, direct media path</h2>
+  <div class="fig">
+    <div class="fig-row">
+      <div class="node">
+        <div class="n-title">RealSense D4xx</div>
+        <div class="n-sub">USB 3 · RGB + depth<br>librealsense2</div>
+      </div>
+      <div class="arrow-col">
+        <span class="arrow">frames<span class="line">──────▶</span></span>
+      </div>
+      <div class="node host" style="flex: 1.6;">
+        <div class="n-title">camera-node <span style="font-weight:400;color:var(--muted)">· mini PC, single Rust process</span></div>
+        <div class="inner">
+          <div class="subnode"><div class="n-title">Capture thread</div><div class="n-sub">poll RGB + colorized depth · auto-reconnect on USB drop</div></div>
+          <div class="subnode"><div class="n-title">GStreamer pipeline</div><div class="n-sub">2 branches: raw video in, encode, WebRTC out</div></div>
+          <div class="subnode"><div class="n-title">Embedded signalling server</div><div class="n-sub">WebSocket :8443 · session handshake only</div></div>
+        </div>
+      </div>
+      <div class="arrow-col">
+        <span class="arrow media">video · UDP<span class="line">──────▶</span></span>
+        <span class="arrow">signalling · WS<span class="line">◀ ─ ─ ─▶</span></span>
+      </div>
+      <div class="node">
+        <div class="n-title">Operator browser</div>
+        <div class="n-sub">operator PC · same LAN<br>two &lt;video&gt; elements:<br>cam0-rgb · cam0-depth</div>
+      </div>
+    </div>
+    <div class="fig-caption">The signalling channel carries only small JSON handshake messages. Video never passes through an intermediary server: it flows directly from camera-node to the browser as encrypted RTP over UDP, negotiated and managed by WebRTC.</div>
+  </div>
+  <p>Everything ships as one process: capture, encoding and signalling. There is no separate media server, no external broker, and only one port to know (<span class="tag">ws://minipc:8443</span>). The operator UI connects to that address, discovers the available streams, and attaches them to video elements.</p>
+
+  <div class="eyebrow">03 · Transport decision</div>
+  <h2>Why WebRTC</h2>
+  <p>The deciding constraint is that our operator panel is <strong>browser-based</strong>. A browser can only receive live video through a handful of mechanisms, and for teleoperation the field narrows fast:</p>
+  <div class="decision">
+    <p class="alt"><b>HLS / DASH</b>: segment-based, 2 to 10 s latency even in low-latency modes. Built for video-on-demand, unusable for teleop.</p>
+    <p class="alt"><b>MJPEG over HTTP</b>: trivially simple, but roughly 10× the bandwidth of H.264 and no hardware encoding. Kept only as a debug fallback.</p>
+    <p class="alt"><b>Plain RTP / RTSP</b>: excellent on a LAN, but browsers cannot consume it. Only viable for native UIs, which ours is not.</p>
+    <p class="alt"><b>WebSocket + WebCodecs</b>: workable and simple conceptually, but we would hand-build jitter management, fan-out to multiple viewers, and per-client bitrate adaptation ourselves.</p>
+    <p class="alt"><b>WebRTC</b>: purpose-built for exactly this. Sub-100 ms glass-to-glass on a LAN, hardware decode in the browser, built-in congestion control and multi-consumer support, lands directly in a <span class="tag">&lt;video&gt;</span> tag. Chosen.</p>
+  </div>
+  <p>Because both machines sit on the same network, no STUN or TURN infrastructure is needed: WebRTC's ICE negotiation finds the direct route. The stack works identically over wired ethernet or shared Wi-Fi (same subnet). Wired is preferred for teleoperation, and WebRTC's congestion control absorbs Wi-Fi jitter by adapting bitrate if we ever need the wireless path.</p>
+
+  <div class="eyebrow">04 · Depth</div>
+  <h2>Depth as a second video stream</h2>
+  <p>RealSense depth frames are 16-bit distance maps and not directly viewable. Conveniently, librealsense ships a built-in <strong>colorizer</strong>: it converts each depth frame into a ready-made color image (near to far mapped onto a colormap). camera-node therefore builds no depth visualization of its own. It simply requests the colorized depth image from the SDK and pushes it through the exact same encode-and-stream path as the RGB feed. Each camera produces two named streams, <span class="tag">cam0-rgb</span> and <span class="tag">cam0-depth</span>, and the operator UI shows two videos.</p>
+  <p>What we deliberately do not stream is the raw 16-bit data: lossy video codecs would corrupt the actual millimeter values. If the UI later needs true depth values for measurements or point clouds, those will travel as losslessly compressed data on demand over a separate channel.</p>
+
+  <div class="eyebrow">05 · Stack</div>
+  <h2>Libraries and components</h2>
+  <table>
+    <tr><th>Component</th><th>What it does</th><th>Why chosen</th></tr>
+    <tr><td>librealsense2</td><td>Intel's official camera SDK: device access, RGB and depth streams, built-in depth colorizer</td><td>The canonical, maintained way to talk to RealSense hardware</td></tr>
+    <tr><td>realsense-rust</td><td>Rust bindings over librealsense2 (Tangram Vision)</td><td>Safe, maintained wrapper; keeps the whole service in Rust</td></tr>
+    <tr><td>GStreamer + gstreamer-rs</td><td>Media pipeline framework and its official Rust bindings</td><td>Industry-standard pipelines with first-class Rust support; enables hardware encoding (VA-API on the Intel mini PC), which drops per-camera CPU from ~90% to a few percent</td></tr>
+    <tr><td>webrtcsink <span style="color:var(--faint)">(gst-plugins-rs)</span></td><td>Batteries-included WebRTC producer element, itself written in Rust</td><td>Handles encoder selection, connection negotiation, encryption, congestion control and multi-consumer fan-out, which is the hard 80% of WebRTC</td></tr>
+    <tr><td>Embedded signalling</td><td>WebSocket handshake server, run inside webrtcsink</td><td>Zero extra processes or custom protocol code in v1</td></tr>
+    <tr><td>gstwebrtc-api</td><td>JavaScript client library (npm) for the browser side</td><td>Matches the signalling protocol exactly; the operator UI consumes streams in roughly 40 lines</td></tr>
+  </table>
+
+  <footer>edge/crates/camera-node · Rust · GStreamer WebRTC · July 2026</footer>
+</div>
+</body>
+</html>
