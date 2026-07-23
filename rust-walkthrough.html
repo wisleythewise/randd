@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="luxury">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Rust follower stack — an engineer's field guide</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, h5, h6, li, dd, blockquote, figcaption, td, th, .badge, .label) { overflow-wrap: anywhere; }
+  :where(img, svg, video, canvas, iframe) { max-width: 100%; height: auto; }
+  html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
+  .walk-step { border-left: 3px solid var(--color-primary); }
+  .walk-step.return-leg { border-left-color: var(--color-error); }
+  .walk-step.side-note { border-left-color: var(--color-base-300); }
+  .fileref { font-family: ui-monospace, monospace; font-size: 0.72rem; letter-spacing: 0; }
+  figure.exhibit { display: block; width: 100%; margin: 0; }
+  figure.exhibit figcaption { display: block; text-align: left; }
+  .exhibit-slot { display: block; width: 100%; border-radius: 0.5rem; overflow: hidden; border: 1px solid var(--color-base-300); }
+  .exhibit-slot > * { width: 100%; }
+  .bytebox { font-family: ui-monospace, monospace; font-size: 0.72rem; }
+  .mermaid { display: flex; justify-content: center; }
+  .mermaid svg { max-width: 100%; }
+  .quirk-table td { vertical-align: top; }
+  .prose-tight p { margin-top: 0.35rem; margin-bottom: 0.35rem; }
+</style>
+</head>
+<body class="bg-base-100 text-base-content">
+
+<!-- ============================ NAV ============================ -->
+<div class="navbar bg-base-200/95 backdrop-blur sticky top-0 z-50 shadow-sm px-4">
+  <div class="navbar-start">
+    <span class="font-bold text-primary whitespace-nowrap">Rust follower stack</span>
+  </div>
+  <div class="navbar-end hidden lg:flex gap-1 text-sm">
+    <a class="btn btn-ghost btn-xs" href="#topology">Topology</a>
+    <a class="btn btn-ghost btn-xs" href="#walk-a">A · Setpoint</a>
+    <a class="btn btn-ghost btn-xs" href="#walk-b">B · Command</a>
+    <a class="btn btn-ghost btn-xs" href="#walk-c">C · Telemetry</a>
+    <a class="btn btn-ghost btn-xs" href="#quirks">Quirks</a>
+    <a class="btn btn-ghost btn-xs" href="#py2rust">Py→Rust</a>
+    <a class="btn btn-ghost btn-xs" href="#cuts">Cuts &amp; gains</a>
+    <a class="btn btn-ghost btn-xs" href="#validation">Validation</a>
+  </div>
+</div>
+
+<main class="w-full px-4 lg:px-10 xl:px-16 pb-24">
+
+<!-- ============================ HERO ============================ -->
+<section class="py-10">
+  <h1 class="text-4xl font-bold leading-tight">The Rust follower stack,<br><span class="text-primary">taken by the hand</span></h1>
+  <p class="mt-4 max-w-3xl text-base-content/80">
+    How one teleop setpoint, one robot command, and one telemetry frame travel through the ported system —
+    and every Python idiosyncrasy that deliberately survived the trip. The port's contract was:
+    <em>the Python implementation is the specification</em>. Where Python looked buggy, we ported the bug and
+    filed it (PORTING.md §13.4) instead of silently fixing it. This document is the mental model you need
+    before we start un-quirking it.
+  </p>
+  <div class="stats stats-vertical sm:stats-horizontal shadow mt-6 bg-base-200">
+    <div class="stat py-3"><div class="stat-title">Rust crates</div><div class="stat-value text-2xl">3</div><div class="stat-desc">sdk · driver · node</div></div>
+    <div class="stat py-3"><div class="stat-title">Hot loops</div><div class="stat-value text-2xl">6 threads</div><div class="stat-desc">all off tokio, by design</div></div>
+    <div class="stat py-3"><div class="stat-title">Stream rate</div><div class="stat-value text-2xl">100 Hz</div><div class="stat-desc">cmdT = 1 / publish_rate_hz</div></div>
+    <div class="stat py-3"><div class="stat-title">Commands</div><div class="stat-value text-2xl">16</div><div class="stat-desc">+2 rejected (digital twin)</div></div>
+    <div class="stat py-3"><div class="stat-title">Guards</div><div class="stat-value text-2xl">6</div><div class="stat-desc">run on <b>every</b> frame, holds too</div></div>
+  </div>
+
+  <div role="alert" class="alert alert-warning mt-6 items-start">
+    <div class="prose-tight text-sm">
+      <p><b>How to read this document.</b> Three walkthroughs cover the three flows; the quirk catalog after them
+      is the part that will save you from "fixing" something incident-derived. Every claim carries a
+      <span class="fileref">file:line</span> reference into the current <code>rust</code> branch. Two vocabularies to keep apart:</p>
+      <p><b>Sacred quirks (§8)</b> — incident-derived behavior; changing one is a correctness bug.<br>
+         <b>Ported bugs (§13.4)</b> — Python oddities we reproduced on purpose; these are the post-validation cleanup backlog.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ TOPOLOGY ============================ -->
+<section id="topology" class="pt-6">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">1 · Topology: three processes, two cities</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    The old world was one big Python process. The new world: the operator PC keeps the <b>unchanged</b> Python
+    orchestrator, frontend and SpaceMouse leader; one new adapter (<code>remote_follower_bridge.py</code>) maps the
+    in-process bus onto the network; and a self-contained Rust <code>robot-node</code> runs next to the arm.
+    Everything that <em>must</em> be delivered rides gRPC; the two high-rate latest-wins streams (actions in,
+    state out) ride UDP.
+  </p>
+
+  <div class="card bg-base-200 mt-5"><div class="card-body p-4">
+  <pre class="mermaid">
+flowchart LR
+  subgraph OP["Operator PC — Python, unchanged"]
+    SM["SpaceMouse leader<br>100 Hz admittance"] -->|"state.leader"| ORCH["Orchestrator<br>mirrors in TELEOPERATION"]
+    ORCH -->|"action.* topic"| BR["remote_follower_bridge.py"]
+    ORCH -->|"cmd.* (corr, reply_to)"| BR
+    BR -->|"state.* / event.* / bridge.*"| FE["frontend · profiler · TraceLogger"]
+  end
+  subgraph NODE["mini PC — robot-node (Rust)"]
+    AL["action_listener thread<br>SeqGate"] --> CORE["NodeCore"]
+    GRPC_S["tonic control plane (tokio)<br>Command / StreamActions / StreamEvents"] --> CORE
+    CORE --> MB["driver mailbox<br>depth-1, latest-wins"]
+    MB --> SJ["ServoJ sender thread<br>guard suite on every frame"]
+    CN["CNDE reader thread"] --> TEL["publish_worker thread"]
+    RP["UDP reply thread<br>rejection = e-stop"]
+  end
+  BR -->|"UDP S7A1 actions :50063"| AL
+  BR <-->|"gRPC :50061"| GRPC_S
+  TEL -->|"UDP S7N1 telemetry"| BR
+  SJ -->|"ServoJ :20007"| CTRL["FR3 controller"]
+  CTRL -->|"CNDE state :20005"| CN
+  CTRL -->|"reject replies"| RP
+  CORE -->|"XML-RPC :20003<br>postures · e-stop · IK"| CTRL
+  </pre>
+  </div></div>
+
+  <h3 class="text-xl font-semibold mt-8">Who owns which thread</h3>
+  <p class="mt-2 max-w-3xl text-base-content/80 text-sm">
+    The one place the port is <em>not</em> line-for-line: Python leaned on threads hidden inside the vendor SDK;
+    the Rust SDK is deliberately synchronous, so the driver owns them explicitly. The paced hot loops stay
+    dedicated OS threads — tokio exists <b>only</b> for the gRPC control plane, so an e-stop RPC never contends
+    with action parsing for an async worker.
+  </p>
+  <div class="overflow-x-auto rounded-box border border-base-300 bg-base-100 mt-4">
+    <table class="table table-sm table-zebra">
+      <thead><tr><th>Thread</th><th>Layer</th><th>Spawn</th><th>Pacing</th><th>Job</th></tr></thead>
+      <tbody class="text-sm">
+        <tr><td class="font-mono">action_listener_{id}</td><td>node</td><td class="fileref">actions.rs:257</td><td>blocking recv, 200 ms timeout</td><td>UDP S7A1 in → SeqGate → <code>ingest_action</code></td></tr>
+        <tr><td class="font-mono">publish_worker_{id}</td><td>node</td><td class="fileref">telemetry.rs:223</td><td>Instant-paced @ publish_rate_hz</td><td>get_state → S7N1 frame out; drains event + trace queues</td></tr>
+        <tr><td>tonic runtime (tokio)</td><td>node</td><td class="fileref">main.rs:242</td><td>async</td><td>Command / StreamActions / StreamEvents; each command on <code>spawn_blocking</code></td></tr>
+        <tr><td>CNDE reader</td><td>driver</td><td class="fileref">robot.rs:1105</td><td>blocking <code>next_state()</code></td><td>controller state → RwLock snapshot + first-frame latch</td></tr>
+        <tr><td>ServoJ sender</td><td>driver</td><td class="fileref">robot.rs:1078</td><td>Instant grid @ cmdT</td><td>mailbox → guards → cap_delta → ServoJ; hold on starvation</td></tr>
+        <tr><td>UDP reply reader</td><td>driver</td><td class="fileref">robot.rs:1152</td><td>blocking recv, 100 ms timeout</td><td>controller rejection verdicts → e-stop (never an RPC!)</td></tr>
+        <tr><td class="font-mono">reconnect_{id}</td><td>node, ad-hoc</td><td class="fileref">node.rs:379</td><td>one-shot</td><td>fire-and-forget disconnect → 0.5 s → connect; joined only at shutdown</td></tr>
+        <tr><td class="font-mono">_supervisor / _udp_listener / _health_loop</td><td>bridge (py)</td><td class="fileref">remote_follower_bridge.py:642-652</td><td>daemons</td><td>link + events relay · telemetry in · health/RTT probe</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-4 mt-4">
+    <div class="card bg-base-200"><div class="card-body p-4 text-sm prose-tight">
+      <h4 class="font-semibold">Locks that replaced the GIL <span class="fileref">(robot.rs:635-668, sync.rs)</span></h4>
+      <p><b>sdk</b> <code>Mutex</code> — the old <code>_sdk_lock</code>; held across multi-call RPC sequences.
+      <b>snapshot</b> <code>RwLock&lt;Option&lt;CndeState&gt;&gt;</code> — single writer (CNDE thread).
+      <b>sdk_state</b> <code>Mutex</code> — two-owner discipline: CNDE thread writes <code>fairino_state</code>, engage path writes <code>probe_state</code>, never the same field.
+      Plus <code>status</code>, <code>safety</code>, <code>postures</code>, and the mailbox.</p>
+      <p>Sanctioned nesting only: <code>safety → {status, sdk_state, stream, sdk, fk}</code> (a guard trip fires e-stop while the safety mutex is held) and <code>postures → sdk</code>. The reply thread takes <b>no</b> RPC lock, ever.</p>
+    </div></div>
+    <div class="card bg-base-200"><div class="card-body p-4 text-sm prose-tight">
+      <h4 class="font-semibold">Ports cheat-sheet</h4>
+      <p><b>Operator ↔ node:</b> gRPC <code>:50061</code> · telemetry UDP <code>:50062</code> · actions UDP <code>:50063</code> (defaults; <code>remote_node:</code> block in the robot yaml).</p>
+      <p><b>Node ↔ controller:</b> XML-RPC <code>:20003</code> · CNDE realtime state <code>:20005</code> · ServoJ setpoints UDP <code>:20007</code>.</p>
+      <p>Wire magics: actions <code>"S7A1"</code>, telemetry <code>"S7N1"</code> — cross-flow datagrams can never parse.</p>
+    </div></div>
+  </div>
+</section>
+
+<!-- ============================ WALKTHROUGH A ============================ -->
+<section id="walk-a" class="pt-12">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">2 · Walkthrough A — life of a teleop setpoint</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    The 100 Hz hot path. Follow one joint-position setpoint from the SpaceMouse to the arm's servo loop.
+    The single most important object on this path is the <b>depth-1 latest-wins mailbox</b> — a fresher setpoint
+    always supersedes a delayed one, which is why UDP loss and reordering are absorbed by design.
+  </p>
+
+  <div class="card bg-base-200 mt-5"><div class="card-body p-4">
+  <pre class="mermaid">
+flowchart TD
+  A["1-2 · leader state, mirrored by orchestrator<br>action.* on the bus (JSON)"] --> B["3-4 · bridge: dict to protobuf,<br>S7A1 datagram, seq++"]
+  B --> C["5 · node listener: decode + SeqGate<br>stale dropped, e-stop never"]
+  C --> D["6 · NodeCore.apply_action<br>hop stamps + command_latency_ms"]
+  D --> E["7-8 · driver mailbox put<br>depth-1, latest-wins, read-without-take"]
+  E --> F["9-10 · sender tick at cmdT<br>fresh? dequeue : hold"]
+  F --> G["11 · guard suite — every frame<br>trip = e-stop"]
+  G --> H["12 · cap_delta vs measured,<br>ServoJ UDP :20007"]
+  H -.->|"controller replies ONLY on rejection"| I["13 · reply thread verdict<br>reject = e-stop"]
+  F -.->|"producer late"| J["14 · hold last frame forever<br>(halt window optional, never de-energize)"]
+  </pre>
+  </div></div>
+
+  <!-- Stage 1: operator side -->
+  <h3 class="text-xl font-semibold mt-8 text-primary">Operator side (Python, unchanged except the bridge)</h3>
+
+  <div class="card bg-base-200 walk-step mt-4" id="a1"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 1-2 · Leader → orchestrator mirror → <code>action.{id}</code></h4>
+    <p class="text-sm text-base-content/80">
+      The SpaceMouse leader's admittance thread builds a <code>RobotState</code> at 100 Hz and stamps
+      <code>leader_timestamp = now</code> <span class="fileref">(spacemouse_leader.py:316-329)</span>. The orchestrator,
+      only in TELEOPERATION mode, mirrors it to the follower: joints copied 1:1, velocities/efforts zeroed
+      <span class="fileref">(orchestrator_node.py:342 → 383 → 414)</span>, published as <code>RobotState.to_dict()</code>
+      JSON on <code>action.{id}</code>. Nothing here changed in the port — that is the zero-orchestrator-changes property.
+    </p>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step mt-4" id="a3"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 3 · Bridge ingress: <code>_on_action</code> → <code>_put_action</code></h4>
+    <p class="text-sm text-base-content/80">
+      The bridge subscribes <code>action.{id}</code>, converts the bus dict into the wire protobuf
+      <code>Action</code> (typed hot fields + everything else squeezed into <code>rest_json</code>), and routes it.
+      Two things to notice: actions are only forwarded while the stream is <b>engaged</b> (PREPARE_STREAM engages,
+      ENTER_IDLE disengages), and an e-stop action short-circuits into the dual-path sender before any of that
+      <span class="fileref">(remote_follower_bridge.py:734-746)</span>.
+    </p>
+    <figure class="exhibit" data-name="remote_follower_bridge.py">
+      <figcaption class="fileref mb-1 text-base-content/60">servo7/nodes/remote_follower_bridge.py:750 — the engage gate; disengaged actions are counted + warned once, never sent</figcaption>
+      <script type="text/plain">def _put_action(self, action: pb2.Action) -> bool:
+    with self._engage_lock:
+        if self._udp_actions is not None:
+            if not self._udp_engaged:
+                return False
+            return self._udp_send(action)
+        slot = self._slot
+        if slot is None:
+            return False
+        if not slot.put(action):
+            return False
+        self._actions_forwarded += 1
+        return True</script>
+      <div class="exhibit-slot"></div>
+    </figure>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step mt-4" id="a4"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 4 · The S7A1 datagram</h4>
+    <p class="text-sm text-base-content/80">
+      One datagram = one action. Big-endian 11-byte header, then the robot id, then the protobuf.
+      The sender owns one process-wide wrap-aware u32 sequence counter that survives engage cycles
+      <span class="fileref">(remote_follower_bridge.py:467-478; frame codec mirrored in rust frame.rs:30/43)</span>.
+    </p>
+    <div class="flex flex-wrap gap-1 mt-2 bytebox">
+      <span class="badge badge-primary badge-lg rounded">magic u32 "S7A1"</span>
+      <span class="badge badge-primary badge-lg rounded">version u16 = 1</span>
+      <span class="badge badge-secondary badge-lg rounded">seq u32 (wraps)</span>
+      <span class="badge badge-secondary badge-lg rounded">id_len u8</span>
+      <span class="badge badge-neutral badge-lg rounded">robot_id bytes</span>
+      <span class="badge badge-accent badge-lg rounded">protobuf Action</span>
+    </div>
+    <p class="text-xs text-base-content/60 mt-2">Telemetry uses the same layout under magic <code>"S7N1"</code> with a JSON payload — the differing magic is what makes cross-flow parsing impossible.</p>
+  </div></div>
+
+  <!-- Stage 2: node ingress -->
+  <h3 class="text-xl font-semibold mt-8 text-primary">Node ingress (Rust, dedicated OS thread)</h3>
+
+  <div class="card bg-base-200 walk-step mt-4" id="a5"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 5 · Listener thread: decode, hostile-datagram policy, SeqGate</h4>
+    <p class="text-sm text-base-content/80">
+      A dedicated OS thread (<b>not</b> tokio — a datagram burst must never starve the control plane) blocks on the
+      socket with a 200 ms timeout. Garbage, wrong magic/version, or undecodable protobuf → counted as
+      <code>malformed</code> and ignored, never a fault. A foreign <code>robot_id</code> is dropped <em>silently and
+      uncounted</em> (it is another flow's traffic). Then the seq gate <span class="fileref">(actions.rs:341, 185)</span>:
+    </p>
+    <figure class="exhibit" data-name="actions.rs">
+      <figcaption class="fileref mb-1 text-base-content/60">rust/robot-node/src/actions.rs:185 — wrap-aware latest-wins with a 2 s epoch age-out (a restarted bridge's fresh counter is never blackholed)</figcaption>
+      <script type="text/plain">pub fn accept(&mut self, seq: u32, now: f64) -> bool {
+    let fresh = match self.last {
+        None => true,
+        Some((last_seq, last_at)) => {
+            let delta = seq.wrapping_sub(last_seq);
+            let newer = 0 < delta && delta < (1 << 31);
+            newer || (now - last_at) >= self.age_out_s
+        }
+    };
+    if fresh {
+        self.last = Some((seq, now));
+    }
+    fresh
+}</script>
+      <div class="exhibit-slot"></div>
+    </figure>
+    <div role="alert" class="alert alert-error alert-soft mt-3 text-sm">
+      <span><b>Sacred:</b> the e-stop bypass lives in <code>decode</code> <span class="fileref">(actions.rs:368)</span>, not the gate. A <em>stale</em> e-stop is still ingested, but <code>accept</code> never stores its seq — so a reordered e-stop cannot reopen the window for the setpoints behind it. Duplicates are fine: the driver's e-stop latch is idempotent.</span>
+    </div>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step mt-4" id="a6"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 6 · <code>NodeCore::apply_action</code> — hop stamps and the latency number</h4>
+    <p class="text-sm text-base-content/80">
+      Transport-neutral from here down — the gRPC <code>StreamActions</code> fallback feeds the exact same function.
+      The action is rebuilt into a <code>RobotState</code> (<code>rest_json</code> first, typed fields overlaid), then
+      stamped through the <code>follower.{id}.*</code> hop chain the profiler renders. <code>command_latency_ms</code>
+      is wall-clock <code>now − leader_timestamp</code> — which is why it assumes chrony across hosts.
+      Any failure in this function (reconstruction, panic, driver error) is answered with an <b>e-stop</b>, not a log line
+      <span class="fileref">(node.rs:519, 552)</span>.
+    </p>
+    <figure class="exhibit" data-name="node.rs">
+      <figcaption class="fileref mb-1 text-base-content/60">rust/robot-node/src/node.rs:530 — parsed → pre_hardware_write → set_state_traced → applied (terminal flush)</figcaption>
+      <script type="text/plain">let mut state = reconstructed?;
+self.robot.trace_stamp(&mut state, &format!("follower.{}.command_parsed", self.robot_id));
+if let Some(leader_ts) = state.leader_timestamp {
+    state.command_latency_ms = Some((wall_time_s() - leader_ts) * 1000.0);
+}
+self.robot.trace_stamp(&mut state, &format!("follower.{}.command_pre_hardware_write", self.robot_id));
+self.robot.set_state_traced(&mut state).map_err(fairino_err)?;
+let terminal = format!("follower.{}.command_applied", self.robot_id);
+self.robot.trace_stamp(&mut state, &terminal);
+self.robot.trace_flush(&state, &self.robot_id, &terminal);</script>
+      <div class="exhibit-slot"></div>
+    </figure>
+  </div></div>
+
+  <!-- Stage 3: driver -->
+  <h3 class="text-xl font-semibold mt-8 text-primary">Driver: mailbox → paced sender → guards → hardware</h3>
+
+  <div class="card bg-base-200 walk-step mt-4" id="a7"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 7 · <code>set_state_by_ref</code> — producer entry, never a sender</h4>
+    <p class="text-sm text-base-content/80">
+      Ingress does <b>not</b> validate or send. It type-checks, records the commanded pose, short-circuits an
+      e-stop straight into <code>emergency_stop_impl</code> (so it can never wait behind the send cadence),
+      stamps <code>servoj_enqueue</code>, and overwrites the mailbox <span class="fileref">(robot.rs:1453-1468)</span>.
+    </p>
+    <figure class="exhibit" data-name="robot.rs">
+      <figcaption class="fileref mb-1 text-base-content/60">rust/fairino-robot/src/robot.rs:1453 — the by-ref signature keeps the hop list with the node so its terminal flush sees servoj_enqueue</figcaption>
+      <script type="text/plain">pub fn set_state_by_ref(&self, action: &mut RobotState) -> Result<bool, FairinoError> {
+    self.assert_action_type(action);
+    *lock_unpoisoned(&self.inner.commanded) = Some(action.clone());
+    if action.is_emergency_stop == Some(true) {
+        return self.emergency_stop_impl();
+    }
+    self.inner.trace.stamp(action, &format!("follower.{}.servoj_enqueue", self.inner.cfg.id));
+    self.inner.stream.put(CommandSlot {
+        action: action.clone(),
+        t_mono: self.inner.clock.monotonic(),
+    });
+    Ok(true)
+}</script>
+      <div class="exhibit-slot"></div>
+    </figure>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step mt-4" id="a8"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 8 · The mailbox: depth-1, latest-wins, <b>read-without-take</b></h4>
+    <p class="text-sm text-base-content/80">
+      Python got this for free — "reference assignment is atomic under the GIL" — so Rust makes it a
+      <code>Mutex&lt;Option&lt;CommandSlot&gt;&gt;</code> with very particular semantics
+      <span class="fileref">(stream.rs:181, 200-209, 245-251)</span>:
+    </p>
+    <ul class="text-sm list-disc pl-5 space-y-1 text-base-content/80">
+      <li>The producer <b>overwrites</b>; the consumer <b>clones and leaves the slot in place</b>. It is cleared only by <code>StreamHealth::reset()</code> — never by the tick.</li>
+      <li>Staleness comes from <code>t_mono</code>: a slot re-read inside the stale window is a <b>fresh re-send</b> of the same setpoint, <em>not</em> a hold. A take-semantics port would silently flip starvation accounting and the flight-recorder record kind (pinned by test <code>re_read_within_window_is_fresh_not_hold</code>, <span class="fileref">stream.rs:483</span>).</li>
+      <li><b>No queue may ever sit in front of this mailbox</b> — buffering stale setpoints recreates the exact failure it exists to prevent. (The post-merge playout-queue project deliberately bounds + age-caps for this reason.)</li>
+    </ul>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step mt-4" id="a9"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 9 · The sender thread: an Instant grid at cmdT</h4>
+    <p class="text-sm text-base-content/80">
+      <code>cmdT = 1 / publish_rate_hz</code> (10 ms at 100 Hz) and is <b>never configured independently</b> —
+      the controller computes joint speed as delta/cmdT, so a mismatch inflates implied speed
+      <span class="fileref">(stream.rs:44-54, robot.rs:727)</span>. The loop gates on <code>ProbeState::Ready</code>
+      exactly (not <code>!= Off</code>) so the readiness probe owns the channel alone during SETTLING. A tick error
+      kills the thread — mirroring an uncaught exception in Python's daemon loop <span class="fileref">(robot.rs:1231-1244)</span>.
+    </p>
+    <figure class="exhibit" data-name="robot.rs">
+      <figcaption class="fileref mb-1 text-base-content/60">rust/fairino-robot/src/robot.rs:1206 — the grid advances by a fixed period; the optional phase lock may shift it (capped), never the spacing</figcaption>
+      <script type="text/plain">fn servoj_loop(&self) {
+    let period = Duration::from_secs_f64(self.inner.cfg.servoj_period_s);
+    let mut next_tick = Instant::now();
+    while self.inner.servoj_run.load(Ordering::Relaxed) {
+        let Some(adjust_s) = self.paced_tick_or_reset() else {
+            break;
+        };
+        next_tick += period;
+        if adjust_s != 0.0 {
+            next_tick = shift_instant(next_tick, adjust_s);
+        }
+        let now = Instant::now();
+        if next_tick <= now {
+            next_tick = now;
+        } else {
+            std::thread::sleep(next_tick - now);
+        }
+    }
+    tracing::info!("ServoJ sender thread stopped");
+}</script>
+      <div class="exhibit-slot"></div>
+    </figure>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step mt-4" id="a10"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 10 · One tick: <code>tick_paced</code></h4>
+    <p class="text-sm text-base-content/80">
+      The M6 core (<code>send_frame</code>) decides fresh-vs-hold and injects the guarded send as a closure.
+      <code>servoj_dequeue</code> stamps and profiler chain exports fire <b>only on fresh frames</b>; holds export
+      nothing <span class="fileref">(robot.rs:1259-1289)</span>.
+    </p>
+    <figure class="exhibit" data-name="robot.rs">
+      <figcaption class="fileref mb-1 text-base-content/60">rust/fairino-robot/src/robot.rs:1259 — note export_chain AFTER the guarded send returns, so exported chains reach the SDK handoff</figcaption>
+      <script type="text/plain">fn tick_paced(&self) -> Result<f64, FairinoError> {
+    let measured = self.current_state();
+    let inputs = TickInputs { now: self.inner.clock.monotonic(),
+                              wall: self.inner.clock.wall(),
+                              measured: measured.clone() };
+    let mut send_result: Result<bool, FairinoError> = Ok(true);
+    let outcome = self.inner.stream.send_frame(&inputs, &self.inner.cfg.sender, |mut action| {
+        let fresh = !self.inner.stream.is_hold();
+        if fresh {
+            self.inner.trace.stamp(&mut action, &format!("follower.{}.servoj_dequeue", self.inner.cfg.id));
+        }
+        send_result = self.guarded_send(&mut action, measured.as_ref());
+        if fresh {
+            self.inner.trace.export_chain(&self.inner.cfg.id, &action);
+        }
+    });
+    send_result?;
+    if outcome.starvation.as_ref().is_some_and(|s| s.halt) {
+        self.exit_stream_phase();
+        return Ok(0.0);
+    }
+    Ok(self.phase_adjust(&outcome))
+}</script>
+      <div class="exhibit-slot"></div>
+    </figure>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step mt-4" id="a11"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 11 · The guard suite — every frame that reaches hardware</h4>
+    <p class="text-sm text-base-content/80">
+      <b>Sacred §8.8:</b> fresh, hold, or synchronous — every frame passes <code>validate_command</code>. Hold frames
+      are not exempt. Command-path order, first failure short-circuits
+      <span class="fileref">(envelope.rs:239-270)</span>:
+    </p>
+    <div class="flex flex-wrap items-center gap-1 text-xs mt-1">
+      <span class="badge badge-error">envelope trip-lock</span><span>→</span>
+      <span class="badge badge-neutral">joint_limits</span><span>→</span>
+      <span class="badge badge-neutral">workarea (URDF FK on <b>commanded</b> joints)</span><span>→</span>
+      <span class="badge badge-neutral">max_joint_deltas ("command_guard")</span><span>→</span>
+      <span class="badge badge-neutral">command_speed</span>
+    </div>
+    <p class="text-sm text-base-content/80 mt-2">
+      <code>joint_speed</code> and <code>eef_speed</code> are <b>state-side observers</b> (<code>observe_state</code>,
+      <span class="fileref">envelope.rs:284</span>) — they watch the measured stream, not commands.
+      Trip-lock: N consecutive violations latch <code>tripped</code> and fire the robot's e-stop callback once
+      <span class="fileref">(guard.rs:213-228)</span>; only <code>reset_after_estop_release</code> clears the latch.
+      Trip counts differ by config block: 3 for command_guard/joint_speed, 1 for command_speed/eef_speed/workarea
+      <span class="fileref">(config.rs:479-484)</span>. On a trip inside <code>guarded_send</code> the driver
+      e-stops and refuses the write <span class="fileref">(robot.rs:1474-1485)</span>.
+    </p>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step mt-4" id="a12"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 12 · <code>set_state_impl</code>: cap_delta, the sdk lock, and the wire</h4>
+    <p class="text-sm text-base-content/80">
+      The last gates before hardware <span class="fileref">(robot.rs:1555-1597)</span>: e-stop bypass → latch gate →
+      joint-count gate → streaming-ready gate → <b>cap_delta</b> → hop stamps around the sdk lock
+      (<code>command_pre_lock</code> / <code>command_lock_acquired</code>) → <code>record_hardware_tick</code> →
+      <code>send_servoj</code> (UDP passthrough, fire-and-forget). A transient RPC error drops the setpoint with a
+      warning — never a crash.
+    </p>
+    <p class="text-sm text-base-content/80">
+      <b>cap_delta (sacred §8.10)</b> <span class="fileref">(robot.rs:429-488)</span>: closes the loop against the
+      <b>measured</b> pose, returns the target unchanged when within the per-joint step, and is a no-op when
+      unconfigured or before the first observation. Its rate-limit warning is edge-triggered — once per ramp
+      episode, via an <code>AtomicBool</code>.
+    </p>
+  </div></div>
+
+  <!-- Stage 4: return leg -->
+  <h3 class="text-xl font-semibold mt-8 text-error">The return leg and the failure paths</h3>
+
+  <div class="card bg-base-200 walk-step return-leg mt-4" id="a13"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 13 · The controller only speaks when it rejects</h4>
+    <p class="text-sm text-base-content/80">
+      ServoJ over UDP has no acks. A dedicated thread <b>blocks</b> on the reply socket (polling at cmdT would add up
+      to one tick of e-stop latency). The verdict is a three-way match on
+      <code>(errcode, probe_state, status)</code> — and this thread reads <b>only the packet snapshot, never an
+      XML-RPC</b> (deadlock rule, sacred §8.12) <span class="fileref">(robot.rs:1737-1763)</span>.
+    </p>
+    <figure class="exhibit" data-name="robot.rs">
+      <figcaption class="fileref mb-1 text-base-content/60">rust/fairino-robot/src/robot.rs:1737 — code 0 ignore · SETTLING = probe rejection flag · latched = nothing · else e-stop</figcaption>
+      <script type="text/plain">pub fn on_udp_reply(&self, reply: &UdpReply) -> i32 {
+    let Some(code) = search_errcode(&reply.content) else { return 0; };
+    let pkg = read_unpoisoned(&self.inner.snapshot).clone();
+    self.record_reply(code, reply.cmd_id, pkg.as_ref());
+    self.log_controller_fault(code, pkg.as_ref());
+    let verdict = (code, self.inner.sdk_state.get_probe_state(), *self.locked_status());
+    match verdict {
+        (0, _, _) => {}
+        (_, ProbeState::Settling, _) => {
+            self.inner.probe_rejected.store(true, Ordering::SeqCst);
+        }
+        (_, _, RobotStatus::EmergencyStop) => {}
+        _ => {
+            tracing::error!("ServoJ rejected by controller (errcode {code}) — emergency stop");
+            if let Err(e) = self.emergency_stop_impl() {
+                tracing::error!("emergency_stop failed in UDP reply handler: {e}");
+            }
+        }
+    }
+    0
+}</script>
+      <div class="exhibit-slot"></div>
+    </figure>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step return-leg mt-4" id="a14"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 14 · Starvation: hold forever, never de-energize</h4>
+    <p class="text-sm text-base-content/80">
+      When the producer goes quiet the sender repeats the last frame (or freezes at the measured pose if nothing was
+      ever sent), warning at a 2 s cadence <span class="fileref">(stream.rs:265-325, 373-394)</span>.
+      <b>Sacred §8.9:</b> <code>servoj_halt_after_ms = 0</code> (default) means hold <em>forever</em>; a positive
+      window exits the stream phase — arm held — but <b>never de-energizes</b>. Link loss must not drop a payload.
+    </p>
+    <div class="card bg-base-100 mt-2"><div class="card-body p-3">
+    <pre class="mermaid">
+stateDiagram-v2
+    [*] --> FRESH
+    FRESH --> FRESH : new slot, or re-read inside stale window (fresh re-send)
+    FRESH --> HOLD : slot dwell exceeds stale window
+    HOLD --> HOLD : repeat last_sent (guards still run) — warn every 2 s
+    HOLD --> FRESH : producer resumes
+    HOLD --> HALTED : halt_after_ms greater than 0 and gap reached
+    HALTED --> [*] : exit stream phase — arm held, motors stay energized
+    </pre>
+    </div></div>
+  </div></div>
+</section>
+
+<!-- ============================ WALKTHROUGH B ============================ -->
+<section id="walk-b" class="pt-12">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">3 · Walkthrough B — life of a robot command</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    Everything that must be <em>delivered</em> — mode changes, resets, IK solves — rides the reliable gRPC unary
+    <code>Command</code>. The Python <code>RobotNode._command_handlers</code> table survives 1:1.
+  </p>
+
+  <div class="grid lg:grid-cols-2 gap-4 mt-5">
+    <div class="card bg-base-200 walk-step"><div class="card-body p-5 prose-tight">
+      <h4 class="font-semibold">Step 1 · Bus request with <code>corr</code></h4>
+      <p class="text-sm text-base-content/80">
+        <code>CommandRouter.request</code> mints a <code>corr</code> from a counter and publishes
+        <code>{action, params, reply_to, corr}</code> on <code>cmd.{id}</code>; replies demux by corr on one
+        persistent subscription <span class="fileref">(command_router.py:155-199)</span>. Unchanged from the
+        in-process days.
+      </p>
+    </div></div>
+    <div class="card bg-base-200 walk-step"><div class="card-body p-5 prose-tight">
+      <h4 class="font-semibold">Step 2 · Bridge forwards — and never retries</h4>
+      <p class="text-sm text-base-content/80">
+        <code>_on_robot_command</code> makes the unary RPC. On transport failure it publishes the <b>F4 error
+        reply</b> <code>{corr, value: null}</code> so the requester fails fast instead of eating its timeout
+        <span class="fileref">(remote_follower_bridge.py:1035-1049)</span>. PREPARE_STREAM / ENTER_IDLE also flip the
+        bridge's action-stream engage flag <span class="fileref">(:1064-1066)</span>.
+      </p>
+    </div></div>
+    <div class="card bg-base-200 walk-step"><div class="card-body p-5 prose-tight">
+      <h4 class="font-semibold">Step 3 · Node: one <code>spawn_blocking</code> per command</h4>
+      <p class="text-sm text-base-content/80">
+        Handlers may block on the controller, so each command gets its own blocking task — an e-stop command
+        <b>never queues behind the action stream</b> (they share nothing queue-like). The reply carries
+        <code>node_recv_mono</code>/<code>node_send_mono</code>, sampled before dispatch and just before send
+        <span class="fileref">(grpc.rs:233-248)</span> — the raw material for clock-offset estimation.
+      </p>
+    </div></div>
+    <div class="card bg-base-200 walk-step"><div class="card-body p-5 prose-tight">
+      <h4 class="font-semibold">Step 4 · Dispatch guards, panic = Python exception</h4>
+      <p class="text-sm text-base-content/80">
+        <code>dispatch</code>: running check → param parse → twin-command rejection → <code>catch_unwind</code>.
+        A handler panic (the ported <code>ValueError</code>s) becomes <code>Dispatch::Failed(panic_message)</code>
+        with the same log text — per-call exception isolation, exactly like Python
+        <span class="fileref">(node.rs:272-298)</span>.
+      </p>
+    </div></div>
+  </div>
+
+  <h3 class="text-xl font-semibold mt-8">The 16-command table <span class="fileref text-base-content/50">(node.rs:307-326)</span></h3>
+  <div class="overflow-x-auto rounded-box border border-base-300 bg-base-100 mt-3">
+    <table class="table table-xs table-zebra">
+      <thead><tr><th>Wire name</th><th>Driver call</th><th>Returns</th><th>Notes</th></tr></thead>
+      <tbody class="text-xs">
+        <tr><td class="font-mono">prepare_stream</td><td class="font-mono">prepare_command_stream()</td><td>Bool</td><td>posture walk + probe; refuses while e-stop latched</td></tr>
+        <tr><td class="font-mono">enter_idle</td><td class="font-mono">enter_idle()</td><td>Bool</td><td>ManualIdle walk; no-op (true) while latched</td></tr>
+        <tr><td class="font-mono">reset_emergency</td><td class="font-mono">reset_from_emergency_stop()</td><td>Bool</td><td>the only path that clears the latch</td></tr>
+        <tr><td class="font-mono">release_safety</td><td class="font-mono">safety_reset_after_estop_release()</td><td>Null</td><td>clears every guard's trip latch</td></tr>
+        <tr><td class="font-mono">set_guard_enabled</td><td class="font-mono">safety_set_guard_enabled(g, on)</td><td>Null</td><td>+ DANGEROUS audit warning</td></tr>
+        <tr><td class="font-mono">set_safety</td><td class="font-mono">safety_update_runtime(block, payload)</td><td>Null</td><td>ports the apply-as-you-go coercion order</td></tr>
+        <tr><td class="font-mono">reconnect</td><td>spawns <span class="font-mono">reconnect_{id}</span> thread</td><td>Null (immediately)</td><td>disconnect → 0.5 s → connect; fire-and-forget</td></tr>
+        <tr><td class="font-mono">teleop_enter / teleop_exit</td><td class="font-mono">on_teleop_enter/exit_leader()</td><td>Bool / Null</td><td>enter is a logged no-op (leader-only concept)</td></tr>
+        <tr><td class="font-mono">set_teleop_guidance</td><td class="font-mono">set_teleop_guidance(mode)</td><td>Bool</td><td>logs unsupported — drag was cut (§12)</td></tr>
+        <tr><td class="font-mono">level_tcp</td><td class="font-mono">level_tcp_target()</td><td>joints | Null</td><td></td></tr>
+        <tr><td class="font-mono">orient_primitive</td><td class="font-mono">orient_primitive_target(p)</td><td>joints | Null</td><td>DLS solve in kin.rs/orient.rs since 2026-07-22</td></tr>
+        <tr><td class="font-mono">solve_ik</td><td class="font-mono">solve_ik(pose, ref)</td><td>joints | Null</td><td>TCP-pose + IK held under one sdk lock</td></tr>
+        <tr><td class="font-mono">set_vacuum</td><td class="font-mono">set_vacuum(on)</td><td>Bool</td><td>trait default false = "no capability", silent</td></tr>
+        <tr><td class="font-mono">set_compression_active</td><td>flips node atomic</td><td>Null</td><td>replaces Python's 10 Hz flag poll; suppresses deadline warnings</td></tr>
+        <tr><td class="font-mono">set_trace_active</td><td class="font-mono">trace_set_enabled(on)</td><td>Null</td><td>node-control, not orchestrator vocabulary</td></tr>
+        <tr class="opacity-60"><td class="font-mono">enable_digital_twin · snap_twin_anchor</td><td>—</td><td>UNSUPPORTED</td><td>twin is operator-side visualization now</td></tr>
+        <tr class="opacity-60"><td>anything else</td><td>—</td><td>UNKNOWN</td><td>bridge publishes <b>no</b> bus reply (same as Python)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="text-xl font-semibold mt-8">Worked example: PREPARE_STREAM (how the arm becomes streamable)</h3>
+  <div class="card bg-base-200 mt-3"><div class="card-body p-5 prose-tight text-sm text-base-content/80">
+    <ol class="list-decimal pl-5 space-y-2">
+      <li><b>Refuse if latched</b> <span class="fileref">(robot.rs:1814-1818)</span> — sacred §8.7: recovery is only ever the explicit reset path.</li>
+      <li><b>Posture walk to TELEOP_STREAM</b> <span class="fileref">(posture.rs:234-266)</span> — the same ladder every time, no controller-truth polling: <code>return_to_manual</code> (close servo window → Mode Manual → RobotEnable(1)) → <code>enter_automatic</code> (Mode Auto → RobotEnable(1)) → open the servo window. Each controller call runs the ported retry: retry only on codes in the set, <code>ResetAllError</code> re-issued before <em>each</em> attempt when <code>clear_first</code> <span class="fileref">(posture.rs:314-348)</span>. <code>ServoMoveStart</code> retries NOT_READY 6× / 0.3 s because RobotEnable returns before the servos energize <span class="fileref">(posture.rs:354-367)</span>.</li>
+      <li><b>Close is belt-and-braces:</b> <code>close_servo_window</code> always attempts and keeps no "is it open" flag — a cached guess once turned a failed close (err=14) into a runaway <span class="fileref">(posture.rs:371-392)</span>.</li>
+      <li><b>The probe</b> <span class="fileref">(robot.rs:1847-1908)</span> — sacred §8.3: the controller replies to ServoJ <em>only on rejection</em>, so send one probe frame, wait the 0.2 s quiet window; silence <b>is</b> the accept. One probe in flight at a time; rejections during SETTLING mean "keep probing", never e-stop; 3 s of failures returns <code>false</code> instead of raising (Tenacity's <code>retry_error_callback</code>, hand-ported).</li>
+    </ol>
+    <div class="card bg-base-100 mt-3"><div class="card-body p-3">
+    <pre class="mermaid">
+stateDiagram-v2
+    OFF --> SETTLING : prepare_stream — posture walk done
+    SETTLING --> SETTLING : ServoJ rejected — keep probing
+    SETTLING --> READY : 0.2 s of silence = accept
+    SETTLING --> OFF : 3 s exhausted — prepare returns false
+    READY --> OFF : e-stop / halt window / enter_idle
+    note right of READY : quirk — disconnect() never exits the stream phase, so READY survives teardown (harmless only because reconnect re-walks + re-probes)
+    </pre>
+    </div></div>
+  </div></div>
+
+  <h3 class="text-xl font-semibold mt-8 text-error">Worked example: EMERGENCY_STOP (three triggers, one funnel)</h3>
+  <div class="card bg-base-200 mt-3"><div class="card-body p-5 prose-tight">
+    <p class="text-sm text-base-content/80">
+      Three independent triggers all funnel into <code>emergency_stop_impl</code>: (a) an operator e-stop action —
+      <b>dual-pathed</b> by the bridge as a UDP datagram <em>and</em> a one-shot reliable
+      <code>StreamActions</code> call with <code>wait_for_ready</code>, so a 100% UDP blackhole still delivers at
+      gRPC speed <span class="fileref">(remote_follower_bridge.py:888-930)</span>; (b) a guard trip inside
+      <code>guarded_send</code>; (c) a controller ServoJ rejection on the reply thread. Duplicates collapse into one
+      latch. The orchestrator keeps re-firing e-stop states at 100 Hz while the leader is latched — by design, the
+      latch makes that idempotent.
+    </p>
+    <figure class="exhibit" data-name="robot.rs">
+      <figcaption class="fileref mb-1 text-base-content/60">rust/fairino-robot/src/robot.rs:1640 — RobotEnable(0), never StopMotion (2026-06-18: StopMotion returned 0, arm kept driving). Latch logs once; the enable-off is re-issued every call until it takes.</figcaption>
+      <script type="text/plain">fn emergency_stop_impl(&self) -> Result<bool, FairinoError> {
+    let newly_latched = {
+        let mut status = self.locked_status();
+        if *status != RobotStatus::EmergencyStop {
+            *status = RobotStatus::EmergencyStop;
+            true
+        } else { false }
+    };
+    if newly_latched {
+        tracing::error!("Emergency stop activated");
+    }
+    self.exit_stream_phase();
+    if !self.inner.interface_up.load(Ordering::SeqCst) {
+        return Ok(true);
+    }
+    let err = { self.locked_sdk().robot_enable(0)? };
+    if err != 0 {
+        tracing::error!("RobotEnable(0) returned err={err} — arm may NOT be arrested");
+    }
+    Ok(err == 0)
+}</script>
+      <div class="exhibit-slot"></div>
+    </figure>
+    <p class="text-sm text-base-content/80 mt-3">
+      <b>Recovery is strictly ordered</b> and the ordering is <em>enforced by the latch gates</em>, not by convention:
+      <code>prepare_stream</code> and <code>enter_idle</code> both short-circuit while latched, so the only way
+      forward is <code>reset_emergency</code> (refuses unless latched → clears every guard trip → status Idle →
+      <code>ResetAllError</code>) → <code>enter_idle</code> → <code>prepare_stream</code>
+      <span class="fileref">(robot.rs:1679-1706)</span>. After <em>any</em> stream gap the leader must re-sync targets
+      to the follower's measured pose first — resuming onto phase-advanced targets trips <code>max_joint_deltas</code>
+      straight back into e-stop (N-D F3: the guard working as designed).
+    </p>
+    <p class="text-sm text-base-content/80 mt-2">
+      Measured cmd→<code>RobotEnable(0)</code> latencies (N-D): <b>48.5 ms</b> median @ 50 ms RTT ·
+      <b>166.7 ms</b> @ 150 ms · <b>150.9 ms</b> @ 5% loss (p99 308 ms) · <b>47.3 ms</b> around a hard link cut.
+      Node-internal apply ≤ 0.7 ms — the wire is the entire latency. The hardware E-stop remains the real safety layer.
+    </p>
+  </div></div>
+
+  <h3 class="text-xl font-semibold mt-8">The reply leg doubles as a clock</h3>
+  <div class="grid lg:grid-cols-2 gap-4 mt-3">
+    <div class="card bg-base-200"><div class="card-body p-4">
+    <pre class="mermaid">
+sequenceDiagram
+    participant B as Bridge (operator PC)
+    participant N as Node (mini PC)
+    B->>N: Command RPC — t0 = perf_counter()
+    Note over N: t1 = node_recv_mono (before dispatch)
+    Note over N: handler runs on spawn_blocking
+    Note over N: t2 = node_send_mono (just before send)
+    N-->>B: CommandReply {corr, value, t1, t2}
+    Note over B: t3 = perf_counter()
+    Note over B: offset = ((t1-t0)+(t2-t3))/2, uncertainty = RTT/2
+    </pre>
+    </div></div>
+    <div class="card bg-base-200"><div class="card-body p-5 prose-tight text-sm text-base-content/80">
+      <p><b>Every</b> command reply feeds one four-timestamp sample <span class="fileref">(remote_follower_bridge.py:1025-1033, clock_offset.py:44-51)</span>. The estimator keeps a window of 8, picks the min-RTT winner, and blends with a slow EWMA (α = 0.1). <b>No clock is ever adjusted</b> — estimation only, published with its uncertainty on <code>bridge.{id}</code>, reset on link loss (a restarted node restarts its monotonic epoch).</p>
+      <p>This is what lets the profiler translate node-side hop times onto the operator timeline (Walkthrough C, step 6). Wall-clock fields (<code>leader_timestamp</code>, <code>command_latency_ms</code>) still assume chrony — never trust sub-10 ms cross-host wall deltas.</p>
+    </div></div>
+  </div>
+</section>
+
+<!-- ============================ WALKTHROUGH C ============================ -->
+<section id="walk-c" class="pt-12">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">4 · Walkthrough C — telemetry, events, and the trace backfeed</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    Three return channels with three delivery guarantees: lossy latest-wins UDP for the 100 Hz state stream,
+    a reliable <em>priority</em> gRPC lane for robot events (an EMERGENCY_STOP notification must never be lost),
+    and a capped <em>bulk</em> lane for diagnostics that must never delay the priority lane.
+  </p>
+
+  <div class="card bg-base-200 walk-step mt-5"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 1 · CNDE reader: the snapshot and the first-frame latch</h4>
+    <p class="text-sm text-base-content/80">
+      The reader blocks in <code>next_state()</code>, writes each frame into the RwLock snapshot, and latches
+      <code>first_frame_seen</code> <span class="fileref">(robot.rs:1127-1147)</span>. <b>Sacred §8.11:</b> every state
+      read fails with <code>BadResponse</code> until that latch — a pre-sync seeded from an all-zero packet would
+      jump the arm. (Python checked <code>frame_cnt == 0 &amp;&amp; joints all zero</code>; the FR firmware rejects
+      <code>frame_cnt</code> at CNDE config time, so the mechanism changed, the observable behavior did not.)
+    </p>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step mt-4"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 2 · Reading a state: classify, demux, and two famous lies</h4>
+    <p class="text-sm text-base-content/80">
+      <code>read_state_from_pkg</code> maps the packet to <code>RobotState</code> (joint arrays truncate with
+      <code>take</code> — slice semantics, sim packets are really shorter) <span class="fileref">(state.rs:92-131)</span>.
+      The classifier is most-severe-wins — and ports the quirk that <b>only <code>EmergencyStop == 1</code></b> counts
+      as e-stop; any other non-zero value falls through <span class="fileref">(state.rs:151-169)</span>.
+      Vacuum state is a bit demux over both DO bytes <span class="fileref">(state.rs:181-188)</span>.
+      And yes: <code>units</code> ships as <code>"radians"</code> while the numbers are degrees — the dataclass default
+      was never set in Python, so it is never set in Rust either.
+    </p>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step mt-4"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 3 · The paced publisher: S7N1 frames + the deadline theater</h4>
+    <p class="text-sm text-base-content/80">
+      <code>publish_worker_{id}</code> ticks at <code>publish_rate_hz</code> on a never-resetting grid; each tick is
+      wrapped in <code>catch_unwind</code> so a ported-guard panic logs and the loop continues (Python's
+      per-iteration <code>except</code>) <span class="fileref">(telemetry.rs:274-331)</span>. Payload = the exact
+      <code>RobotState::to_dict()</code> JSON whose parity M1 proved — protobuf telemetry is a flagged later
+      optimization, one variable at a time.
+    </p>
+    <figure class="exhibit" data-name="telemetry.rs">
+      <figcaption class="fileref mb-1 text-base-content/60">rust/robot-node/src/telemetry.rs:180 — the grid catches up rather than resetting; every 100th miss warns, unless video compression is running (the flag set by set_compression_active)</figcaption>
+      <script type="text/plain">self.next_tick += self.target_rate;         // never reset — late loops catch up
+let sleep_time = self.next_tick - now;
+if sleep_time >= 0.0 { return (sleep_time, None); }
+let mut warning = None;
+if sleep_time < -0.005 {                     // >5 ms late = a miss
+    self.missed_deadlines += 1;
+    if !compression && self.missed_deadlines.is_multiple_of(100) {
+        warning = Some(format!("Robot: {} -> Publish worker SIGNIFICANTLY behind! ..."));
+    }
+}
+(0.0, warning)</script>
+      <div class="exhibit-slot"></div>
+    </figure>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step mt-4"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 4 · Bridge receive: wrap-aware latest-wins, epoch reset</h4>
+    <p class="text-sm text-base-content/80">
+      The bridge drops out-of-order frames by seq (same half-window test as the node's action gate), ages the epoch
+      out after 2 s of silence, resets it on link loss, and republishes the JSON payload <b>unchanged</b> on
+      <code>state.{id}</code> — the frontend cannot tell the follower moved cities
+      <span class="fileref">(remote_follower_bridge.py:1197-1225)</span>.
+    </p>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step mt-4"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 5 · Events: two lanes, priority always drains first</h4>
+    <p class="text-sm text-base-content/80">
+      Robot events (EMERGENCY_STOP, toggles) ride an <b>unbounded</b> priority channel; <code>trace_batch</code>
+      diagnostics ride a <b>capped (8)</b> bulk channel that drops-newest on overflow. The stream implementation
+      polls priority first, always — a trace batch can never delay or reorder an e-stop notification
+      <span class="fileref">(grpc.rs:104-146, 202)</span>.
+    </p>
+    <figure class="exhibit" data-name="grpc.rs">
+      <figcaption class="fileref mb-1 text-base-content/60">rust/robot-node/src/grpc.rs:202 — the ordering guarantee is structural, not scheduled</figcaption>
+      <script type="text/plain">match self.priority.poll_recv(cx) {
+    Poll::Ready(Some(item)) => return Poll::Ready(Some(item)),
+    Poll::Ready(None) => return Poll::Ready(None),
+    Poll::Pending => {}
+}
+match self.bulk.poll_recv(cx) {
+    Poll::Ready(Some(item)) => Poll::Ready(Some(item)),
+    Poll::Ready(None) | Poll::Pending => Poll::Pending,   // priority lane ends the stream
+}</script>
+      <div class="exhibit-slot"></div>
+    </figure>
+  </div></div>
+
+  <div class="card bg-base-200 walk-step mt-4"><div class="card-body p-5 prose-tight">
+    <h4 class="font-semibold">Step 6 · The trace backfeed: the profiler works cross-host</h4>
+    <p class="text-sm text-base-content/80">
+      On every <em>fresh</em> guarded send the driver exports the action's hop chain into a bounded queue
+      (<code>try_send</code>, drop-newest + counter — <b>zero new locks on the sender tick</b>)
+      <span class="fileref">(trace.rs:375-387)</span>. The telemetry thread drains chains (≤160) and hardware-send
+      wall stamps (≤200) every ~1 s into a <code>trace_batch</code> bulk event. Operator-side,
+      <code>TraceBackfeed</code> shifts node-monotonic hop times by <code>−offset</code> (the estimator from
+      Walkthrough B), <b>drops and counts chains that go backwards in time</b> (a wrong offset surfaces instead of
+      rendering), and injects them into the operator TraceLogger — zero frontend changes
+      <span class="fileref">(trace_backfeed.py:112-150)</span>.
+    </p>
+    <p class="text-sm text-base-content/80">
+      One deliberate exception: <code>hw_tick</code> wall stamps are injected <b>UNtranslated</b> — the
+      consumer-rhythm panel diffs consecutive sends per robot, so a constant cross-host offset cancels; routing them
+      through the offset estimator would <em>add</em> error. Dedup is a strictly-increasing wall filter
+      <span class="fileref">(trace_backfeed.py:86-102)</span>.
+    </p>
+    <div role="alert" class="alert alert-info alert-soft mt-2 text-sm">
+      <span><b>Known blind spot:</b> the node's telemetry publisher does not stamp <code>publish.{id}.*</code> hops (deliberately cut, <span class="fileref">telemetry.rs:14-22</span>) — so telemetry frames arrive with empty <code>hops</code>. Action-path profiling is complete; publisher-path profiling is not.</span>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============================ QUIRKS ============================ -->
+<section id="quirks" class="pt-12">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">5 · The quirk catalog</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    Two very different lists. The first is <b>load-bearing</b>: each row is incident-derived and changing it is a
+    correctness bug, however odd it looks. The second is the <b>cleanup backlog</b>: Python bugs we knowingly
+    reproduced (fixture-pinned, so un-quirking one means updating its fixture too).
+  </p>
+
+  <h3 class="text-xl font-semibold mt-6 text-error">5.1 · Sacred — do not "fix" (§8)</h3>
+  <div class="overflow-x-auto rounded-box border border-base-300 bg-base-100 mt-3">
+    <table class="table table-xs table-zebra quirk-table">
+      <thead><tr><th class="w-8">#</th><th>Behavior</th><th>Why it exists</th><th>Rust home</th></tr></thead>
+      <tbody class="text-xs">
+        <tr><td>1</td><td>Vendor SDK returns a bare int instead of <code>(err, data)</code> → <code>BadResponse</code>, treated transient, never a crash</td><td>real controller misbehavior</td><td class="fileref">err.rs:165</td></tr>
+        <tr><td>2</td><td><code>code_of</code>: empty tuple → −1</td><td>callers key on −1</td><td class="fileref">err.rs:117-125</td></tr>
+        <tr><td>3</td><td>Probe: silence for 0.2 s <b>is</b> the accept; one in flight; SETTLING rejections keep probing, never e-stop</td><td>controller replies only on rejection</td><td class="fileref">robot.rs:99, 1878, 1855</td></tr>
+        <tr><td>4</td><td><code>cmdT = 1/publish_rate_hz</code>, never an independent knob</td><td>controller computes speed = delta/cmdT; mismatch inflates implied speed</td><td class="fileref">stream.rs:44-54</td></tr>
+        <tr><td>5</td><td>XML-RPC cmdType for SimMachine is a <b>static construction-time</b> decision — no runtime errcode-14 detection</td><td>errcode-14 incident motivated it, once</td><td class="fileref">robot.rs:88-93, 722-726</td></tr>
+        <tr><td>6</td><td>E-stop = <code>RobotEnable(0)</code>, never <code>StopMotion</code>; latch logs once, enable-off re-issued every call</td><td>2026-06-18: StopMotion returned 0, arm kept driving</td><td class="fileref">robot.rs:1640-1662</td></tr>
+        <tr><td>7</td><td><code>prepare_stream</code> / <code>enter_idle</code> refuse while latched — recovery only via explicit reset</td><td>no accidental re-arming</td><td class="fileref">robot.rs:1814, 1923</td></tr>
+        <tr><td>8</td><td>Every frame that reaches hardware runs the guard suite — holds are not exempt</td><td>a hold is still a command</td><td class="fileref">robot.rs:1474</td></tr>
+        <tr><td>9</td><td>Starvation holds forever by default; a positive halt window exits the stream phase but <b>never de-energizes</b></td><td>de-energizing on link loss would drop a held payload</td><td class="fileref">stream.rs:373-394</td></tr>
+        <tr><td>10</td><td><code>cap_delta</code> closes the loop against the <b>measured</b> pose; no-op unconfigured / pre-observation; warning edge-triggered per episode</td><td>ramp-in without oscillation</td><td class="fileref">robot.rs:429-488</td></tr>
+        <tr><td>11</td><td>State reads fail until the first real CNDE frame</td><td>an all-zero pre-sync would jump the arm</td><td class="fileref">state.rs:97-104</td></tr>
+        <tr><td>12</td><td>The reply thread reads only the packet snapshot — <b>never</b> an XML-RPC call</td><td>deadlock</td><td class="fileref">robot.rs:31-35, fault_diag.rs:38-44</td></tr>
+        <tr><td>13</td><td>The <code>(errcode, probe, status)</code> verdict match: 0 → ignore · SETTLING → flag · latched → nothing · else → e-stop</td><td>probe vs stream vs latched are different worlds</td><td class="fileref">robot.rs:1743-1760</td></tr>
+        <tr><td>14</td><td>Realtime-stream config failure is a warning, not fatal (re-homed onto the CNDE handshake); soft-limit fetch failure skips limits with a warning</td><td>degraded stream beats no stream</td><td class="fileref">robot.rs:960-971, 1011</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="text-xl font-semibold mt-8 text-warning">5.2 · Ported bugs &amp; oddities — the future cleanup backlog (§13.4)</h3>
+  <p class="text-sm text-base-content/70 mt-2">Badges: <span class="badge badge-warning badge-xs">ported bug</span> = faithful reproduction of a Python defect, fixture-pinned · <span class="badge badge-info badge-xs">deviation</span> = deliberate, documented divergence from Python · <span class="badge badge-ghost badge-xs">rust-side wart</span> = introduced by the port itself, not by Python.</p>
+
+  <div class="grid md:grid-cols-2 gap-3 mt-4 text-sm">
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h4 class="font-semibold">State layer</h4>
+      <p><span class="badge badge-warning badge-xs">ported bug</span> <b>The units lie.</b> Every Fairino state ships <code>units: "radians"</code> (the dataclass default) while the driver publishes degrees. Nothing downstream reads it — yet. <span class="fileref">types.rs:487</span></p>
+      <p><span class="badge badge-warning badge-xs">ported bug</span> <b>Only <code>EmergencyStop == 1</code> classifies as e-stop</b> — a 2 falls through to less-severe verdicts. <span class="fileref">state.rs:151-169</span></p>
+      <p><span class="badge badge-info badge-xs">deviation</span> <b>Negative <code>do_port</code> reads the vacuum bit as off</b> where Python raised <code>ValueError</code> on the read path. Unreachable from real configs. <span class="fileref">state.rs:176-188</span></p>
+    </div></div>
+
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h4 class="font-semibold">Safety layer</h4>
+      <p><span class="badge badge-warning badge-xs">ported bug</span> <b>Tripped guards bounce e-stop frames.</b> Delta/speed/state guards check <code>tripped</code> <em>before</em> their e-stop bypass; the workarea guard checks e-stop first. So "e-stop frames bypass the trip-lock" holds only until one of those four trips. <span class="fileref">max_joint_deltas_guard.rs:46-54 vs workarea_guard.rs:75-80</span></p>
+      <p><span class="badge badge-warning badge-xs">ported bug</span> <b>A bogus <code>end_effector_link</code> builds an EMPTY FK chain</b> → <code>available = true</code> → the point is the base origin forever → the workarea guard silently checks (0,0,0) instead of failing closed. <span class="fileref">fk.rs:297-337, 251-266</span></p>
+      <p><span class="badge badge-warning badge-xs">ported bug</span> <b>Silent 65-hop chain truncation</b> on very deep URDFs — chain rooted mid-tree, no error. <span class="fileref">fk.rs:305</span></p>
+      <p><span class="badge badge-warning badge-xs">ported bug</span> <b><code>set_enabled(false)</code> clears the violation counter but not <code>tripped</code></b> — re-enabling a tripped guard keeps it tripped (probably deliberate; only <code>reset_after_estop_release</code> clears it). <span class="fileref">guard.rs:148-153</span></p>
+      <p><span class="badge badge-info badge-xs">deviation</span> <b>Malformed config aborts startup</b> where Python silently built no guard (truthy non-mapping guard block, string rates, explicit-null limits). Divergence is abort-vs-silence only — fail-closed. <span class="fileref">config.rs:559-573, policy.rs:147-158</span></p>
+    </div></div>
+
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h4 class="font-semibold">Driver</h4>
+      <p><span class="badge badge-warning badge-xs">ported bug</span> <b><code>disconnect</code> never exits the stream phase</b> — a READY probe state survives teardown. Harmless only because reconnect re-walks postures and re-probes. <span class="fileref">robot.rs:1054-1072</span></p>
+      <p><span class="badge badge-warning badge-xs">ported bug</span> <b>ERROR→CONNECTED is dead code</b> on the success path — the next line overwrites with MOVING. (The recovery that matters lives on the read path.) <span class="fileref">robot.rs:1589-1595</span></p>
+      <p><span class="badge badge-warning badge-xs">ported bug</span> <b>E-stop with the interface down returns <code>true</code></b> even though nothing was de-energized — the latch still flips, so the passive gate holds. <span class="fileref">robot.rs:1654-1656</span></p>
+      <p><span class="badge badge-warning badge-xs">ported bug</span> <b>An error escaping a sender tick kills the ServoJ thread</b> — in both implementations (Python: uncaught daemon exception; Rust: logged break). <span class="fileref">robot.rs:1231-1244</span></p>
+      <p><span class="badge badge-info badge-xs">deviation</span> <b>Poisoned locks recover</b> (<code>PoisonError::into_inner</code>) instead of cascading — Rust's default would have turned one guard panic into a permanently dead e-stop/reset path. Python has no poison concept; the panicking call still dies exactly like the raising call. <span class="fileref">sync.rs</span></p>
+      <p><span class="badge badge-ghost badge-xs">rust-side wart</span> <b>Controller soft limits are fetched, stored, logged — and never fed into the safety envelope.</b> <span class="fileref">robot.rs:1011-1014, 1049-1050</span></p>
+    </div></div>
+
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h4 class="font-semibold">Node &amp; wire</h4>
+      <p><span class="badge badge-ghost badge-xs">rust-side wart</span> <b>NotRunning is dressed as UNKNOWN on the wire</b> so the bridge publishes no reply (matching Python's silence) — semantically it is neither unknown nor an error. <span class="fileref">grpc.rs:72-76</span></p>
+      <p><span class="badge badge-ghost badge-xs">rust-side wart</span> <b>The robot YAML is parsed up to 4×</b> during bringup (typed, action_port, build_robot, from_yaml_str). <span class="fileref">main.rs:100-153</span></p>
+      <p><span class="badge badge-ghost badge-xs">rust-side wart</span> <b><code>missed_deadlines == 0</code> guard</b> exists only because <code>0.is_multiple_of(100)</code> is true. <span class="fileref">telemetry.rs:162</span></p>
+      <p><span class="badge badge-warning badge-xs">ported bug</span> <b><code>wrench</code>/<code>wrench_frame</code> are always <code>null</code></b> in flight-ring state records (FT sensor unported). <span class="fileref">telemetry.rs:366</span></p>
+      <p><span class="badge badge-ghost badge-xs">rust-side wart</span> <b><code>set_vacuum</code> with no capability replies <code>false</code> silently</b> (ports <code>getattr(robot, "set_vacuum", None)</code>). <span class="fileref">node.rs:462</span></p>
+      <p><span class="badge badge-ghost badge-xs">rust-side wart</span> <b>Foreign-robot-id datagrams are dropped silently and uncounted</b>; malformed ones are counted. A mis-configured id looks like a dead link with zero diagnostics. <span class="fileref">actions.rs:341</span></p>
+      <p><span class="badge badge-ghost badge-xs">rust-side wart</span> <b>Bare <code>--id</code> defaults to <code>"1"</code></b>; bulk lane drops <em>newest</em> on overflow; action-thread shutdown latency up to 200 ms; reconnect threads joined only at shutdown. <span class="fileref">main.rs:64 · grpc.rs:166 · actions.rs:263 · node.rs:391</span></p>
+    </div></div>
+  </div>
+
+  <h3 class="text-xl font-semibold mt-8 text-info">5.3 · Doc ↔ code mismatches found while writing this (worth resolving)</h3>
+  <div class="card bg-base-200 mt-3"><div class="card-body p-5 prose-tight text-sm">
+    <p>① <b>Phase lock:</b> PORTING.md Part III says "the config flag is removed, the code stays dormant" — but
+    <code>servoj_phase_lock</code> still exists and is fully wired (<span class="fileref">config.rs:429</span>, default
+    <code>false</code>; consumed at <span class="fileref">robot.rs:729/1296/1315</span>). Dormant only because it
+    defaults off. Either remove the flag or fix the doc.</p>
+    <p>② <b>Stale proto comment:</b> <span class="fileref">proto/robot_node.proto:56-58</span> still says
+    <code>orient_primitive</code> "replies null — no DLS solve yet", but the solve shipped 2026-07-22
+    (<span class="fileref">kin.rs / orient.rs / robot.rs:2070</span>).</p>
+    <p>③ <b>Drifting line citations:</b> PORTING.md cites <span class="fileref">fairino.py:763-764</span> for the
+    e-stop interface-None quirk; it now lives at <span class="fileref">fairino.py:794-795</span>.</p>
+    <p>④ <b>Working tree right now:</b> uncommitted tunes in <code>fairino_fr3_remote_node_local.yaml</code>
+    (joint_speed 660→60, command_speed 220/660→770/720-760) and <code>spacemouse_leader.yaml</code>
+    (force_scale ×2.5, k_lin 250→150, max_tcp_v 0.25→0.55) — with the inline comments now stale relative to the
+    values. Worth committing or reverting deliberately, not by accident.</p>
+  </div></div>
+</section>
+
+<!-- ============================ PY -> RUST ============================ -->
+<section id="py2rust" class="pt-12">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">6 · What the GIL gave Python for free — and Rust spells out</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    The port's real translation work was not syntax — it was making implicit Python semantics explicit.
+    The flagship example, side by side:
+  </p>
+
+  <div class="grid xl:grid-cols-2 gap-4 mt-5">
+    <figure class="exhibit" data-name="fairino.py">
+      <figcaption class="fileref mb-1 text-base-content/60">Python: servo7/robot/hardware/fairino.py:184 + :617 — one atomic reference assignment IS the mailbox</figcaption>
+      <script type="text/plain">class CommandSlot(NamedTuple):
+    """One pending ServoJ setpoint plus the monotonic time it was queued. The
+    producer overwrites the whole tuple (latest-wins, depth-1 mailbox); the
+    consumer reads the reference once and derives staleness from ``t_mono``.
+    Reference assignment is atomic under the GIL, so no lock is needed."""
+
+    action: RobotState
+    t_mono: float
+
+# ...
+
+def set_state(self, action: RobotState) -> bool:
+    self._assert_action_type(action)
+    self.commanded_action = action
+    if action.is_emergency_stop:
+        return self.emergency_stop()
+    action.stamp(f"follower.{self.id}.servoj_enqueue")
+    self._stream.slot = CommandSlot(action, time.perf_counter())
+    return True</script>
+      <div class="exhibit-slot"></div>
+    </figure>
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight text-sm text-base-content/80">
+      <h4 class="font-semibold">The Rust translation had to preserve three invisible properties</h4>
+      <p><b>1 · Latest-wins overwrite</b> → <code>Mutex&lt;Option&lt;CommandSlot&gt;&gt;</code>, producer replaces <span class="fileref">(stream.rs:200)</span>.</p>
+      <p><b>2 · Read-without-take.</b> Python's consumer "reads the reference once" — it never removes it. A natural Rust <code>Option::take()</code> port would compile, pass casual tests, and silently change starvation accounting + trace record kinds. The slot is cleared only by <code>reset()</code> <span class="fileref">(stream.rs:207, 245)</span>.</p>
+      <p><b>3 · Staleness from <code>t_mono</code>,</b> so a re-read inside the window is a fresh re-send, not a hold — pinned by a dedicated test <span class="fileref">(stream.rs:483)</span>.</p>
+      <p class="text-base-content/60">This pattern — enumerate what the GIL guaranteed, then reproduce each guarantee deliberately — repeats across the port. The table below is the rest of the dictionary.</p>
+    </div></div>
+  </div>
+
+  <div class="overflow-x-auto rounded-box border border-base-300 bg-base-100 mt-6">
+    <table class="table table-sm table-zebra">
+      <thead><tr><th>Python idiom</th><th>Rust construct</th><th>The trap it avoids</th></tr></thead>
+      <tbody class="text-sm">
+        <tr><td><code>time.perf_counter()</code> (one process-wide clock)</td><td>the <b>one</b> injected <code>SharedClock</code> <span class="fileref">(safety/clock.rs)</span></td><td>every <code>Instant::now()</code> mints a new epoch — per-thread clocks would land in the same dump offset by arbitrary constants</td></tr>
+        <tr><td><code>if not x:</code> (None <b>or</b> empty)</td><td>hand-expanded <code>is_none() || is_empty()</code>, reviewed one by one</td><td><code>if let Some(p)</code> alone silently changes behavior on empty (e.g. the probe's no-measured-pose gate, <span class="fileref">robot.rs:1896</span>)</td></tr>
+        <tr><td><code>"k" in d</code> gates on the KEY</td><td><code>de_limit_fail_closed</code>: explicit <code>null</code> rejected at deserialize <span class="fileref">(config.rs:559)</span></td><td>a single <code>Option&lt;T&gt;</code> collapses absent and null — turning Python's startup abort into a silently skipped safety guard</td></tr>
+        <tr><td><code>d.get(k)</code> crashes on a non-dict node</td><td><code>policy_document</code> reproduces the <code>AttributeError</code> <span class="fileref">(policy.rs:147)</span></td><td>serde's <code>Value::get</code> returns None — a corrupted safety_policy.yaml would load EMPTY and turn every strict robot non-strict</td></tr>
+        <tr><td><code>np.where(mask, …, -inf)</code> + <code>argmax</code></td><td><code>np_argmax</code>: first max wins, NaN is maximal <span class="fileref">(guard.rs:41-57)</span></td><td>tie-breaking must match index-for-index, not just value-for-value — metrics name the worst joint</td></tr>
+        <tr><td>exceptions poison nothing</td><td><code>lock_unpoisoned</code> = <code>PoisonError::into_inner</code> <span class="fileref">(sync.rs)</span></td><td>default poisoning turns one ported <code>ValueError</code> panic into a permanently dead e-stop path</td></tr>
+        <tr><td>Tenacity <code>Retrying</code></td><td>three hand-rolled loops with exact stop/wait/exhaustion semantics <span class="fileref">(robot.rs:988, 1847 · posture.rs:314)</span></td><td>the subtle one: <code>_reach_stream_ready</code> returns <code>false</code> on exhaustion instead of raising</td></tr>
+        <tr><td><code>list[:n]</code> truncates</td><td>explicit <code>take</code>/<code>get</code>, never <code>[..n]</code></td><td>sim packets and defensive paths make short arrays real; slicing panics</td></tr>
+        <tr><td>f-string log text</td><td>char-for-char identical messages + <code>msgfmt.rs</code> Python-repr rendering</td><td>operators, toasts, and grep depend on message text (e.g. <code>near_limit_code</code>)</td></tr>
+        <tr><td><code>try/finally</code> teardown</td><td>run-on-both-arms shutdown; flight dump on <b>every</b> exit path incl. SIGTERM/SIGHUP <span class="fileref">(main.rs:268, 298)</span></td><td>an early-return <code>?</code> between connect and teardown would skip disconnect and lose the dump</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid xl:grid-cols-2 gap-4 mt-6">
+    <figure class="exhibit" data-name="fairino.py">
+      <figcaption class="fileref mb-1 text-base-content/60">Python: fairino.py:782 — emergency_stop, the specification</figcaption>
+      <script type="text/plain">def emergency_stop(self) -> bool:
+    """De-energize the servos via ``RobotEnable(0)`` — the strongest stop the
+    SDK offers. ``StopMotion`` only cancels a non-blocking motion instruction
+    and cannot arrest a NOT_READY/internal runaway (it returned 0 yet the arm
+    kept driving in the 2026-06-18 incident), so we drop motor torque
+    directly and let the brakes hold. Idempotent: the "activated" log +
+    status latch happen once (callers re-fire it every state tick), but
+    ``RobotEnable(0)`` is re-issued each call until it takes."""
+    if self.status != RobotStatus.EMERGENCY_STOP:
+        super().emergency_stop()
+    self._exit_stream_phase()
+    if self.interface is None:
+        return True
+    with self._sdk_lock:
+        err = self.interface.RobotEnable(0)
+    if err != 0:
+        self.logger.critical(f"RobotEnable(0) returned err={err} — arm may NOT be arrested")
+    return err == 0</script>
+      <div class="exhibit-slot"></div>
+    </figure>
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight text-sm text-base-content/80">
+      <h4 class="font-semibold">Same function, one structural difference</h4>
+      <p>Compare with the Rust version in Walkthrough B: logic, ordering, log text, and the interface-down
+      <code>return True</code> quirk are identical. The one Rust-only subtlety is the latch write: Python's adjacent
+      <code>if status != X: status = X</code> is GIL-atomic; the Rust version re-checks <b>under the status lock</b>
+      (<code>newly_latched</code> block) so a concurrently latched e-stop is never overwritten by a stale snapshot —
+      the "snapshot-then-write status race" from the §9 reviewer watchlist, and the same discipline
+      <code>read_state_now</code> uses for its ERROR→CONNECTED transition <span class="fileref">(robot.rs:1345-1368)</span>.</p>
+      <p class="text-base-content/60">If you remember one review heuristic from the port: <em>wherever Python did
+      check-then-write on shared state, look for the Rust re-check under the lock.</em></p>
+    </div></div>
+  </div>
+</section>
+
+<!-- ============================ CUTS & GAINS ============================ -->
+<section id="cuts" class="pt-12">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">7 · What was cut, what was gained</h2>
+  <div class="grid lg:grid-cols-2 gap-4 mt-5">
+    <div class="card bg-base-200"><div class="card-body p-5 prose-tight text-sm">
+      <h3 class="font-semibold text-lg">Deliberate cuts (decisions, not omissions)</h3>
+      <p><b>Drag / hand-guiding — gone entirely.</b> Leaders are SpaceMouse-only. Even the defensive drag-release
+      calls at the head of every posture walk were cut. Accepted residual risk: an arm left in drag from the vendor
+      pendant fails the walk's <code>Mode()</code> with err=123, surfacing immediately; recovery is manual at the
+      pendant. <span class="fileref">posture.rs:15-22</span></p>
+      <p><b>Force-torque sensor — gone.</b> The follower never reads it; admittance lives leader-side. The CNDE
+      stream still carries both wrench fields; <code>state.rs</code> ignores them.</p>
+      <p><b>Cameras/observations — not in the node.</b> Shared memory dies across hosts; separate workstream.</p>
+      <p><b>Legacy ZMQ remote-robot path — deleted post-N-E.</b> The Gate C+ shim work discovered it never carried
+      <code>prepare_command_stream</code> at all — the old remote path never supported a real streaming arm.</p>
+    </div></div>
+    <div class="card bg-base-200"><div class="card-body p-5 prose-tight text-sm">
+      <h3 class="font-semibold text-lg">Improvements beyond the 1:1 port (each measured)</h3>
+      <p><b>Rates matched at 100 Hz</b> — the old 70→50 mismatch manufactured a latency lattice, velocity ripple,
+      and silently discarded ~¼ of setpoints.</p>
+      <p><b>Actions moved to UDP</b> (2026-07-20 decision record): latest-wins fits UDP; TCP head-of-line blocking
+      eliminated for the WAN; e-stop dual-pathed onto reliable gRPC.</p>
+      <p><b>Cross-host profiler</b> — trace backfeed + in-band clock-offset estimation; the latency panel works
+      without trusting either clock.</p>
+      <p><b>Phase-locked send tick</b> — built, validated, currently dormant (owner-disabled 2026-07-21; see
+      mismatch ① in §5.3). Shifts the send grid, never the spacing (±0.3 ms/tick cap).</p>
+      <p><b>Parked next:</b> a bounded playout queue (depth ~5, hard age cap, drain-to-newest, e-stops bypass)
+      <em>in front of</em> the mailbox — deliberately post-merge, since it departs from Python parity and needs its
+      own differential scenarios before metal.</p>
+    </div></div>
+  </div>
+</section>
+
+<!-- ============================ VALIDATION ============================ -->
+<section id="validation" class="pt-12">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">8 · How it was proven, and how to read latency numbers</h2>
+  <div class="grid lg:grid-cols-2 gap-4 mt-5">
+    <div class="card bg-base-200"><div class="card-body p-5 prose-tight text-sm">
+      <h3 class="font-semibold text-lg">The validation ladder</h3>
+      <p><b>Golden fixtures per module</b> — every Rust module tested against JSONL vectors generated by executing
+      the <em>Python</em> implementation (floats to 1e-9 relative; control flow exact).</p>
+      <p><b>Gate B</b> — connect/disconnect/posture walks/e-stop/reset produce <em>identical SDK call sequences</em>
+      via recorder mocks on both sides.</p>
+      <p><b>Gate C</b> — Python driver vs Rust driver against fresh SimMachines on identical recorded input;
+      <em>exact</em> event-sequence equality on the injected-fault scenarios (starve→hold→halt, oversized jump,
+      e-stop mid-stream, ServoJ rejection). 6/6.</p>
+      <p><b>N-B/N-C/N-D</b> — node-level command parity, telemetry parity + cadence, then the WAN suite
+      (netem 5/50/150 ms, jitter, 1-5% loss, hard cut): hold/halt behavior, reconnect semantics, zero event loss,
+      measured e-stop latency. WAN 5/5.</p>
+      <p><b>N-E</b> — live SpaceMouse sessions, one and two machines, SimMachine then real FR3. The remaining gate
+      before <code>rust</code> → <code>main</code> is the owner's live checklist (PORTING.md Part III).</p>
+    </div></div>
+    <div class="card bg-base-200 border border-warning/40"><div class="card-body p-5 prose-tight text-sm">
+      <h3 class="font-semibold text-lg">⚠ Old-vs-new latency comparisons mislead</h3>
+      <p>If you A/B the old in-process stack against the node and the old one "looks" faster: it measured a
+      <b>shorter path</b>. The old trace chain ends when a setpoint is handed to the sender's mailbox —
+      <em>before</em> the wait for the next send slot and the hardware send, which is the dominant term. The node's
+      numbers include everything up to the hardware send.</p>
+      <p>Measured honestly (traces joined to the flight-recorder command ring): the node is ~3× faster at the
+      median, far better in the worst case, and an order of magnitude steadier on the send grid — while the old
+      stack also silently discarded a quarter of setpoints to its rate mismatch.</p>
+      <p>Latency here is dominated by <em>waiting for the next fixed send slot</em> (a controller contract), not by
+      processing — regularity and tail behavior are the meaningful metrics, not medians on a lucky day.</p>
+      <p class="text-base-content/60">Also: for ~10 min after a mini-PC cold boot, NTP slew makes displayed latency
+      creep ~1 ms/min and trace chains drop as "backwards" — harmless, self-limiting, let the box warm up.</p>
+    </div></div>
+  </div>
+
+  <div class="card bg-base-300 mt-8"><div class="card-body p-5 text-sm text-base-content/70">
+    <p><b>Where to go deeper:</b> <code>rust/PORTING.md</code> is the full contract — §8 sacred quirks, §9 the
+    reviewer's bug-class watchlist, §13.4 the ported-bug ledger, Part II the node spec, Part III the plain-language
+    handoff + pre-merge checklist. This document was generated from the code on branch <code>rust</code>
+    (2026-07-22); line numbers reference that tree.</p>
+  </div></div>
+</section>
+
+</main>
+
+<!-- ============================ MERMAID ============================ -->
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const paint = document.createElement("canvas").getContext("2d");
+  function toRgba(color) {
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = "#000";
+    paint.fillStyle = color;
+    paint.fillRect(0, 0, 1, 1);
+    return paint.getImageData(0, 0, 1, 1).data;
+  }
+  function compositeRgba(foreground, background) {
+    const fa = foreground[3] / 255, ba = background[3] / 255;
+    const a = fa + ba * (1 - fa);
+    if (a === 0) return [0, 0, 0, 0];
+    return [
+      (foreground[0] * fa + background[0] * ba * (1 - fa)) / a,
+      (foreground[1] * fa + background[1] * ba * (1 - fa)) / a,
+      (foreground[2] * fa + background[2] * ba * (1 - fa)) / a,
+      a * 255,
+    ];
+  }
+  function pageIsDark() {
+    const root = document.documentElement;
+    const rootBackground = toRgba(getComputedStyle(root).backgroundColor);
+    const bodyBackground = document.body ? toRgba(getComputedStyle(document.body).backgroundColor) : [0, 0, 0, 0];
+    const [r, g, b, a] = compositeRgba(bodyBackground, rootBackground);
+    if (a > 0) return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5;
+    const colorScheme = getComputedStyle(root).colorScheme;
+    if (colorScheme.includes("dark") && !colorScheme.includes("light")) return true;
+    if (colorScheme.includes("light") && !colorScheme.includes("dark")) return false;
+    return darkQuery.matches;
+  }
+  const diagrams = [...document.querySelectorAll(".mermaid")].map((el) => ({ el, src: el.textContent }));
+  let applied;
+  let rendering = false;
+  let queued = false;
+  function queueRender() {
+    queued = true;
+    if (rendering) return;
+    void render();
+  }
+  async function render() {
+    rendering = true;
+    try {
+      while (queued) {
+        queued = false;
+        const theme = pageIsDark() ? "dark" : "default";
+        if (theme === applied) continue;
+        mermaid.initialize({
+          startOnLoad: false,
+          theme,
+          securityLevel: "strict",
+          themeVariables: { fontSize: "12px" },
+          flowchart: { padding: 6 },
+        });
+        for (const { el, src } of diagrams) {
+          el.removeAttribute("data-processed");
+          el.textContent = src;
+        }
+        try {
+          await mermaid.run({ nodes: diagrams.map((d) => d.el) });
+        } catch (error) {
+          console.error("Mermaid diagram render failed:", error);
+          return;
+        }
+        applied = theme;
+      }
+    } finally {
+      rendering = false;
+      if (queued) queueRender();
+    }
+  }
+  if (document.readyState === "complete") queueRender();
+  else window.addEventListener("load", queueRender, { once: true });
+  const themeObserver = new MutationObserver(queueRender);
+  for (const el of [document.documentElement, document.body]) {
+    if (!el) continue;
+    themeObserver.observe(el, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  }
+  document.addEventListener("change", queueRender, true);
+  document.addEventListener("transitionend", ({ propertyName }) => {
+    if (propertyName === "background-color") queueRender();
+  }, true);
+  darkQuery.addEventListener("change", queueRender);
+</script>
+
+<!-- ============================ CODE EXHIBITS ============================ -->
+<script type="module">
+  import { File } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+  const options = { theme: { light: "github-light", dark: "github-dark" }, themeType: "dark", overflow: "wrap" };
+  for (const fig of document.querySelectorAll("figure.exhibit")) {
+    const src = fig.querySelector('script[type="text/plain"]');
+    const slot = fig.querySelector(".exhibit-slot");
+    if (!src || !slot) continue;
+    let text = src.textContent;
+    if (text.startsWith("\n")) text = text.slice(1);
+    try {
+      new File(options).render({
+        containerWrapper: slot,
+        file: { name: fig.dataset.name || "code.txt", contents: text },
+      });
+    } catch (error) {
+      const pre = document.createElement("pre");
+      pre.textContent = text;
+      pre.style.cssText = "font-size:12px;padding:12px;overflow:auto;";
+      slot.appendChild(pre);
+      console.error("exhibit render failed:", error);
+    }
+  }
+</script>
+
+</body>
+</html>
