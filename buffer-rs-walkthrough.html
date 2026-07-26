@@ -1,0 +1,1658 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="luxury">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>buffer.rs — the playout buffer, inner workings</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, h5, h6, li, dd, blockquote, figcaption, td, th, .badge, .label) { overflow-wrap: anywhere; }
+  :where(img, svg, video, canvas, iframe) { max-width: 100%; height: auto; }
+  html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
+  .walk-step { border-left: 3px solid var(--color-primary); }
+  .walk-step.drop-leg { border-left-color: var(--color-error); }
+  .walk-step.side-note { border-left-color: var(--color-base-300); }
+  .fileref { font-family: ui-monospace, monospace; font-size: 0.72rem; letter-spacing: 0; }
+  .codebox { font-family: ui-monospace, monospace; font-size: 0.75rem; line-height: 1.5; white-space: pre; overflow-x: auto; }
+  .mermaid { display: flex; justify-content: center; }
+  .mermaid svg { max-width: 100%; }
+  .policy-table td { vertical-align: top; }
+  .prose-tight p { margin-top: 0.35rem; margin-bottom: 0.35rem; }
+
+  /* ---- viz: validated dark palette (surface #1a1a19) ---- */
+  .viz-root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --ink-1: #ffffff;
+    --ink-2: #c3c2b7;
+    --ink-3: #898781;
+    --grid:  #2c2c2a;
+    --axis:  #383835;
+    --s-arrival: #3987e5;   /* categorical slot 1 */
+    --s-release: #d95926;   /* categorical slot 2 */
+    --s-depth:   #199e70;   /* categorical slot 3 */
+    --st-warn:     #fab219; /* status: warning  */
+    --st-serious:  #ec835a; /* status: serious  */
+    --st-critical: #d03b3b; /* status: critical */
+    background: var(--surface-1);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 0.5rem;
+    position: relative;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .viz-root svg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .viz-legend { display: flex; flex-wrap: wrap; gap: 0.9rem 1.4rem; align-items: center;
+    font-size: 0.72rem; color: var(--ink-2); padding: 0.6rem 0.9rem 0 0.9rem; }
+  .viz-legend .chip { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .viz-legend .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .viz-tip { position: absolute; pointer-events: none; display: none; z-index: 10;
+    background: #232322; border: 1px solid rgba(255,255,255,0.14); border-radius: 6px;
+    padding: 6px 9px; font-size: 11px; line-height: 1.5; color: var(--ink-1);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5); max-width: 240px; }
+  .viz-tip .tip-muted { color: var(--ink-3); }
+
+  /* hero animation: dots ride the lanes; static jittered/even spacing when reduced motion */
+  .lane-dot { transform: translateX(var(--sx, 0px)); }
+  @media (prefers-reduced-motion: no-preference) {
+    .lane-dot { animation: lane-ride 7s linear infinite; animation-delay: var(--d); }
+    @keyframes lane-ride {
+      0%   { transform: translateX(0);     opacity: 0; }
+      6%   { opacity: 1; }
+      94%  { opacity: 1; }
+      100% { transform: translateX(300px); opacity: 0; }
+    }
+    .gate-pulse { animation: gate-tick 1s steps(1) infinite; }
+    @keyframes gate-tick { 0% { opacity: 1; } 50% { opacity: 0.35; } 100% { opacity: 1; } }
+  }
+</style>
+</head>
+<body class="bg-base-100 text-base-content">
+
+<!-- ============================ NAV ============================ -->
+<div class="navbar bg-base-200/95 backdrop-blur sticky top-0 z-50 shadow-sm px-4">
+  <div class="navbar-start">
+    <span class="font-bold text-primary whitespace-nowrap">buffer.rs playout buffer</span>
+  </div>
+  <div class="navbar-end hidden lg:flex gap-1 text-sm">
+    <a class="btn btn-ghost btn-xs" href="#why">Why</a>
+    <a class="btn btn-ghost btn-xs" href="#placement">Placement</a>
+    <a class="btn btn-ghost btn-xs" href="#edgecases">Edge cases</a>
+    <a class="btn btn-ghost btn-xs" href="#arrival">Arrival</a>
+    <a class="btn btn-ghost btn-xs" href="#drain">Drain</a>
+    <a class="btn btn-ghost btn-xs" href="#adaptive">Adaptive</a>
+    <a class="btn btn-ghost btn-xs" href="#questions">Your questions</a>
+    <a class="btn btn-ghost btn-xs" href="#failclosed">Fail-closed</a>
+    <a class="btn btn-ghost btn-xs" href="#health">Health</a>
+    <a class="btn btn-ghost btn-xs" href="#config">Config</a>
+    <a class="btn btn-ghost btn-xs" href="#tests">Tests</a>
+  </div>
+</div>
+
+<main class="w-full px-4 lg:px-10 xl:px-16 pb-24">
+
+<!-- ============================ HERO ============================ -->
+<section class="py-10">
+  <h1 class="text-4xl font-bold leading-tight">The playout buffer,<br><span class="text-primary">inner workings</span></h1>
+  <p class="mt-4 max-w-3xl text-base-content/80">
+    One bounded, seq-ordered queue at the robot-node's action ingress. Setpoints join the line as datagrams
+    arrive; a drain thread releases exactly <b>one per ServoJ period</b>. Network jitter becomes queue-depth
+    fluctuation instead of arm-motion fluctuation, and delay is simply <em>time standing in line</em>. This is
+    the receiver-side playout buffer that video streaming uses (the top recommendation of the
+    <a class="link" href="../atlas/docs/buffer_streaming_report.html">buffer streaming report</a>), grown a
+    safety layer video never needed: a robot must not "catch up" after a stall.
+  </p>
+
+  <!-- hero concept figure: jitter in, metronome out -->
+  <figure class="viz-root mt-6 max-w-4xl">
+    <svg viewBox="0 0 900 190" role="img" aria-label="Concept: irregularly spaced packets enter a queue on the left; the queue absorbs the spacing; packets leave evenly spaced on the right, one per tick.">
+      <!-- lanes -->
+      <line x1="30" y1="86" x2="330" y2="86" stroke="var(--axis)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="570" y1="86" x2="870" y2="86" stroke="var(--axis)" stroke-width="2" stroke-linecap="round"/>
+      <!-- arrival dots: SAME speed, IRREGULAR spacing (delays are jittered; --sx is the reduced-motion static layout) -->
+      <g fill="var(--s-arrival)">
+        <circle class="lane-dot" cx="30" cy="86" r="6" style="--d:-0.4s; --sx:16px"/>
+        <circle class="lane-dot" cx="30" cy="86" r="6" style="--d:-1.6s; --sx:64px"/>
+        <circle class="lane-dot" cx="30" cy="86" r="6" style="--d:-2.0s; --sx:82px"/>
+        <circle class="lane-dot" cx="30" cy="86" r="6" style="--d:-2.3s; --sx:96px"/>
+        <circle class="lane-dot" cx="30" cy="86" r="6" style="--d:-4.1s; --sx:172px"/>
+        <circle class="lane-dot" cx="30" cy="86" r="6" style="--d:-5.6s; --sx:238px"/>
+        <circle class="lane-dot" cx="30" cy="86" r="6" style="--d:-6.1s; --sx:260px"/>
+      </g>
+      <!-- release dots: SAME speed, EVEN spacing (delays step by exactly 1s) -->
+      <g fill="var(--s-arrival)">
+        <circle class="lane-dot" cx="570" cy="86" r="6" style="--d:-1s; --sx:12px"/>
+        <circle class="lane-dot" cx="570" cy="86" r="6" style="--d:-2s; --sx:54px"/>
+        <circle class="lane-dot" cx="570" cy="86" r="6" style="--d:-3s; --sx:96px"/>
+        <circle class="lane-dot" cx="570" cy="86" r="6" style="--d:-4s; --sx:138px"/>
+        <circle class="lane-dot" cx="570" cy="86" r="6" style="--d:-5s; --sx:180px"/>
+        <circle class="lane-dot" cx="570" cy="86" r="6" style="--d:-6s; --sx:222px"/>
+        <circle class="lane-dot" cx="570" cy="86" r="6" style="--d:-7s; --sx:264px"/>
+      </g>
+      <!-- queue: slots with 2px gaps, oldest at the right (next out) -->
+      <g>
+        <rect x="352" y="70" width="30" height="32" rx="4" fill="var(--s-arrival)" opacity="0.16" stroke="var(--grid)"/>
+        <rect x="384" y="70" width="30" height="32" rx="4" fill="var(--s-arrival)" opacity="0.16" stroke="var(--grid)"/>
+        <rect x="416" y="70" width="30" height="32" rx="4" fill="var(--s-arrival)" opacity="0.55"/>
+        <rect x="448" y="70" width="30" height="32" rx="4" fill="var(--s-arrival)" opacity="0.55"/>
+        <rect x="480" y="70" width="30" height="32" rx="4" fill="var(--s-arrival)" opacity="0.55"/>
+        <text x="431" y="126" fill="var(--ink-3)" font-size="11" text-anchor="middle">depth wobbles around N</text>
+      </g>
+      <!-- drain gate: the metronome -->
+      <g class="gate-pulse">
+        <line x1="530" y1="62" x2="530" y2="110" stroke="var(--s-release)" stroke-width="3" stroke-linecap="round"/>
+      </g>
+      <text x="530" y="52" fill="var(--s-release)" font-size="11" text-anchor="middle" font-weight="600">drain: 1 per cmdT</text>
+      <!-- zone labels -->
+      <text x="180" y="140" fill="var(--ink-2)" font-size="12" text-anchor="middle" font-weight="600">arrivals: spacing jittered by the network</text>
+      <text x="180" y="157" fill="var(--ink-3)" font-size="11" text-anchor="middle">bursts, gaps, reorders</text>
+      <text x="720" y="140" fill="var(--ink-2)" font-size="12" text-anchor="middle" font-weight="600">releases: one per tick, seq order</text>
+      <text x="720" y="157" fill="var(--ink-3)" font-size="11" text-anchor="middle">delay = time standing in line</text>
+    </svg>
+    <figcaption class="text-xs px-4 pb-3" style="color: var(--ink-3)">
+      The whole idea in one picture: same packets, same rate on average; the queue converts irregular spacing
+      into depth fluctuation so the robot side sees a metronome.
+    </figcaption>
+  </figure>
+
+  <div class="stats stats-vertical sm:stats-horizontal shadow mt-6 bg-base-200">
+    <div class="stat py-3"><div class="stat-title">Target depth</div><div class="stat-value text-2xl">N</div><div class="stat-desc">round(playout_buffer_ms / cmdT), the base</div></div>
+    <div class="stat py-3"><div class="stat-title">Release rate</div><div class="stat-value text-2xl">1 / tick</div><div class="stat-desc">one pop per cmdT (10 ms @ 100 Hz)</div></div>
+    <div class="stat py-3"><div class="stat-title">Adaptive ceiling</div><div class="stat-value text-2xl">N → max</div><div class="stat-desc">target floats up under jitter (§6)</div></div>
+    <div class="stat py-3"><div class="stat-title">High water</div><div class="stat-value text-2xl">target + 2</div><div class="stat-desc">above it: drop oldest to target</div></div>
+  </div>
+  <div class="stats stats-vertical sm:stats-horizontal shadow mt-3 bg-base-200">
+    <div class="stat py-3"><div class="stat-title">Age cap</div><div class="stat-value text-2xl">≈ 2 × target</div><div class="stat-desc">margin ≥ 200 ms; older is never sent</div></div>
+    <div class="stat py-3"><div class="stat-title">Interp cap</div><div class="stat-value text-2xl">≤ 3</div><div class="stat-desc">missing seqs concealed by lerp</div></div>
+    <div class="stat py-3"><div class="stat-title">Depth cap</div><div class="stat-value text-2xl">200</div><div class="stat-desc">2 s of setpoints, hard limit</div></div>
+  </div>
+
+  <div role="alert" class="alert alert-warning mt-6 items-start">
+    <div class="prose-tight text-sm">
+      <p><b>How to read this document.</b> Every claim carries a <span class="fileref">file:line</span> reference into
+      <span class="fileref">rust/robot-node/src/buffer.rs</span> (branch <span class="fileref">feat/buffer-tab-netem</span>,
+      tip <span class="fileref">44bd7b8</span>). That commit restructured the file to read in <em>runtime order</em>:
+      tunables → the wire contract (config, verdicts, reports) → the queue state → the arrival path → the drain
+      ladder → the flush paths → the telemetry surface → the drain thread. This document's section order and the
+      file's order now roughly match, so you can read them side by side; line numbers are approximate anchors next
+      to the function/type names, which are the stable reference. The integration points live in
+      <span class="fileref">node.rs</span> and <span class="fileref">main.rs</span>. The figures use synthetic traces
+      generated by simulating the drain rules in this page, so picture and prose cannot drift apart. Two design
+      rules to keep in mind throughout: <b>no cross-host clock math anywhere</b>, and <b>setpoint values are never
+      smoothed or filtered</b> — though since the loss-concealment change a hole of at most 3 missing setpoints
+      <em>is</em> bridged at release by joint-space interpolation toward the next real setpoint (tagged, guarded,
+      one synthetic per tick; §5 and figure H). Bigger holes keep the jump and count as true loss.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ WHY ============================ -->
+<section id="why" class="pt-6">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">1 · Why this exists: the delayed-replay runaway</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    The incident that shaped every policy in this file: a network stall held a burst of setpoints in flight;
+    when the link recovered, the stale tail was delivered and applied, and the arm replayed an abandoned
+    trajectory at full speed (<span class="fileref">cap_delta</span> warning, then <span class="fileref">error=14</span>).
+    A naive queue makes this <em>worse</em>, not better: it faithfully stores the stale tail and plays it back.
+    So the queue here is built inside-out around one question: <b>when is a queued setpoint no longer safe to send?</b>
+  </p>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    The three report recommendations it implements
+    (<a class="link" href="../atlas/docs/buffer_streaming_report.html">report</a> §6):
+  </p>
+  <div class="grid md:grid-cols-3 gap-4 mt-4">
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h3 class="font-semibold text-primary">Rec 1 · Playout buffering</h3>
+      <p class="text-sm text-base-content/80">A receiver-side jitter buffer with prefill, reorder repair and
+      loss/stall attribution from sender timestamps, exactly the RTP receiver shape.</p>
+    </div></div>
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h3 class="font-semibold text-primary">Rec 2 · Fail closed</h3>
+      <p class="text-sm text-base-content/80">Where video conceals a gap and plays on, the robot flushes and
+      e-stops: post-live underrun windows and hole-ahead detection turn "catch-up jump" into "controlled stop".</p>
+    </div></div>
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h3 class="font-semibold text-primary">Rec 3 · Receiver reports</h3>
+      <p class="text-sm text-base-content/80">An RFC 3550-style health snapshot (jitter EWMA, loss %, depth,
+      spans) shipped operator-ward so the sender side can see what the network is doing to the stream.</p>
+    </div></div>
+  </div>
+</section>
+
+<!-- ============================ PLACEMENT ============================ -->
+<section id="placement" class="pt-10">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">2 · Where it sits</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    The buffer lives <b>in front of</b> the driver, at the node's action ingress. Both transports feed the same
+    queue: UDP datagrams carry their wire seq (<span class="fileref">node.rs:582 ingest_wire_action</span>), the
+    ordered gRPC stream gets a synthetic monotonically increasing seq at ingress
+    (<span class="fileref">node.rs:565 ingest_action</span>, <span class="fileref">buffer.rs:769 next_synthetic_seq</span>).
+    Since commit <span class="fileref">97eebdb</span> the playout queue is the <b>sole</b> ServoJ queue: the drain
+    releases straight into the apply path, no mailbox hop. The driver underneath (guard suite, hold/starvation,
+    e-stop latch) is untouched.
+  </p>
+
+  <div class="card bg-base-200 mt-5"><div class="card-body p-4">
+  <pre class="mermaid">
+flowchart LR
+  subgraph OP["Operator PC (Python, unchanged)"]
+    BR["remote_follower_bridge.py"]
+  end
+  subgraph NODE["robot-node (Rust)"]
+    UDP["UDP action listener&lt;br&gt;wire seq"]
+    GRPC["gRPC StreamActions&lt;br&gt;synthetic seq at ingress"]
+    OFF["PlayoutBuffer::offer&lt;br&gt;seq-ordered VecDeque"]
+    DR["playout_drain thread&lt;br&gt;one pop per cmdT"]
+    SJ["apply path → ServoJ&lt;br&gt;(direct, mailbox bypassed)"]
+  end
+  BR -->|"S7A1 datagrams :50063"| UDP
+  BR -->|"ordered stream :50061"| GRPC
+  UDP --> OFF
+  GRPC --> OFF
+  OFF --> DR
+  DR -->|"DrainTick::Release"| SJ
+  UDP -.->|"e-stop: flush queue,&lt;br&gt;apply on arrival thread"| SJ
+  </pre>
+  </div></div>
+
+  <div class="card bg-base-200 mt-4"><div class="card-body p-4 prose-tight">
+    <h3 class="font-semibold">The passthrough contract</h3>
+    <p class="text-sm text-base-content/80">
+      <span class="fileref">buffer.rs:249 PlayoutConfig::from_comm</span> returns <code>None</code> when
+      <code>playout_buffer_ms</code> rounds to a depth of 0 (that includes the default 0, negatives and NaN).
+      No queue, no thread, and the ingress code path is <em>exactly</em> the unbuffered one
+      (<span class="fileref">main.rs:164</span> only attaches and spawns when <code>Some</code>). The buffer is a
+      feature you turn on per robot YAML, not a layer everything always pays for.
+    </p>
+  </div></div>
+
+  <div class="card bg-base-200 mt-4"><div class="card-body p-4 prose-tight">
+    <h3 class="font-semibold">E-stops never queue</h3>
+    <p class="text-sm text-base-content/80">
+      An e-stop is applied on the arrival thread immediately, and the queue is flushed and sealed so nothing
+      pre-e-stop can replay (<span class="fileref">node.rs:674 enqueue_or_bypass</span>,
+      <span class="fileref">buffer.rs:1213 flush_for_estop</span>). E-stops are dual-pathed by design (datagram +
+      one-shot gRPC), so a synthetic-seq e-stop can land in a wire-seq deployment; only an <em>in-space</em> seq
+      may seal the floor (<span class="fileref">buffer.rs:207 ActionSeq::estop_floor</span>), because comparing a
+      synthetic seq against wire seqs is wrap-math nonsense that could blackhole the live stream.
+    </p>
+  </div></div>
+
+  <div class="card bg-base-200 mt-4"><div class="card-body p-4 prose-tight">
+    <h3 class="font-semibold">Upstream contract: producers never go silent</h3>
+    <p class="text-sm text-base-content/80">
+      The underrun policy (§5) makes silence <em>mean</em> something: an engaged stream that stops is a stall,
+      and the node e-stops. So the producers must never go silent on purpose. The orchestrator honors that with
+      station-keeping (<span class="fileref">servo7/nodes/orchestrator_node.py:498 _drain_controller_action</span>,
+      <span class="fileref">:529 _hold_follower_pose</span>): in ROBOT_CONTROLLER and TRAJECTORIES modes, any
+      dispatch tick where the controller yields no action — or yields one that doesn't target the follower —
+      streams the follower's <em>measured</em> pose instead, at the dispatch rate (the follower's own
+      publish_rate_hz). The second case is the align-leader break fixed 2026-07-26: a leader-only alignment
+      trajectory walked the leader for seconds while the follower's playout stream starved into the underrun
+      e-stop 342 ms later. Holds re-stamp <code>timestamp</code> with the local clock (the bridge's stale-tick
+      gate judges build time), are skipped entirely while the follower is latched (a re-published e-stop state
+      would ride the bridge's e-stop path), and never happen in teleop, where the leader is the sole producer.
+    </p>
+  </div></div>
+</section>
+
+<!-- ============================ EDGE CASES ============================ -->
+<section id="edgecases" class="pt-10">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">3 · The edge cases, one picture each</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    Every rule in buffer.rs exists because one of these pictures used to end with a broken robot. Each figure
+    below is the same kind of timeline: <b>arrivals</b> as the network delivers them, <b>releases</b> as the
+    drain hands them to the arm, and <b>queue depth</b> underneath, all generated by simulating the actual
+    drain rules in this page (N = 5 for legibility). Hover any figure for the tick-by-tick account.
+  </p>
+  <div class="viz-root mt-4 max-w-4xl"><div class="viz-legend" id="shared-legend"></div>
+    <p class="text-xs px-4 pb-3 mt-1" style="color: var(--ink-3)">How to read all of them: blue is what the
+    network did, orange is what the arm saw. The whole point of the buffer is that the orange lane stays
+    boring no matter what happens in the blue one, and when it can't stay boring, it stops the arm instead
+    of improvising.</p>
+  </div>
+
+  <div class="mt-8" id="ec-a">
+    <h3 class="text-xl font-semibold">A · The normal case: jitter becomes depth wobble</h3>
+    <p class="mt-1 max-w-3xl text-sm text-base-content/80">Packets arrive early, late, and in little clumps.
+    Without a buffer every wobble lands in the arm's motion. With one, the queue breathes and the release
+    lane is a metronome.</p>
+    <figure class="viz-root mt-3">
+      <div id="plot-a"></div><div class="viz-tip" id="tip-a"></div>
+      <figcaption class="text-xs px-4 pb-3" style="color: var(--ink-3)">The rule: prefill to N before the
+      first release, then exactly one pop per cmdT (<span class="fileref">buffer.rs:953 drain_tick</span>).
+      Delay = depth × cmdT, no clock math.</figcaption>
+      <details class="px-4 pb-4 text-xs" style="color: var(--ink-2)"><summary class="cursor-pointer" style="color: var(--ink-3)">Table view</summary>
+      <div class="overflow-x-auto mt-2"><table class="table table-xs" id="tbl-a"></table></div></details>
+    </figure>
+  </div>
+
+  <div class="mt-8" id="ec-b">
+    <h3 class="text-xl font-semibold">B · Two packets swap places in the network</h3>
+    <p class="mt-1 max-w-3xl text-sm text-base-content/80">UDP reorders: seq 5 arrives before seq 4. A
+    latest-wins mailbox would execute 5 then 4, commanding the arm <em>backwards</em> for one tick. The queue
+    just slots 4 into its place.</p>
+    <figure class="viz-root mt-3">
+      <div id="plot-b"></div><div class="viz-tip" id="tip-b"></div>
+      <figcaption class="text-xs px-4 pb-3" style="color: var(--ink-3)">The rule: entries insert in wire-seq
+      order, a late-but-not-too-late packet is <code>Repaired</code>
+      (<span class="fileref">buffer.rs:841 insert</span>). Reordering is fixed for free by the queue itself.</figcaption>
+      <details class="px-4 pb-4 text-xs" style="color: var(--ink-2)"><summary class="cursor-pointer" style="color: var(--ink-3)">Table view</summary>
+      <div class="overflow-x-auto mt-2"><table class="table table-xs" id="tbl-b"></table></div></details>
+    </figure>
+  </div>
+
+  <div class="mt-8" id="ec-c">
+    <h3 class="text-xl font-semibold">C · A straggler arrives after its moment has passed</h3>
+    <p class="mt-1 max-w-3xl text-sm text-base-content/80">Seq 4 got stuck in the network and shows up
+    <em>after</em> seqs 5 and 6 were already released to the arm. Executing it now would step the trajectory
+    backwards. It dies at the floor.</p>
+    <figure class="viz-root mt-3">
+      <div id="plot-c"></div><div class="viz-tip" id="tip-c"></div>
+      <figcaption class="text-xs px-4 pb-3" style="color: var(--ink-3)">The rule: the seq floor is the newest
+      seq ever handed to the driver; anything at or below it is <code>TooLate</code>, dropped, never sent
+      (<span class="fileref">buffer.rs:573 newer_than</span>). The arm is never commanded backwards.</figcaption>
+      <details class="px-4 pb-4 text-xs" style="color: var(--ink-2)"><summary class="cursor-pointer" style="color: var(--ink-3)">Table view</summary>
+      <div class="overflow-x-auto mt-2"><table class="table table-xs" id="tbl-c"></table></div></details>
+    </figure>
+  </div>
+
+  <div class="mt-8" id="ec-d">
+    <h3 class="text-xl font-semibold">D · The network stalls, then vomits a burst</h3>
+    <p class="mt-1 max-w-3xl text-sm text-base-content/80">Five ticks of silence while packets pile up
+    somewhere in a Tailscale relay, then they all land at once. Watch two things: the release lane never
+    misses a beat during the outage (the queue pays it out), and the burst does <em>not</em> become a
+    permanently deeper queue.</p>
+    <figure class="viz-root mt-3">
+      <div id="plot-d"></div><div class="viz-tip" id="tip-d"></div>
+      <figcaption class="text-xs px-4 pb-3" style="color: var(--ink-3)">The rule: above high water (target + 2)
+      the <b>oldest</b> entries are dropped back to the <em>current runtime target</em>
+      (<span class="fileref">buffer.rs:861 drop_overflow</span>) — the base N here; with adaptation on (§6),
+      wherever the target currently sits inside its ceiling. Without it, every burst would permanently add lag;
+      the buffer would slowly become a tape delay.</figcaption>
+      <details class="px-4 pb-4 text-xs" style="color: var(--ink-2)"><summary class="cursor-pointer" style="color: var(--ink-3)">Table view</summary>
+      <div class="overflow-x-auto mt-2"><table class="table table-xs" id="tbl-d"></table></div></details>
+    </figure>
+  </div>
+
+  <div class="mt-8" id="ec-e">
+    <h3 class="text-xl font-semibold">E · Setpoints from a dead stream go stale in the queue</h3>
+    <p class="mt-1 max-w-3xl text-sm text-base-content/80">A stream starts, two setpoints arrive, the link
+    dies mid-prefill. Those two entries are now a fragment of an abandoned trajectory. When the link comes
+    back, should the arm execute them? <b>This is the delayed-replay runaway in miniature.</b></p>
+    <figure class="viz-root mt-3">
+      <div id="plot-e"></div><div class="viz-tip" id="tip-e"></div>
+      <figcaption class="text-xs px-4 pb-3" style="color: var(--ink-3)">The rule: the hard age cap. An entry
+      that has waited longer than the buffer's own delay plus an equal margin — <code>N·cmdT +
+      max(N·cmdT, 200 ms)</code>, so ≈ 2 × the target with a 200 ms floor for shallow buffers — is purged,
+      never sent (<span class="fileref">buffer.rs:988 purge_aged</span>, <span class="fileref">buffer.rs:126
+      AGE_CAP_MARGIN_FLOOR_S</span>). The model here uses the same 2×N shape. The new stream prefills clean.</figcaption>
+      <details class="px-4 pb-4 text-xs" style="color: var(--ink-2)"><summary class="cursor-pointer" style="color: var(--ink-3)">Table view</summary>
+      <div class="overflow-x-auto mt-2"><table class="table table-xs" id="tbl-e"></table></div></details>
+    </figure>
+  </div>
+
+  <div class="mt-8" id="ec-f">
+    <h3 class="text-xl font-semibold">F · The link dies for good: fail closed, don't improvise</h3>
+    <p class="mt-1 max-w-3xl text-sm text-base-content/80">Arrivals stop and never come back. The queue pays
+    out its depth (that's the jitter budget doing its job), then the drain holds the last setpoint through the
+    grace window, and then, instead of holding forever and maybe replaying whatever shows up next, it e-stops.
+    (Producers never go silent on purpose — §2's station-keeping contract — so a silent link is genuinely dead.)</p>
+    <figure class="viz-root mt-3">
+      <div id="plot-f"></div><div class="viz-tip" id="tip-f"></div>
+      <figcaption class="text-xs px-4 pb-3" style="color: var(--ink-3)">The rule: post-live underrun stall
+      (<span class="fileref">buffer.rs:1139 underrun_tick</span>, armed by
+      <code>playout_underrun_estop_after_ms</code>). "Hold forever, then drain the tail" is precisely how the
+      runaway happened; this replaces it with a controlled stop.</figcaption>
+      <details class="px-4 pb-4 text-xs" style="color: var(--ink-2)"><summary class="cursor-pointer" style="color: var(--ink-3)">Table view</summary>
+      <div class="overflow-x-auto mt-2"><table class="table table-xs" id="tbl-f"></table></div></details>
+    </figure>
+  </div>
+
+  <div class="mt-8" id="ec-g">
+    <h3 class="text-xl font-semibold">G · A chunk of the trajectory is simply gone</h3>
+    <p class="mt-1 max-w-3xl text-sm text-base-content/80">The network eats seqs 7 through 21 whole, then
+    delivery resumes with 22. The queue now holds old setpoints <em>and</em> far-future ones with a 15-tick
+    hole between them. Releasing the head means the arm will eventually leap across that hole in one step.</p>
+    <figure class="viz-root mt-3">
+      <div id="plot-g"></div><div class="viz-tip" id="tip-g"></div>
+      <figcaption class="text-xs px-4 pb-3" style="color: var(--ink-3)">The rule: hole-ahead. If the
+      sender-time span across the queue exceeds 3 buffers, flush and e-stop rather than release into a
+      catch-up jump (<span class="fileref">buffer.rs:1061 hole_ahead</span>). Video conceals this gap and plays
+      on; a robot must not.</figcaption>
+      <details class="px-4 pb-4 text-xs" style="color: var(--ink-2)"><summary class="cursor-pointer" style="color: var(--ink-3)">Table view</summary>
+      <div class="overflow-x-auto mt-2"><table class="table table-xs" id="tbl-g"></table></div></details>
+    </figure>
+  </div>
+
+  <div class="mt-8" id="ec-h">
+    <h3 class="text-xl font-semibold">H · A small hole is concealed, one synthetic per tick</h3>
+    <p class="mt-1 max-w-3xl text-sm text-base-content/80">The network eats seqs 6 and 7 — a hole small enough
+    (≤ 3 missing) that stopping the arm for it would be absurd, but jumping across it is a velocity spike.
+    Instead the drain releases <em>synthetic</em> setpoints, lerped in joint space toward the next real one,
+    at constant speed. When the real 6 finally straggles in, the floor has already sealed its slot.</p>
+    <figure class="viz-root mt-3">
+      <div id="plot-h"></div><div class="viz-tip" id="tip-h"></div>
+      <figcaption class="text-xs px-4 pb-3" style="color: var(--ink-3)">The rule: loss concealment at the
+      release point (<span class="fileref">buffer.rs:1104 interpolate_hole</span>,
+      <span class="fileref">buffer.rs:173 INTERP_MAX_GAP = 3</span>). One synthetic per tick, seq-advancing,
+      tagged <code>extras.playout_interpolated</code>, released through the normal path so every guard sees it.
+      Decided per tick: a straggler that arrives <em>before</em> its slot still plays for real; one that arrives
+      after is sealed off by the floor. Bigger holes keep the jump and count as <code>lost_at_release</code>
+      (true loss) — and the pathological spans are figure G's e-stop.</figcaption>
+      <details class="px-4 pb-4 text-xs" style="color: var(--ink-2)"><summary class="cursor-pointer" style="color: var(--ink-3)">Table view</summary>
+      <div class="overflow-x-auto mt-2"><table class="table table-xs" id="tbl-h"></table></div></details>
+    </figure>
+  </div>
+
+  <div class="mt-8" id="ec-i">
+    <h3 class="text-xl font-semibold">I · Everything at once: one full session</h3>
+    <p class="mt-1 max-w-3xl text-sm text-base-content/80">Prefill, steady jitter, a stall-and-burst absorbed
+    by catch-up, and finally a real link death that fails closed. This is A + D + F in one take.</p>
+    <figure class="viz-root mt-3">
+      <div id="plot-i"></div><div class="viz-tip" id="tip-i"></div>
+      <figcaption class="text-xs px-4 pb-3" style="color: var(--ink-3)">Read it left to right: prefill buys
+      the budget, jitter and even a burst become depth wobble while releases stay metronomic, and when the
+      link dies the buffer pays out exactly its depth, holds through the window, then fails closed instead of
+      ever replaying a stale tail.</figcaption>
+      <details class="px-4 pb-4 text-xs" style="color: var(--ink-2)"><summary class="cursor-pointer" style="color: var(--ink-3)">Table view</summary>
+      <div class="overflow-x-auto mt-2"><table class="table table-xs" id="tbl-i"></table></div></details>
+    </figure>
+  </div>
+</section>
+
+<!-- ============================ ARRIVAL ============================ -->
+<section id="arrival" class="pt-10">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">4 · Arrival: <code>offer()</code> decides in six verdicts</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    Every non-e-stop setpoint lands in <span class="fileref">buffer.rs:788 offer(seq, state, now)</span>. One lock,
+    an O(depth) decision, six possible verdicts (<span class="fileref">buffer.rs:299 enum Offer</span>):
+  </p>
+
+  <!-- seq floor + reorder repair figure -->
+  <figure class="viz-root mt-5 max-w-4xl">
+    <svg viewBox="0 0 880 210" role="img" aria-label="The seq floor and reorder repair: released seqs sit behind a sealed floor; the queue holds 43, 44 and 46 in order; a late 45 is inserted into its gap (repaired); a stale 41 is dropped at the floor (too late).">
+      <!-- released, behind the floor -->
+      <g opacity="0.45">
+        <rect x="30" y="58" width="52" height="36" rx="4" fill="none" stroke="var(--ink-3)"/>
+        <text x="56" y="81" fill="var(--ink-3)" font-size="13" text-anchor="middle">41</text>
+        <rect x="86" y="58" width="52" height="36" rx="4" fill="none" stroke="var(--ink-3)"/>
+        <text x="112" y="81" fill="var(--ink-3)" font-size="13" text-anchor="middle">42</text>
+      </g>
+      <text x="84" y="44" fill="var(--ink-3)" font-size="11" text-anchor="middle">already released to the driver</text>
+      <!-- the floor wall -->
+      <line x1="160" y1="34" x2="160" y2="120" stroke="var(--axis)" stroke-width="4" stroke-linecap="round"/>
+      <text x="160" y="139" fill="var(--ink-2)" font-size="11" text-anchor="middle" font-weight="600">floor = 42 (sealed)</text>
+      <text x="160" y="155" fill="var(--ink-3)" font-size="10.5" text-anchor="middle">nothing at or below ever passes</text>
+      <!-- the queue, oldest (next out) at the left -->
+      <g>
+        <rect x="196" y="58" width="52" height="36" rx="4" fill="var(--s-arrival)" opacity="0.28"/>
+        <rect x="196" y="58" width="52" height="36" rx="4" fill="none" stroke="var(--s-arrival)" stroke-width="1.5"/>
+        <text x="222" y="81" fill="var(--ink-1)" font-size="13" text-anchor="middle">43</text>
+        <rect x="252" y="58" width="52" height="36" rx="4" fill="var(--s-arrival)" opacity="0.28"/>
+        <rect x="252" y="58" width="52" height="36" rx="4" fill="none" stroke="var(--s-arrival)" stroke-width="1.5"/>
+        <text x="278" y="81" fill="var(--ink-1)" font-size="13" text-anchor="middle">44</text>
+        <!-- the gap 45 will fill -->
+        <rect x="308" y="58" width="52" height="36" rx="4" fill="none" stroke="var(--s-arrival)" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.8"/>
+        <rect x="364" y="58" width="52" height="36" rx="4" fill="var(--s-arrival)" opacity="0.28"/>
+        <rect x="364" y="58" width="52" height="36" rx="4" fill="none" stroke="var(--s-arrival)" stroke-width="1.5"/>
+        <text x="390" y="81" fill="var(--ink-1)" font-size="13" text-anchor="middle">46</text>
+      </g>
+      <text x="306" y="44" fill="var(--ink-2)" font-size="11" text-anchor="middle">queue, seq-ordered · oldest leaves first</text>
+      <!-- drain arrow out of the queue -->
+      <line x1="196" y1="76" x2="176" y2="76" stroke="var(--s-release)" stroke-width="2" stroke-linecap="round" marker-end="url(#arr-rel)"/>
+      <!-- late 45 repaired into its slot -->
+      <g>
+        <rect x="308" y="150" width="52" height="36" rx="4" fill="var(--s-arrival)" opacity="0.28"/>
+        <rect x="308" y="150" width="52" height="36" rx="4" fill="none" stroke="var(--s-arrival)" stroke-width="1.5"/>
+        <text x="334" y="173" fill="var(--ink-1)" font-size="13" text-anchor="middle">45</text>
+        <line x1="334" y1="148" x2="334" y2="100" stroke="var(--s-arrival)" stroke-width="2" stroke-linecap="round" marker-end="url(#arr-in)"/>
+        <text x="424" y="170" fill="var(--ink-2)" font-size="11">Repaired: arrived after 46,</text>
+        <text x="424" y="185" fill="var(--ink-2)" font-size="11">inserted into its seq slot anyway</text>
+      </g>
+      <!-- stale 41 dropped at the floor -->
+      <g>
+        <rect x="60" y="150" width="52" height="36" rx="4" fill="none" stroke="var(--st-serious)" stroke-width="1.5"/>
+        <text x="86" y="173" fill="var(--st-serious)" font-size="13" text-anchor="middle">41</text>
+        <line x1="114" y1="162" x2="152" y2="112" stroke="var(--st-serious)" stroke-width="2" stroke-linecap="round"/>
+        <text x="163" y="106" fill="var(--st-serious)" font-size="13" font-weight="700">✕</text>
+        <text x="182" y="176" fill="var(--st-serious)" font-size="11">✕ TooLate: at or below the floor,</text>
+        <text x="182" y="191" fill="var(--st-serious)" font-size="11">dropped, never sent</text>
+      </g>
+      <!-- next-out label -->
+      <text x="700" y="76" fill="var(--ink-3)" font-size="11">wrap-aware compare (SeqGate rule):</text>
+      <text x="700" y="92" fill="var(--ink-3)" font-size="11">seq 0 after 4294967295 is "newer",</text>
+      <text x="700" y="108" fill="var(--ink-3)" font-size="11">so the stream survives a seq wrap</text>
+      <defs>
+        <marker id="arr-in" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--s-arrival)"/>
+        </marker>
+        <marker id="arr-rel" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--s-release)"/>
+        </marker>
+      </defs>
+    </svg>
+    <figcaption class="text-xs px-4 pb-3" style="color: var(--ink-3)">
+      The two ordering rules in one frame: a reordered packet is repaired into its slot for free (the thing a
+      latest-wins mailbox could never do), and the floor guarantees the arm is never commanded backwards.
+    </figcaption>
+  </figure>
+
+  <div class="mt-6 space-y-3">
+    <div class="walk-step drop-leg card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>Malformed</b> · <span class="fileref">buffer.rs:567 sender_ts</span> — the sender-local
+      clock of an arrival is <code>leader_timestamp</code> when stamped, else the state's own build timestamp. A
+      non-finite value is rejected outright: every downstream health metric and the hole-ahead safety check take
+      differences of these timestamps, and one NaN would poison them all.</p>
+    </div></div>
+    <div class="walk-step card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>EpochReset</b> · <span class="fileref">buffer.rs:819 epoch_expired</span> — a restarted
+      sender resets its wire seq to zero, which would read as "ancient" forever. Mirroring the listener's
+      <code>ACTION_EPOCH_RESET_S</code> rule: a stale-looking seq arriving after ≥ 2 s of arrival silence flushes
+      the dead epoch, forgets the seq floor and the timing reference (a restarted sender is a new clock), and
+      starts prefill over with this entry first.</p>
+    </div></div>
+    <div class="walk-step drop-leg card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>TooLate</b> · <span class="fileref">buffer.rs:573 newer_than</span> — the floor is the
+      newest seq already handed to the driver (or sealed past by a flush). Anything at or below it is dropped:
+      the arm is never commanded backwards along the trajectory. The comparison is the wrap-aware
+      <code>SeqGate</code> rule (<code>0 &lt; seq − base &lt; 2³¹</code> in u32 arithmetic).</p>
+    </div></div>
+    <div class="walk-step card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>Queued / Repaired</b> · <span class="fileref">buffer.rs:841 insert</span> — entries
+      insert in wire-seq order. A packet that arrives behind an already-queued newer seq lands in its correct
+      slot (<code>Repaired</code>, counted): UDP reordering is repaired for free by the queue itself.</p>
+    </div></div>
+    <div class="walk-step drop-leg card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>Catch-up overflow</b> · <span class="fileref">buffer.rs:861 drop_overflow</span> — above
+      the high-water mark (target + <span class="fileref">HIGH_WATER_SLACK = 2</span>, <span class="fileref">buffer.rs:120</span>)
+      the <em>oldest</em> entries are dropped back down to the current runtime target (§6). A burst after a stall
+      therefore shortens the queue to the freshest N setpoints instead of building a standing lag: the buffer
+      holds delay at the target, it never accumulates it.</p>
+    </div></div>
+    <div class="walk-step side-note card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>Timing health on the way in</b> · <span class="fileref">buffer.rs:874 note_timing</span> —
+      judged only for arrivals strictly newer than the newest accepted seq (a repair is judged by the hole it
+      fills, not against the tail). Details in <a class="link" href="#health">§9</a>.</p>
+    </div></div>
+  </div>
+
+  <p class="mt-8 max-w-3xl text-base-content/60 text-sm">For reference, the six verdicts as one decision
+  tree (you have already seen every branch in action in <a class="link" href="#edgecases">§3</a>):</p>
+  <div class="card bg-base-200 mt-3"><div class="card-body p-4">
+  <pre class="mermaid">
+flowchart TD
+  A["offer(seq, state, now)"] --> M{"sender timestamp finite?"}
+  M -->|"no"| MAL["Malformed&lt;br&gt;rejected, never queued"]
+  M -->|"yes"| EP{"epoch aged out?&lt;br&gt;idle ≥ 2 s + stale-looking seq"}
+  EP -->|"yes"| ER["EpochReset&lt;br&gt;flush dead epoch, forget floor,&lt;br&gt;queue as first of new epoch"]
+  EP -->|"no"| FL{"seq newer than floor?&lt;br&gt;(wrap-aware)"}
+  FL -->|"no"| TL["TooLate&lt;br&gt;dropped — arm never&lt;br&gt;commanded backwards"]
+  FL -->|"yes"| DU{"seq already queued?"}
+  DU -->|"yes"| DUP["Duplicate&lt;br&gt;dropped"]
+  DU -->|"no"| NT["note timing health&lt;br&gt;loss · spacing · jitter"]
+  NT --> INS["insert in seq order&lt;br&gt;(reorder repaired)"]
+  INS --> OV{"depth &gt; target + 2?"}
+  OV -->|"yes"| DROP["catch-up: drop oldest&lt;br&gt;back down to target"]
+  OV -->|"no"| Q["Queued / Repaired"]
+  DROP --> Q
+  </pre>
+  </div></div>
+</section>
+
+<!-- ============================ DRAIN ============================ -->
+<section id="drain" class="pt-10">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">5 · Drain: one pop per tick, and when not to pop</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    A dedicated thread (<span class="fileref">buffer.rs:1313 spawn_playout_drain</span>, named
+    <span class="fileref">playout_drain_{id}</span>) ticks once per ServoJ period with the same
+    <code>Instant</code>-paced shape as the driver's <code>servoj_loop</code>: <code>next_tick += period</code>,
+    sleep the remainder, snap to now if behind. Each tick calls
+    <span class="fileref">buffer.rs:953 drain_tick(now)</span> and acts on one of three verdicts
+    (<span class="fileref">buffer.rs:320 enum DrainTick</span>):
+  </p>
+
+  <div class="overflow-x-auto mt-4">
+    <table class="table table-sm bg-base-200 policy-table">
+      <thead><tr><th>Verdict</th><th>The node does</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>Release(state)</code></td><td>Stamp the <span class="fileref">playout_release</span> trace hop, apply straight to ServoJ (this hop is visible in the dashcam profiler waterfalls).</td><td><span class="fileref">node.rs:614 release_buffered</span></td></tr>
+        <tr><td class="whitespace-nowrap"><code>Hold</code></td><td>One <code>stream_hold_tick()</code>: the driver re-sends the <b>last released setpoint</b> so the controller's 100 Hz stream never starves.</td><td><span class="fileref">node.rs:627 playout_underrun_tick</span></td></tr>
+        <tr><td class="whitespace-nowrap"><code>Stall(report)</code></td><td>The buffer has already flushed and sealed itself; the node latches the e-stop. Recovery is the operator's <code>reset_emergency</code> + <code>prepare_stream</code>, exactly like a guard trip.</td><td><span class="fileref">node.rs:639 playout_stall_estop</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="mt-6 max-w-3xl text-base-content/80">
+    Inside one tick the ladder runs in a fixed order — <span class="fileref">buffer.rs:953 drain_tick</span> reads
+    top to bottom exactly like this list:
+  </p>
+  <div class="mt-3 space-y-3">
+    <div class="walk-step drop-leg card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>1 · Hard age cap</b> · <span class="fileref">buffer.rs:988 purge_aged</span> — an entry
+      that has waited longer than <code>N·cmdT + max(N·cmdT, 200 ms)</code> — the buffer's own delay plus an equal
+      margin, floored at <span class="fileref">AGE_CAP_MARGIN_FLOOR_S = 0.2 s</span> for shallow buffers
+      (<span class="fileref">buffer.rs:126</span>) — is discarded, never sent. With adaptation on, the cap
+      stretches by <em>twice</em> the extra adapted depth (<span class="fileref">buffer.rs:292 max_age_for</span>),
+      so cap ≈ 2 × the runtime target throughout the range. Anything older is stall debris; after a long stall
+      the queue still effectively drains to newest. This is the direct anti-replay rule.</p>
+      <p class="text-sm text-base-content/70">Why the margin must be a whole buffer: the cap used to be
+      N·cmdT + 2 stale windows (~40 ms of grace), and that purged <em>healthy</em> heads — an entry legitimately
+      waits out deepening-slew holds, high-water wobble and interpolation transit (the head ages while synthetics
+      play). Each wrong purge manufactured a hole at the release cursor; interpolation concealed it by releasing
+      synthetics <em>without popping</em>; arrivals kept landing, so <code>drop_overflow</code> ate the head
+      again — self-sustaining churn, visible live as an all-yellow released-mix strip with
+      <code>aged_dropped</code> climbing on a perfectly clean link. One buffer's worth of grace (floored at
+      200 ms) absorbs every healthy source of waiting; the fix is pinned by
+      <code>healthy_head_survives_held_ticks_and_wobble_without_aging_out</code>.</p>
+    </div></div>
+    <div class="walk-step side-note card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>2 · Adapt sample</b> · <span class="fileref">buffer.rs:1000 adapt</span> — with the
+      adaptive ceiling configured, each live tick feeds the current depth into a 1 s window minimum; on window
+      rollover the runtime target grows or shrinks. The full policy is <a class="link" href="#adaptive">§6</a>.</p>
+    </div></div>
+    <div class="walk-step card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>3 · Prefill / underrun gate</b> — draining starts only once depth ≥ target, at stream
+      start and again whenever the queue drains to empty. While prefilling nothing is popped and the driver's
+      hold-last machinery covers the gap. This is what buys the jitter budget: a queue that starts draining at
+      depth 1 has no slack to absorb the next late packet. A tick with nothing to release runs the post-live
+      underrun policy below.</p>
+    </div></div>
+    <div class="walk-step drop-leg card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>4 · Hole-ahead</b> · <span class="fileref">buffer.rs:1061 hole_ahead</span> — before
+      releasing the head, the drain checks the sender-timestamp span across the queue. A healthy queue spans about
+      one buffer (target × cmdT); a span beyond <span class="fileref">HOLE_AHEAD_FACTOR = 3</span> buffers means a
+      loss/stall hole sits between the head and the newest entries, and releasing the head would walk the arm
+      into a catch-up jump across it. With the stall policy armed this fails closed (flush + e-stop); without
+      it, the release proceeds as before, warned and counted.</p>
+    </div></div>
+    <div class="walk-step side-note card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>5 · Deepening hold</b> · <span class="fileref">buffer.rs:1090 deepening_hold</span> —
+      when the adaptive target has grown and the queue sits meaningfully below it (deficit beyond the high-water
+      slack), hold one tick in every <span class="fileref">DEEPEN_SLEW_EVERY = 4</span> instead of releasing.
+      Depth climbs ~25 % per second of wall time without the stream ever pausing outright, and the holds stop by
+      themselves the moment depth reaches target.</p>
+    </div></div>
+    <div class="walk-step card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>6 · Loss concealment</b> · <span class="fileref">buffer.rs:1104 interpolate_hole</span> —
+      when the head sits a hole of at most <span class="fileref">INTERP_MAX_GAP = 3</span> missing seqs away from
+      the last released one, release <em>one</em> synthetic setpoint this tick: joint-space lerp toward the head,
+      seq advancing by one, <code>joint_velocities</code> cleared, tagged <code>extras.playout_interpolated</code>,
+      through the normal release path so the full guard suite sees it. Decided per tick, so a straggler arriving
+      before its slot still plays for real; one arriving after is sealed off by the floor (figure
+      <a class="link" href="#ec-h">H</a>). Bigger holes fall through to the pop and keep the jump.</p>
+    </div></div>
+    <div class="walk-step card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>7 · Pop</b> · <span class="fileref">buffer.rs:695 count_release_gap</span> — pop the
+      front entry, advance the floor, release. If the release cursor jumped seqs that never arrived and can no
+      longer play, they are counted as <code>lost_at_release</code> — the monotone <em>true-loss</em> counter
+      (open holes behind the cursor can still heal and never count; concealed seqs count as
+      <code>interpolated</code>, not lost).</p>
+    </div></div>
+    <div class="walk-step drop-leg card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>Post-live underrun stall</b> · <span class="fileref">buffer.rs:1139 underrun_tick</span> —
+      with <code>playout_underrun_estop_after_ms</code> configured, a queue that stays empty past the window
+      <em>after the stream has been live</em> means the whole jitter budget is burned: a real stall. The buffer
+      flushes itself and reports the stall so the node e-stops, instead of holding forever and later draining an
+      abandoned tail. That "hold forever, then drain the tail" behavior is precisely the delayed-replay runaway.
+      Initial prefill never escalates, and every flush re-arms the liveness gate: the next window must earn its
+      first release before an empty queue can count as a stall again.</p>
+    </div></div>
+  </div>
+
+  <p class="mt-8 max-w-3xl text-base-content/60 text-sm">For reference, the full drain-tick decision tree.
+  You have already watched every branch of it happen: figures <a class="link" href="#ec-e">E</a>,
+  <a class="link" href="#ec-f">F</a>, <a class="link" href="#ec-g">G</a> and <a class="link" href="#ec-h">H</a>
+  in §3 are the purge, underrun, hole-ahead and interpolation legs; figure <a class="link" href="#ec-i">I</a>
+  plays a whole session through it:</p>
+  <div class="card bg-base-200 mt-3"><div class="card-body p-4">
+  <pre class="mermaid">
+flowchart TD
+  T["tick (every cmdT)"] --> PA["purge over-age entries&lt;br&gt;(never sent)"]
+  PA --> AD["adapt: sample depth into the 1 s window;&lt;br&gt;on rollover grow / shrink the target (§6)"]
+  AD --> PF{"prefilling?"}
+  PF -->|"yes, depth &lt; target"| UT["underrun_tick"]
+  PF -->|"yes, depth ≥ target"| GO["prefill complete"]
+  PF -->|"no"| EM{"queue empty?"}
+  EM -->|"yes"| RE["re-arm prefill"] --> UT
+  EM -->|"no"| GO
+  GO --> HA{"hole ahead?&lt;br&gt;sender-time span &gt; 3 buffers"}
+  HA -->|"yes + policy armed"| ST1["flush + seal floor&lt;br&gt;Stall(HoleAhead)"]
+  HA -->|"yes, no policy"| WR["warn + count,&lt;br&gt;release anyway"] --> IH
+  HA -->|"no"| DH{"deepening hold?&lt;br&gt;below target − 2, every 4th tick"}
+  DH -->|"yes"| H3["Hold&lt;br&gt;(slew: depth climbs, stream alive)"]
+  DH -->|"no"| IH{"small hole at the cursor?&lt;br&gt;gap ≤ 3 missing seqs"}
+  IH -->|"yes"| SYN["release ONE lerped synthetic&lt;br&gt;seq + 1, tagged playout_interpolated"]
+  IH -->|"no"| POP["pop front, floor = seq,&lt;br&gt;count lost_at_release on a jump&lt;br&gt;Release(state)"]
+  UT --> LV{"ever released&lt;br&gt;this window?"}
+  LV -->|"no"| H1["Hold&lt;br&gt;(prefill is by design)"]
+  LV -->|"yes"| WIN{"underrun window&lt;br&gt;configured &amp; expired?"}
+  WIN -->|"no"| H2["Hold&lt;br&gt;(driver holds last setpoint)"]
+  WIN -->|"yes"| ST2["flush + seal floor&lt;br&gt;Stall(Underrun)"]
+  </pre>
+  </div></div>
+</section>
+
+<!-- ============================ ADAPTIVE ============================ -->
+<section id="adaptive" class="pt-10">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">6 · Adaptive depth: pay latency only when the network demands it</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    A fixed depth is a wager placed once, in a YAML file, on how bad the network will be. With
+    <code>playout_adaptive_max_ms</code> above the base, the wager becomes a runtime servo: the target floats in
+    <code>[base, max]</code> (<span class="fileref">buffer.rs:218 PlayoutConfig</span> — base from
+    <code>playout_buffer_ms</code>, ceiling from <code>playout_adaptive_max_ms</code>, both clamped at 200
+    entries). The driving signal is not a jitter proxy but the <em>actual failure margin</em>: how close the live
+    queue came to empty (<span class="fileref">buffer.rs:1000 adapt</span>).
+  </p>
+  <div class="mt-4 space-y-3">
+    <div class="walk-step card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>Measure</b> — every live tick (released at least once, not prefilling) samples the
+      queue depth into a running window minimum; windows roll over every
+      <span class="fileref">ADAPT_WINDOW_S = 1 s</span>. Idle and prefill ticks feed no samples, so an idle robot
+      never adapts on noise.</p>
+    </div></div>
+    <div class="walk-step card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>Grow fast</b> · <span class="fileref">buffer.rs:1038 grow_target</span> — a window
+      minimum at or below <span class="fileref">ADAPT_GROW_MARGIN = 3</span> entries means the queue nearly
+      underran: deepen <em>before</em> the stall, by <code>max(target / 4, 2)</code> entries, up to the ceiling.
+      The node logs <span class="fileref">"playout adaptive: deepened target to N entries (Xms)"</span>.</p>
+    </div></div>
+    <div class="walk-step card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>Shrink slow</b> — a window whose minimum stayed above 3/5 of the target counts as
+      calm; after <span class="fileref">ADAPT_SHRINK_CALM_WINDOWS = 10</span> consecutive calm windows the target
+      shrinks by one entry per further calm window, never below the base. Grow fast, shrink slow — the asymmetry
+      every jitter buffer needs.</p>
+    </div></div>
+    <div class="walk-step side-note card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>Realize without stuttering</b> · <span class="fileref">buffer.rs:1090
+      deepening_hold</span> — a deeper target on a live stream is realized by the slew of §5 step 5: hold one
+      tick in every <span class="fileref">DEEPEN_SLEW_EVERY = 4</span> while the deficit exceeds the high-water
+      slack. Depth climbs ~25 % per second without the stream ever going silent, and the age cap stretches with
+      the target (<span class="fileref">buffer.rs:292 max_age_for</span>) so the deeper standing wait stays legal.</p>
+    </div></div>
+    <div class="walk-step drop-leg card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>What survives a flush — and what must not</b> ·
+      <span class="fileref">buffer.rs:662 discard_all</span> — the learned target survives every flush: it is
+      knowledge about the <em>link</em>, not about the stream. But the in-flight window measurement and the
+      arrival timing reference are discarded with the queue, for two reasons found live on 2026-07-26: a stall's
+      drain-down left depth-0 samples in the adapt window, so the first rollover after the e-stop "deepened" the
+      target and toasted <em>connection unstable</em> — evidence from a stream that was deliberately cut, not a
+      bad link (pinned by <code>stall_flush_discards_the_adapt_windows_graze_evidence</code>); and the first
+      packet of the next engagement was spacing-judged against the dead epoch's last packet, producing a
+      <span class="fileref">"sender stall ~21622ms"</span> warn on every re-engage (pinned by
+      <code>first_arrival_after_a_flush_is_not_spacing_judged</code>).</p>
+    </div></div>
+    <div class="walk-step side-note card bg-base-200"><div class="card-body p-4 prose-tight">
+      <p class="text-sm"><b>The operator sees it</b> — the bridge watches <code>target_ms</code> vs
+      <code>min_ms</code> in the health report and toasts
+      <span class="fileref">"connection unstable: follower playout buffer deepened to Xms (base Yms) — teleop is
+      paying extra latency to ride out network jitter/loss"</span>, re-warning only when the target climbs
+      further, and an INFO marks the return to base
+      (<span class="fileref">remote_follower_bridge.py:1441 _note_adaptive_depth</span>).</p>
+    </div></div>
+  </div>
+
+  <figure class="viz-root mt-5 max-w-4xl">
+    <div class="viz-legend">
+      <span class="chip"><span class="swatch" style="background:#199e70"></span>runtime target (entries)</span>
+      <span class="chip"><span class="swatch" style="background:#3987e5"></span>window min depth (1 s windows)</span>
+      <span class="chip"><span class="swatch" style="background:none;border:1.6px dashed #898781;border-radius:2px"></span>base / ceiling</span>
+    </div>
+    <svg viewBox="0 0 900 250" role="img" aria-label="Adaptive depth over 30 one-second windows: the target holds at the base of 20 entries, two grazed windows step it up to 31, ten calm windows later it shrinks one entry per window back to the base.">
+      <line x1="60" y1="40" x2="870" y2="40" stroke="var(--axis)" stroke-width="1" stroke-dasharray="5 4"/>
+      <text x="56" y="44" fill="var(--ink-3)" font-size="10.5" text-anchor="end">40 = ceiling</text>
+      <line x1="60" y1="120" x2="870" y2="120" stroke="var(--axis)" stroke-width="1" stroke-dasharray="5 4"/>
+      <text x="56" y="124" fill="var(--ink-3)" font-size="10.5" text-anchor="end">20 = base</text>
+      <line x1="60" y1="188" x2="870" y2="188" stroke="var(--st-warn)" stroke-width="1" stroke-dasharray="2 4"/>
+      <text x="56" y="192" fill="var(--st-warn)" font-size="10.5" text-anchor="end">graze ≤ 3</text>
+      <line x1="60" y1="200" x2="870" y2="200" stroke="var(--axis)" stroke-width="1.5"/>
+      <text x="465" y="234" fill="var(--ink-3)" font-size="11" text-anchor="middle">time (1 s adapt windows)</text>
+      <!-- window-min dots: calm, two grazes, recovery, long calm -->
+      <g fill="var(--s-arrival)">
+        <circle cx="87" cy="132" r="3.5"/><circle cx="114" cy="128" r="3.5"/><circle cx="141" cy="136" r="3.5"/>
+        <circle cx="168" cy="130" r="3.5"/><circle cx="195" cy="184" r="3.5"/><circle cx="222" cy="190" r="3.5"/>
+        <circle cx="249" cy="140" r="3.5"/><circle cx="276" cy="108" r="3.5"/><circle cx="303" cy="96" r="3.5"/>
+        <circle cx="330" cy="88" r="3.5"/><circle cx="357" cy="84" r="3.5"/><circle cx="384" cy="86" r="3.5"/>
+        <circle cx="411" cy="82" r="3.5"/><circle cx="438" cy="84" r="3.5"/><circle cx="465" cy="80" r="3.5"/>
+        <circle cx="492" cy="84" r="3.5"/><circle cx="519" cy="82" r="3.5"/><circle cx="546" cy="86" r="3.5"/>
+        <circle cx="573" cy="88" r="3.5"/><circle cx="600" cy="92" r="3.5"/><circle cx="627" cy="96" r="3.5"/>
+        <circle cx="654" cy="100" r="3.5"/><circle cx="681" cy="104" r="3.5"/><circle cx="708" cy="108" r="3.5"/>
+        <circle cx="735" cy="112" r="3.5"/><circle cx="762" cy="116" r="3.5"/><circle cx="789" cy="122" r="3.5"/>
+        <circle cx="816" cy="126" r="3.5"/><circle cx="843" cy="128" r="3.5"/>
+      </g>
+      <!-- target step line: 20 → 25 → 31, hold, then −1/window back to 20 -->
+      <path d="M 60 120 L 208 120 L 208 100 L 235 100 L 235 76 L 546 76
+               L 546 80 L 573 80 L 573 84 L 600 84 L 600 88 L 627 88 L 627 92 L 654 92
+               L 654 96 L 681 96 L 681 100 L 708 100 L 708 104 L 735 104 L 735 108 L 762 108
+               L 762 112 L 789 112 L 789 116 L 816 116 L 816 120 L 870 120"
+            fill="none" stroke="var(--s-depth)" stroke-width="2.5" stroke-linejoin="round"/>
+      <!-- annotations -->
+      <text x="208" y="170" fill="var(--st-warn)" font-size="10.5" text-anchor="middle">two windows graze empty</text>
+      <text x="240" y="62" fill="var(--ink-2)" font-size="11" text-anchor="start">grow fast: +max(target/4, 2) per graze: 20 → 25 → 31</text>
+      <text x="868" y="62" fill="var(--ink-3)" font-size="10.5" text-anchor="end">10 calm windows, then shrink 1/window</text>
+    </svg>
+    <figcaption class="text-xs px-4 pb-3" style="color: var(--ink-3)">
+      The asymmetry in one picture: a graze is answered within a second (a quarter of the target at a time), calm
+      must hold for ten seconds before the first entry of latency is given back. Between the step and the queue,
+      the §5 deepening slew turns each step into held ticks — the stream never pauses. Pinned by
+      <code>adaptive_target_grows_on_graze_deepens_by_slew_and_shrinks_when_calm</code>.
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ============================ QUESTIONS ============================ -->
+<section id="questions" class="pt-10">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">7 · Your four questions, answered by the code</h2>
+  <div class="grid md:grid-cols-2 gap-4 mt-5">
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h3 class="font-semibold text-primary">"When the buffer is empty, do we still send the current state?"</h3>
+      <p class="text-sm text-base-content/80">The buffer itself sends <b>nothing</b> on an empty tick
+      (<code>DrainTick::Hold</code>), but the controller never starves: the node answers every hold with
+      <code>stream_hold_tick()</code>, so the driver keeps re-sending the <em>last released</em> setpoint at
+      100 Hz (each such tick is counted in <code>hold_ticks</code>). The empty tick also re-arms prefill. And if
+      the stall policy is armed and the emptiness outlives the window after a live stream, the answer changes
+      from "hold" to "e-stop", by design — which is also why the <em>producers</em> upstream never go silent
+      while engaged (the orchestrator's station-keeping, §2).</p>
+    </div></div>
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h3 class="font-semibold text-primary">"The buffer should check that the stream is healthy via timestamps"</h3>
+      <p class="text-sm text-base-content/80">Implemented at <span class="fileref">buffer.rs:874 note_timing</span>,
+      with differences of sender-local timestamps only. Seq gaps attribute <b>loss</b> (EWMA of the gap
+      fraction); consecutive seqs spaced &gt; 3 periods apart attribute a <b>sender stall</b> (seq continuous, so
+      not the network); transit-time variation feeds an RFC 3550-style <b>jitter EWMA</b>; non-monotonic
+      timestamps are counted (playout stays seq-ordered); non-finite ones are rejected. At the drain, the
+      hole-ahead span check is the same idea pointed at safety.</p>
+    </div></div>
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h3 class="font-semibold text-primary">"Maybe an EMA filter, but I want to test that myself"</h3>
+      <p class="text-sm text-base-content/80">Smoothing is deliberately <b>absent</b>: received setpoints are
+      released verbatim, in seq order — never averaged, filtered or extrapolated, so whatever you measure when
+      you experiment with smoothing is your filter's effect alone. The one carve-out is loss concealment
+      (<span class="fileref">buffer.rs:1104 interpolate_hole</span>): a hole of ≤ 3 <em>missing</em> setpoints is
+      bridged by joint-space lerp toward the next real one — synthetic frames, clearly tagged
+      <code>playout_interpolated</code>, counted in <code>interpolated</code>, and only ever standing in for
+      setpoints that never arrived. Values that did arrive are never touched. Background reading in this folder:
+      <a class="link" href="ema-signal-filter.html">the EMA signal filter explainer</a>.</p>
+    </div></div>
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h3 class="font-semibold text-primary">"Stale trajectories in flight should be disregarded"</h3>
+      <p class="text-sm text-base-content/80">They die in four independent ways: (1) the <b>age cap</b> purges
+      anything that waited past the buffer's depth plus an equal margin (≥ 200 ms), (2) <b>catch-up overflow</b>
+      drops the oldest back to the target after a burst, (3) the <b>seq floor</b> drops anything at or below the
+      newest released seq (TooLate), and (4) every <b>flush</b> (e-stop, stall, lifecycle, epoch reset) discards
+      the queue and seals the floor past it so pre-flush stragglers read as too late.</p>
+    </div></div>
+  </div>
+
+  <div class="card bg-base-200 mt-4"><div class="card-body p-4 prose-tight">
+    <h3 class="font-semibold">The clock discipline behind all of it</h3>
+    <p class="text-sm text-base-content/80">
+      No cross-host clock math anywhere. The realized delay is <em>queue depth × cmdT</em>, a property of the
+      line, not of any clock pair. Sender timestamps are only ever compared against other sender timestamps
+      (offsets cancel in every delta); arrival and drain times come from the node's own monotonic clock,
+      injected as <code>now</code> into every decision method, which is also why the entire test suite runs
+      without a single sleep.
+    </p>
+  </div></div>
+</section>
+
+<!-- ============================ FAIL-CLOSED ============================ -->
+<section id="failclosed" class="pt-10">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">8 · Fail-closed catalog</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">Every path that discards queued motion, what seals afterwards, and how the stream comes back.
+  All of them share <span class="fileref">buffer.rs:662 discard_all</span>: prefill and the liveness gate restart,
+  and the in-flight adapt window and arrival timing reference are discarded with the queue (§6 — a cut stream's
+  drain-down is not jitter evidence, and a fresh epoch gets a fresh spacing baseline):</p>
+  <div class="overflow-x-auto mt-4">
+    <table class="table table-sm bg-base-200 policy-table">
+      <thead><tr><th>Trigger</th><th>What happens</th><th>Floor seal</th><th>Recovery</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="whitespace-nowrap"><b>E-stop arrival</b><br><span class="fileref">flush_for_estop :1213</span></td>
+          <td>Applied on the arrival thread (never queued); queue discarded.</td>
+          <td>In-space seq: past both queue and the e-stop itself. Cross-space (gRPC one-shot into a wire-seq deployment): newest queued seq only.</td>
+          <td>Operator reset; prefill restarts.</td>
+        </tr>
+        <tr>
+          <td class="whitespace-nowrap"><b>Post-live underrun</b><br><span class="fileref">underrun_tick :1139</span></td>
+          <td>Window expired with the queue empty after a live stream: flush + <code>Stall(Underrun)</code>, node latches e-stop.</td>
+          <td>Newest known seq.</td>
+          <td><code>reset_emergency</code> + <code>prepare_stream</code>.</td>
+        </tr>
+        <tr>
+          <td class="whitespace-nowrap"><b>Hole ahead</b><br><span class="fileref">hole_ahead :1061</span></td>
+          <td>Queue span &gt; 3 buffers of sender time: flush + <code>Stall(HoleAhead)</code> (policy armed) or warn + release (policy off).</td>
+          <td>Newest known seq (when it stalls).</td>
+          <td>Same as above.</td>
+        </tr>
+        <tr>
+          <td class="whitespace-nowrap"><b>Lifecycle flush</b><br><span class="fileref">flush_lifecycle :1228</span></td>
+          <td>Stream re-engagement / enter idle: queue discarded, wire-seq epoch survives.</td>
+          <td>Newest known seq (pre-flush stragglers read TooLate).</td>
+          <td>Automatic; prefill restarts.</td>
+        </tr>
+        <tr>
+          <td class="whitespace-nowrap"><b>Epoch age-out</b><br><span class="fileref">epoch_expired :819</span></td>
+          <td>≥ 2 s arrival silence + stale-looking seq: dead epoch flushed, floor and timing reference forgotten.</td>
+          <td>None (new epoch starts fresh).</td>
+          <td>Automatic; the triggering entry is queued first.</td>
+        </tr>
+        <tr>
+          <td class="whitespace-nowrap"><b>Panic / apply error</b><br><span class="fileref">node.rs run_estop_guarded</span></td>
+          <td>Any error or panic out of arrival or release work e-stops this arm (the action-path exception isolation).</td>
+          <td>Via the e-stop flush.</td>
+          <td>Operator reset.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================ HEALTH ============================ -->
+<section id="health" class="pt-10">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">9 · Health &amp; stats surface</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    Two read-outs, both computed from data the buffer already holds.
+    <span class="fileref">buffer.rs:417 PlayoutStats</span> is the cumulative account, logged as one line when the
+    drain stops and again in the node shutdown totals (<span class="fileref">main.rs:341 "playout buffer
+    totals"</span>). <span class="fileref">buffer.rs:486 PlayoutHealth</span> is the live snapshot the telemetry
+    publisher ships operator-ward on every frame as <code>extras["playout"]</code>
+    (<span class="fileref">telemetry.rs:206 playout_report</span> — report §6 rec 3).
+  </p>
+  <div class="grid md:grid-cols-2 gap-4 mt-4">
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h3 class="font-semibold">Stats: where did every packet go?</h3>
+      <p class="text-sm text-base-content/80">Every arrival ends in exactly one counter:
+      <code>released</code>, <code>late_dropped</code>, <code>duplicate_dropped</code>,
+      <code>overflow_dropped</code>, <code>aged_dropped</code>, <code>flushed</code>, or <code>malformed_ts</code>.
+      Alongside: <code>repaired</code> (holes filled late), <code>seq_holes</code> (gaps at append — loss AND
+      reorder), <code>lost_at_release</code> (the monotone <em>true-loss</em> counter: seqs the release cursor
+      crossed unfilled), <code>interpolated</code> (synthetics released to conceal small holes),
+      <code>hold_ticks</code> (post-live ticks with nothing to send — each one is 10 ms of the arm holding),
+      <code>sender_stalls</code>, <code>nonmonotonic_ts</code>, <code>epoch_resets</code>,
+      <code>underrun_episodes</code>, <code>stall_estops</code>, <code>hole_aheads</code>. If a runaway
+      investigation ever asks "what did the buffer do that session", this line is the answer.</p>
+    </div></div>
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h3 class="font-semibold">Health: what is the network doing right now?</h3>
+      <p class="text-sm text-base-content/80"><code>depth</code> vs <code>target_depth</code> and the adaptive
+      range as <code>target_ms</code> / <code>min_ms</code> / <code>max_ms</code> (equal when adaptation is off —
+      the bridge's "deepened" toast is exactly <code>target_ms &gt; min_ms</code>), <code>prefilling</code>,
+      <code>holding</code> (an underrun hold is in progress), <code>jitter_ms</code> (RFC 3550 EWMA),
+      <code>loss_pct</code> (EWMA of the seq-gap fraction; true loss is <code>seq_holes − repaired</code>),
+      <code>span_ms</code> (the hole-ahead quantity: sender-time width of the queue),
+      <code>release_age_ms</code> (time since the last release), <code>hold_ticks</code>,
+      <code>lost_at_release</code>, <code>interpolated</code>, <code>released</code> (the degraded-share
+      denominator), plus the counters above.</p>
+    </div></div>
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h3 class="font-semibold"><code>last_stall</code>: the diagnosis, not just the event</h3>
+      <p class="text-sm text-base-content/80">When a stall e-stop fires, the buffer samples the arrival-side
+      context <em>at that exact tick</em> and ships <span class="fileref">buffer.rs:369 StallReport::why()</span>
+      as the sticky <code>last_stall</code> string, so the reason is still readable after the fact. The
+      discriminator is the time since the last accepted arrival: a large gap reads
+      <em>"nothing has arrived for Nms — upstream stopped (network stall, leader freeze, or the bridge deadman
+      cut the stream)"</em>; a small one reads <em>"datagrams still arriving … but unusable — stale/aged network
+      debris"</em>. Loss %, unrepaired holes, jitter and the drop counters ride along in brackets.</p>
+    </div></div>
+    <div class="card bg-base-200"><div class="card-body p-4 prose-tight">
+      <h3 class="font-semibold">Wire debug: the queue itself, on the wire</h3>
+      <p class="text-sm text-base-content/80">With <code>playout_wire_debug: true</code> the report also carries
+      <code>entries</code> — the queue ladder as <code>(seq, ms behind the newest entry, arrived-as-repair)</code>
+      triples, oldest first, capped at <span class="fileref">WIRE_DEBUG_MAX_ENTRIES = 64</span> so a mis-sized
+      buffer can never balloon the telemetry frame — and <code>releases</code>, the recent-releases strip as
+      <code>(seq, interpolated)</code> pairs (same cap). A hole is a missing seq between ladder neighbours;
+      the strip shows what the arm was actually fed: real, interpolated, or nothing.</p>
+    </div></div>
+  </div>
+  <div class="card bg-base-200 mt-4"><div class="card-body p-4 prose-tight">
+    <h3 class="font-semibold">Watching it live</h3>
+    <p class="text-sm text-base-content/80">
+      <span class="fileref">tools/netem/playout_watch.py</span> renders all of this as a live page on
+      <span class="fileref">:8091</span>: it is a telemetry <em>tee</em> that binds the node's
+      <code>--state-sink</code> port and forwards every frame untouched to the bridge, parsing
+      <code>extras["playout"]</code> on the way past — queue ladder, released-mix strip (real / interpolated /
+      lost / held per sample), depth-vs-target, span, jitter and loss charts, and the <code>last_stall</code>
+      banner. Impairment sliders (tc netem) live on the companion panel at <span class="fileref">:8090</span>.
+      The <b>↺ counters</b> button zeroes the cumulative counters client-side (they are node-lifetime otherwise);
+      the baseline clears itself automatically when <code>released</code> regresses, i.e. when the node
+      restarted.
+    </p>
+  </div></div>
+</section>
+
+<!-- ============================ THREADS ============================ -->
+<section id="threads" class="pt-10">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">10 · Threads &amp; locking</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    One mutex around the queue state, held only for the O(depth) decision and <b>never across the apply path</b>:
+    the drain pops under the lock, releases the lock, then applies. The arrival threads (UDP listener, gRPC
+    stream task) and the drain thread are the only writers. A poisoned lock is recovered with
+    <code>into_inner()</code> (the state is a queue of setpoints, always safe to read). The drain's pacing is the
+    <code>servoj_loop</code> shape:
+  </p>
+  <div class="card bg-base-200 mt-4"><div class="card-body p-4">
+    <div class="text-xs text-base-content/60 mb-2 fileref">buffer.rs:1324 drain_loop (abridged)</div>
+<div class="codebox">let period = Duration::from_secs_f64(cfg.period_s);
+let mut next_tick = Instant::now();
+while running.load(Ordering::SeqCst) {
+    match buffer.drain_tick(core.robot().trace_monotonic()) {
+        DrainTick::Release(state) => core.release_buffered(state),
+        DrainTick::Hold           => core.playout_underrun_tick(),
+        DrainTick::Stall(report)  => core.playout_stall_estop(&report),
+    }
+    next_tick += period;
+    let now = Instant::now();
+    if next_tick <= now { next_tick = now; } else { std::thread::sleep(next_tick - now); }
+}</div>
+  </div></div>
+  <p class="mt-3 max-w-3xl text-base-content/80 text-sm">
+    <code>DrainTick::Release</code> carries the state <b>by value</b> so the 100 Hz hot path never allocates per
+    release. Every decision method takes the caller's monotonic <code>now</code>, so the whole state machine is
+    testable without threads or sleeps; the only place real time exists is this loop.
+  </p>
+</section>
+
+<!-- ============================ CONFIG ============================ -->
+<section id="config" class="pt-10">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">11 · Config reference</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    The buffer's knobs live in the robot YAML's <code>communication</code> block, the same block the driver's
+    sender tick reads (struct <span class="fileref">rust/fairino-robot/src/config.rs CommunicationConfig</span>;
+    the playout keys are Rust-node-only — the Python driver never reads them). The node reads <em>its</em> copy
+    of the robot yaml, so on a remote deployment keep both copies in agreement.
+  </p>
+  <div class="overflow-x-auto mt-4">
+    <table class="table table-sm bg-base-200 policy-table">
+      <thead><tr><th>Key</th><th>Default</th><th>Meaning</th><th>Edge behavior</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="whitespace-nowrap"><code>publish_rate_hz</code></td>
+          <td>50.0</td>
+          <td>The action rate; cmdT = 1 / publish_rate_hz is the drain period, the depth divisor, and the
+          spacing yardstick. 100 on every deployed remote-node yaml.</td>
+          <td>Non-positive falls back to the built-in ServoJ period.</td>
+        </tr>
+        <tr>
+          <td class="whitespace-nowrap"><code>playout_buffer_ms</code></td>
+          <td>0.0</td>
+          <td>Base target delay; depth N = round(ms / cmdT). 200 ms at 100 Hz → N = 20.</td>
+          <td>0 / negative / NaN → buffer fully off (passthrough, no thread). Absurd values clamp to
+          <span class="fileref">MAX_TARGET_DEPTH = 200</span> entries (2 s) with a warning; the age cap is
+          derived from the <em>clamped</em> depth.</td>
+        </tr>
+        <tr>
+          <td class="whitespace-nowrap"><code>playout_adaptive_max_ms</code></td>
+          <td>0.0</td>
+          <td>Adaptive depth ceiling (§6): the runtime target floats in [base, this].</td>
+          <td>NaN or ≤ base (incl. the default 0) → fixed depth. Clamped to 200 entries like the base.</td>
+        </tr>
+        <tr>
+          <td class="whitespace-nowrap"><code>playout_underrun_estop_after_ms</code></td>
+          <td>−1.0</td>
+          <td>Post-live empty-queue window before flush + e-stop (§5).</td>
+          <td>Negative / NaN → off, hold forever. 0 → the first post-live empty tick escalates.</td>
+        </tr>
+        <tr>
+          <td class="whitespace-nowrap"><code>playout_wire_debug</code></td>
+          <td>false</td>
+          <td>Ship the queue ladder and releases strip in <code>extras["playout"]</code> (§9, diagnosis panels
+          only — it grows every frame by up to a few hundred bytes).</td>
+          <td>Both surfaces capped at 64 entries.</td>
+        </tr>
+        <tr>
+          <td class="whitespace-nowrap"><code>servoj_stale_factor</code></td>
+          <td>2.0</td>
+          <td>The <em>driver's</em> stale window only (<span class="fileref">stream.rs:97 stale_after_s</span>:
+          frames older than cmdT × factor are held, not sent). No longer any part of the buffer's age cap —
+          that is derived purely from depth (§5 step 1).</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="text-xl font-semibold mt-8">The link hardening around the buffer</h3>
+  <p class="mt-2 max-w-3xl text-base-content/80 text-sm">
+    The buffer assumes a lossy, reordering, stalling link; the bridge
+    (<span class="fileref">servo7/nodes/remote_follower_bridge.py</span>) hardens that link from the sending
+    side. These live in the yaml's <code>remote_node</code> block or are derived:
+  </p>
+  <div class="overflow-x-auto mt-3">
+    <table class="table table-sm bg-base-200 policy-table">
+      <thead><tr><th>Mechanism</th><th>Value</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="whitespace-nowrap"><b>v2 action bundles</b><br><span class="fileref">bundle_entries_within_budget</span></td>
+          <td>1200-byte budget,<br>ring depth 10</td>
+          <td>Every setpoint datagram carries the current action plus as many previous ones as fit under the
+          budget (<span class="fileref">ACTION_BUNDLE_BUDGET_BYTES = 1200</span>) — the in-band-FEC pattern: a seq
+          is only truly lost when history+1 consecutive datagrams die, zero extra RTT. The budget keeps the frame
+          under the 1280-byte IPv6 MTU floor (header + robot-id overhead is why it is 1200, not 1280); real
+          ~400-byte states degrade to fewer copies rather than oversize. The buffer's <code>offer()</code> absorbs the copies as <code>Repaired</code>/
+          <code>Duplicate</code>. Rollout is node-before-bridge: e-stops stay on v1 single frames so an
+          un-upgraded node still takes them, and they clear the history ring so nothing pre-stop rides along.</td>
+        </tr>
+        <tr>
+          <td class="whitespace-nowrap"><b>Leader deadman</b><br><span class="fileref">_deadman_blocks</span></td>
+          <td><code>deadman_s</code>, default 1.0<br>(0 disables)</td>
+          <td>While engaged, if the follower's telemetry has been silent past the window, stop firing setpoints
+          into the void and alarm — filling a delayed queue makes the eventual replay worse. E-stops bypass the
+          gate; releases with a log as soon as telemetry resumes.</td>
+        </tr>
+        <tr>
+          <td class="whitespace-nowrap"><b>Stale-tick gate</b><br><span class="fileref">_drop_stale_tick</span></td>
+          <td>max(3 periods, 30 ms)<br>(30 ms at 100 Hz)</td>
+          <td>After a local scheduler stall the bus can hand the bridge a backlog burst; forwarding it replays
+          stale motion. A setpoint built more than the window ago is backlog, not traffic: dropped (never an
+          e-stop). The invariant documented at the function: every action producer <em>re-stamps</em>
+          <code>timestamp</code> with the orchestrator host's clock at build time (the foreign-clock stamp rides
+          in <code>leader_timestamp</code>, which this gate deliberately ignores) — a new producer that forwards
+          someone else's <code>timestamp</code> will be judged against the wrong clock here. The gate arms on
+          the first wall-clock-fresh setpoint, so synthetic-timestamp producers (tests, replays) are never
+          judged.</td>
+        </tr>
+        <tr>
+          <td class="whitespace-nowrap"><b>E-stop dual-pathing</b><br><span class="fileref">_send_estop_dual_path</span></td>
+          <td>always on (UDP mode)</td>
+          <td>Every e-stop goes out as a UDP datagram AND a one-shot reliable gRPC stream
+          (<code>wait_for_ready</code>), so a 100 % UDP blackhole still delivers at gRPC speed. Episodes dedupe
+          re-deliveries; the node applies e-stops on the arrival thread and flushes the queue (§2).</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="text-xl font-semibold mt-8">Deployed values</h3>
+  <div class="overflow-x-auto mt-3">
+    <table class="table table-sm bg-base-200 policy-table">
+      <thead><tr><th>Robot yaml (config/robots/)</th><th>rate</th><th>buffer</th><th>adaptive max</th><th>underrun e-stop</th><th>wire debug</th></tr></thead>
+      <tbody>
+        <tr><td><span class="fileref">fairino_fr20_remote_node.yaml</span></td><td>100 Hz</td><td>200 ms (N = 20)</td><td>400 ms</td><td>20 ms</td><td>—</td></tr>
+        <tr><td><span class="fileref">fairino_fr3_remote_node.yaml</span></td><td>100 Hz</td><td>200 ms (N = 20)</td><td>500 ms</td><td>20 ms</td><td>—</td></tr>
+        <tr><td><span class="fileref">fairino_fr20_remote_node_local.yaml</span></td><td>100 Hz</td><td>200 ms (N = 20)</td><td>400 ms</td><td>20 ms</td><td>—</td></tr>
+        <tr><td><span class="fileref">fairino_fr20_simmachine_remote_node.yaml</span></td><td>100 Hz</td><td>200 ms (N = 20)</td><td>400 ms</td><td>20 ms</td><td>—</td></tr>
+        <tr><td><span class="fileref">fairino_fr20_simmachine_remote_node_watch.yaml</span></td><td>100 Hz</td><td>200 ms (N = 20)</td><td>400 ms</td><td>20 ms</td><td>true</td></tr>
+        <tr><td><span class="fileref">fairino_fr20_simmachine_remote_node_local.yaml</span></td><td>100 Hz</td><td>0 (off)</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td><span class="fileref">fairino_fr3_remote_node_local.yaml</span></td><td>100 Hz</td><td>unset (off)</td><td>—</td><td>—</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="mt-3 max-w-3xl text-base-content/80 text-sm">
+    On boot with the buffer enabled the drain logs one line to grep for:
+    <span class="fileref">"Playout buffer on: depth 20 (200ms at cmdT 10.0ms), age cap 400ms"</span> — the cap
+    is depth + max(depth, 200 ms), so 200 ms of buffer carries 200 ms of margin.
+  </p>
+</section>
+
+<!-- ============================ TESTS ============================ -->
+<section id="tests" class="pt-10">
+  <h2 class="text-3xl font-bold border-b border-base-300 pb-2">12 · Test map</h2>
+  <p class="mt-3 max-w-3xl text-base-content/80">
+    The suite at the bottom of <span class="fileref">buffer.rs</span> (42 tests) pins every rule above, all
+    clock-injected, no sleeps. If you change a policy, the failing test names the rule you changed:
+  </p>
+  <div class="overflow-x-auto mt-4">
+    <table class="table table-sm bg-base-200 policy-table">
+      <thead><tr><th>Rule</th><th>Tests</th></tr></thead>
+      <tbody>
+        <tr><td>Passthrough &amp; clamping</td><td><code>zero_and_garbage_config_mean_no_buffer_at_all</code> · <code>absurd_playout_ms_clamps_to_the_depth_cap</code> · <code>underrun_estop_window_parses_with_negative_meaning_off</code> · <code>adaptive_config_parses_with_zero_meaning_fixed</code></td></tr>
+        <tr><td>Prefill &amp; pacing</td><td><code>prefill_holds_pops_until_target_depth_then_releases_one_per_tick</code> · <code>jittered_arrivals_equalize_to_one_release_per_tick_in_seq_order</code> · <code>underrun_to_empty_pauses_pops_until_prefill_rebuilds</code></td></tr>
+        <tr><td>Ordering &amp; dedup</td><td><code>reorder_within_window_is_repaired_into_seq_order</code> · <code>too_late_seq_is_dropped_and_counted</code> · <code>duplicate_queued_seq_is_dropped_and_counted</code> · <code>seq_wrap_is_newer_and_synthetic_seqs_increase</code></td></tr>
+        <tr><td>Staleness &amp; age cap</td><td><code>over_age_entry_is_discarded_never_released</code> · <code>overflow_above_high_water_drops_oldest_down_to_target</code> · <code>healthy_head_survives_held_ticks_and_wobble_without_aging_out</code> (the all-yellow churn regression, §5 step 1)</td></tr>
+        <tr><td>Loss concealment</td><td><code>small_holes_are_concealed_by_lerp_one_tick_at_a_time</code> · <code>big_holes_keep_the_jump_and_count_as_true_loss</code></td></tr>
+        <tr><td>Adaptive depth</td><td><code>adaptive_target_grows_on_graze_deepens_by_slew_and_shrinks_when_calm</code> · <code>stall_flush_discards_the_adapt_windows_graze_evidence</code> (the spurious "connection unstable" regression, §6)</td></tr>
+        <tr><td>Timing health</td><td><code>seq_gaps_count_holes_and_feed_the_loss_ewma</code> · <code>consecutive_seq_spacing_blowup_attributes_a_sender_stall</code> · <code>nonmonotonic_sender_ts_is_counted_but_still_queued</code> · <code>clean_pacing_keeps_the_jitter_ewma_near_zero</code> · <code>non_finite_sender_ts_is_rejected_never_queued</code> · <code>first_arrival_after_a_flush_is_not_spacing_judged</code> (the "sender stall ~21622ms" regression, §6)</td></tr>
+        <tr><td>Stall policy</td><td><code>prefill_empty_never_stalls_even_with_the_policy_armed</code> · <code>post_live_underrun_stalls_after_the_window_and_flushes</code> · <code>zero_window_stalls_on_the_first_post_live_underrun_tick</code> · <code>recovery_within_the_window_resumes_without_a_stall</code> · <code>stall_during_re_prefill_flushes_the_partial_queue_and_seals</code> · <code>policy_off_holds_forever_but_still_counts_underrun_episodes</code></td></tr>
+        <tr><td>Stall diagnosis</td><td><code>stall_diagnosis_attributes_a_dead_upstream</code> · <code>stall_diagnosis_attributes_arriving_but_unusable_debris</code> · <code>hole_ahead_diagnosis_names_the_jump</code></td></tr>
+        <tr><td>Hole-ahead</td><td><code>hole_ahead_blocks_release_and_stalls_with_the_policy_armed</code> · <code>hole_ahead_without_the_policy_releases_as_today_and_counts</code></td></tr>
+        <tr><td>Flush &amp; seal</td><td><code>estop_flush_with_in_space_seq_seals_past_the_estop</code> · <code>estop_flush_without_in_space_seq_seals_at_newest_queued_only</code> · <code>cross_space_estop_never_corrupts_a_wrapped_wire_floor</code> · <code>lifecycle_flush_clears_and_restarts_prefill_keeping_the_epoch</code> · <code>flushes_reset_the_liveness_gate</code> · <code>epoch_age_out_accepts_a_restarted_senders_low_seq_and_flushes</code></td></tr>
+        <tr><td>Telemetry surface</td><td><code>wire_debug_ships_the_queue_ladder_with_span_and_release_age</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="mt-4 max-w-3xl text-base-content/70 text-sm">
+    Node-level integration (buffer attach, stall → driver e-stop latch, release path) is covered in
+    <span class="fileref">node.rs</span>'s test module. On the Python side,
+    <span class="fileref">tests/test_orchestrator_node.py TestControllerStationKeeping</span> pins the
+    station-keeping contract of §2 (a leader-only action still station-keeps the follower, a follower-targeted
+    action never double-publishes, an idle controller still holds). And end-to-end,
+    <span class="fileref">scripts/harness_runaway_replay_check.py</span> replays a sine stream through real
+    netem impairment profiles against the FR20 SimMachine (<span class="fileref">stale_replay</span> /
+    <span class="fileref">wifi_burst</span> by default, <span class="fileref">clean</span> as control) and gates
+    CI on "no silent post-stop travel": the delayed-replay runaway staying dead is an asserted property, not a
+    hope.
+  </p>
+</section>
+
+</main>
+
+<!-- ============================ EDGE-CASE FIGURES ============================ -->
+<script>
+(function () {
+  "use strict";
+  var C = { arrival: "#3987e5", release: "#d95926", depthC: "#199e70",
+            warn: "#fab219", crit: "#d03b3b", serious: "#ec835a",
+            ink1: "#ffffff", ink2: "#c3c2b7", ink3: "#898781", grid: "#2c2c2a", axis: "#383835" };
+
+  // ---- simulate the drain rules (offer + drain_tick, small-N model) ----
+  function simulate(cfg) {
+    var N = cfg.N || 5, HIGH = N + 2;
+    var st = { queue: [], floor: null, prefilling: true, everReleased: false, underrunSince: null, stall: null };
+    var releases = [], holds = [], purges = [], overflows = [];
+    var depthSteps = [{ t: 0, d: 0 }];
+    var perTick = [];
+    var arr = cfg.arrivals.slice().sort(function (a, b) { return a.t - b.t; });
+    var ai = 0;
+    function step(t) { depthSteps.push({ t: t, d: st.queue.length }); }
+    function flushSealNewest() {
+      if (st.queue.length) st.floor = st.queue[st.queue.length - 1].seq;
+      var flushed = st.queue.length;
+      st.queue.length = 0;
+      st.prefilling = true; st.everReleased = false; st.underrunSince = null;
+      return flushed;
+    }
+    function underrun(k) {
+      if (!st.everReleased) { holds.push({ t: k, why: "prefill" }); return "hold (prefill)"; }
+      if (st.underrunSince === null) st.underrunSince = k;
+      if (cfg.window != null && k - st.underrunSince >= cfg.window) {
+        var flushed = flushSealNewest();
+        st.stall = { t: k, kind: "Underrun", flushed: flushed };
+        step(k);
+        return "STALL(Underrun): flush + e-stop";
+      }
+      holds.push({ t: k, why: "underrun" }); return "hold (underrun)";
+    }
+    for (var k = 1; k <= cfg.ticks; k++) {
+      var tickArr = [];
+      while (ai < arr.length && arr[ai].t <= k) {
+        var a = arr[ai]; ai++;
+        tickArr.push(a);
+        if (st.floor !== null && a.seq <= st.floor) { a.verdict = "TooLate"; continue; }
+        if (st.queue.some(function (e) { return e.seq === a.seq; })) { a.verdict = "Duplicate"; continue; }
+        var at = st.queue.length;
+        while (at > 0 && st.queue[at - 1].seq > a.seq) at--;
+        a.verdict = at < st.queue.length ? "Repaired" : "Queued";
+        st.queue.splice(at, 0, { seq: a.seq, tArr: a.t });
+        step(a.t);
+        if (st.queue.length > HIGH) {
+          var n = st.queue.length - N;
+          var droppedSeqs = st.queue.splice(0, n).map(function (e) { return e.seq; });
+          overflows.push({ t: a.t + 0.01, n: n, seqs: droppedSeqs });
+          step(a.t + 0.01);
+        }
+      }
+      var action;
+      if (st.stall !== null) { action = "e-stopped"; }
+      else {
+        if (cfg.maxAge) {
+          var kept = [], gone = [];
+          st.queue.forEach(function (e) { (k - e.tArr > cfg.maxAge ? gone : kept).push(e); });
+          if (gone.length) {
+            st.queue.length = 0; kept.forEach(function (e) { st.queue.push(e); });
+            purges.push({ t: k, seqs: gone.map(function (e) { return e.seq; }) });
+            step(k);
+          }
+        }
+        if (st.prefilling && st.queue.length < N) { action = underrun(k); }
+        else {
+          st.prefilling = false;
+          if (st.queue.length === 0) { st.prefilling = true; action = underrun(k); }
+          else if (cfg.holeAhead && st.queue.length >= 2 &&
+                   st.queue[st.queue.length - 1].seq - st.queue[0].seq > 3 * N) {
+            var f = flushSealNewest();
+            st.stall = { t: k, kind: "HoleAhead", flushed: f };
+            step(k);
+            action = "STALL(HoleAhead): flush " + f + " + e-stop";
+          } else if (cfg.interp && st.everReleased && st.floor !== null &&
+                     st.queue[0].seq - st.floor > 1 &&
+                     st.queue[0].seq - st.floor <= cfg.interp + 1) {
+            var sseq = st.floor + 1;
+            st.floor = sseq;
+            releases.push({ t: k, seq: sseq, interp: true });
+            action = "release seq " + sseq + "′ (synthetic, lerped toward " + st.queue[0].seq + ")";
+          } else {
+            var e2 = st.queue.shift();
+            st.floor = e2.seq; st.everReleased = true; st.underrunSince = null;
+            releases.push({ t: k, seq: e2.seq });
+            step(k);
+            action = "release seq " + e2.seq;
+          }
+        }
+      }
+      perTick.push({ tick: k, arr: tickArr, action: action, depth: st.queue.length });
+    }
+    return { arr: arr, releases: releases, holds: holds, stall: st.stall, purges: purges,
+             overflows: overflows, depthSteps: depthSteps, perTick: perTick, N: N, HIGH: HIGH };
+  }
+
+  // ---- render one scenario figure ----
+  var W = 940, H = 400, L = 84, R = 30, X1 = W - R;
+  var yArr = 58, yRel = 108, laneH = 16, dTop = 168, dBot = 340;
+  function render(key, cfg, sim) {
+    function x(t) { return L + (t / cfg.ticks) * (X1 - L); }
+    var maxDepth = Math.max.apply(null, sim.depthSteps.map(function (s) { return s.d; }));
+    var dMax = Math.max(9, maxDepth + 2);
+    function y(d) { return dBot - (d / dMax) * (dBot - dTop); }
+    var s = [];
+    s.push('<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + (cfg.aria || "Buffer timeline: arrivals, releases and queue depth over ticks.") + '">');
+    var gstep = cfg.ticks <= 14 ? 2 : 5;
+    for (var g = 0; g <= cfg.ticks; g += gstep) {
+      s.push('<line x1="' + x(g) + '" y1="40" x2="' + x(g) + '" y2="' + dBot + '" stroke="' + C.grid + '" stroke-width="1"/>');
+      s.push('<text x="' + x(g) + '" y="' + (dBot + 17) + '" fill="' + C.ink3 + '" font-size="10.5" text-anchor="middle">' + g + '</text>');
+    }
+    s.push('<text x="' + (L + X1) / 2 + '" y="' + (dBot + 34) + '" fill="' + C.ink3 + '" font-size="11" text-anchor="middle">time (ticks of cmdT, 10 ms each)</text>');
+    s.push('<text x="' + (L - 10) + '" y="' + (yArr + 4) + '" fill="' + C.ink2 + '" font-size="11" text-anchor="end" font-weight="600">arrivals</text>');
+    s.push('<text x="' + (L - 10) + '" y="' + (yRel + 4) + '" fill="' + C.ink2 + '" font-size="11" text-anchor="end" font-weight="600">releases</text>');
+    s.push('<text x="' + (L - 10) + '" y="' + (dTop + 8) + '" fill="' + C.ink2 + '" font-size="11" text-anchor="end" font-weight="600">depth</text>');
+    s.push('<line x1="' + L + '" y1="' + y(sim.N) + '" x2="' + X1 + '" y2="' + y(sim.N) + '" stroke="' + C.axis + '" stroke-width="1" stroke-dasharray="5 4"/>');
+    s.push('<text x="' + (X1 + 4) + '" y="' + (y(sim.N) + 4) + '" fill="' + C.ink3 + '" font-size="10.5">N</text>');
+    if (cfg.showHigh) {
+      s.push('<line x1="' + L + '" y1="' + y(sim.HIGH) + '" x2="' + X1 + '" y2="' + y(sim.HIGH) + '" stroke="' + C.axis + '" stroke-width="1" stroke-dasharray="2 4"/>');
+      s.push('<text x="' + (X1 + 4) + '" y="' + (y(sim.HIGH) + 4) + '" fill="' + C.ink3 + '" font-size="10.5">N+2</text>');
+    }
+    s.push('<line x1="' + L + '" y1="' + dBot + '" x2="' + X1 + '" y2="' + dBot + '" stroke="' + C.axis + '" stroke-width="1.5"/>');
+    // lost-seq region on the arrival lane
+    if (cfg.lostRegion) {
+      var lr = cfg.lostRegion;
+      s.push('<rect x="' + x(lr.t0) + '" y="' + (yArr - laneH / 2 - 3) + '" width="' + (x(lr.t1) - x(lr.t0)) + '" height="' + (laneH + 6) + '" rx="3" fill="none" stroke="' + C.serious + '" stroke-width="1.2" stroke-dasharray="4 3"/>');
+      s.push('<text x="' + x((lr.t0 + lr.t1) / 2) + '" y="' + (yArr - laneH / 2 - 9) + '" fill="' + C.serious + '" font-size="10.5" text-anchor="middle">' + lr.label + '</text>');
+    }
+    // depth step area + line
+    var endT = sim.stall !== null ? sim.stall.t : cfg.ticks;
+    var p = "M " + x(0) + " " + y(0);
+    for (var i = 1; i < sim.depthSteps.length; i++) {
+      p += " L " + x(sim.depthSteps[i].t) + " " + y(sim.depthSteps[i - 1].d);
+      p += " L " + x(sim.depthSteps[i].t) + " " + y(sim.depthSteps[i].d);
+    }
+    p += " L " + x(endT) + " " + y(sim.depthSteps[sim.depthSteps.length - 1].d);
+    s.push('<path d="' + p + ' L ' + x(endT) + ' ' + y(0) + ' Z" fill="' + C.depthC + '" opacity="0.16"/>');
+    s.push('<path d="' + p + '" fill="none" stroke="' + C.depthC + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>');
+    // arrivals (TooLate/Duplicate in status-serious with an x above)
+    sim.arr.forEach(function (a) {
+      var late = a.verdict === "TooLate" || a.verdict === "Duplicate";
+      var col = late ? C.serious : C.arrival;
+      s.push('<line x1="' + x(a.t) + '" y1="' + (yArr - laneH / 2) + '" x2="' + x(a.t) + '" y2="' + (yArr + laneH / 2) + '" stroke="' + col + '" stroke-width="2.5" stroke-linecap="round"/>');
+      if (late) s.push('<text x="' + x(a.t) + '" y="' + (yArr - laneH / 2 - 4) + '" fill="' + C.serious + '" font-size="11" text-anchor="middle" font-weight="700">✕</text>');
+      if (cfg.seqLabels) s.push('<text x="' + x(a.t) + '" y="' + (yArr + laneH / 2 + 12) + '" fill="' + (late ? C.serious : C.ink3) + '" font-size="9.5" text-anchor="middle">' + a.seq + '</text>');
+    });
+    // releases (interpolated synthetics render dashed, labeled with a prime)
+    sim.releases.forEach(function (r) {
+      var dash = r.interp ? ' stroke-dasharray="2.2 2.6"' : '';
+      s.push('<line x1="' + x(r.t) + '" y1="' + (yRel - laneH / 2) + '" x2="' + x(r.t) + '" y2="' + (yRel + laneH / 2) + '" stroke="' + C.release + '" stroke-width="2.5" stroke-linecap="round"' + dash + '/>');
+      if (cfg.seqLabels) s.push('<text x="' + x(r.t) + '" y="' + (yRel + laneH / 2 + 12) + '" fill="' + (r.interp ? C.release : C.ink3) + '" font-size="9.5" text-anchor="middle">' + r.seq + (r.interp ? "′" : "") + '</text>');
+    });
+    // holds (dim = prefill, full = post-live underrun)
+    sim.holds.forEach(function (h) {
+      s.push('<rect x="' + (x(h.t) - 4) + '" y="' + (yRel - 4) + '" width="8" height="8" rx="1.5" fill="none" stroke="' + C.warn + '" stroke-width="1.6" opacity="' + (h.why === "prefill" ? 0.45 : 1) + '"/>');
+    });
+    // overflow + purge markers
+    sim.overflows.forEach(function (d) {
+      s.push('<text x="' + x(d.t) + '" y="' + (y(sim.HIGH) - 6) + '" fill="' + C.serious + '" font-size="12" text-anchor="middle" font-weight="700">✕</text>');
+    });
+    sim.purges.forEach(function (d) {
+      s.push('<text x="' + x(d.t) + '" y="' + (dBot - 8) + '" fill="' + C.serious + '" font-size="12" text-anchor="middle" font-weight="700">✕</text>');
+    });
+    // stall marker
+    if (sim.stall !== null) {
+      var sx = x(sim.stall.t);
+      var anchor = sx > X1 - 130 ? "end" : "middle";
+      s.push('<text x="' + sx + '" y="' + (yRel + 5) + '" fill="' + C.crit + '" font-size="14" text-anchor="middle" font-weight="700">✕</text>');
+      s.push('<text x="' + (anchor === "end" ? sx + 8 : sx) + '" y="' + (yRel - 16) + '" fill="' + C.crit + '" font-size="11" text-anchor="' + anchor + '" font-weight="600">e-stop (Stall::' + sim.stall.kind + ')</text>');
+    }
+    // scenario annotations
+    (cfg.annotations || []).forEach(function (an) {
+      s.push('<text x="' + x(an.t) + '" y="' + an.y + '" fill="' + (an.color || C.ink2) + '" font-size="' + (an.size || 11) + '" text-anchor="' + (an.anchor || "middle") + '"' + (an.weight ? ' font-weight="' + an.weight + '"' : '') + '>' + an.text + '</text>');
+    });
+    s.push('</svg>');
+    var plot = document.getElementById("plot-" + key);
+    if (!plot) return;
+    plot.innerHTML = s.join("");
+
+    // hover layer: snapped crosshair + per-tick tooltip
+    var tip = document.getElementById("tip-" + key);
+    var svg = plot.querySelector("svg");
+    var cross = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    cross.setAttribute("stroke", C.ink3); cross.setAttribute("stroke-width", "1");
+    cross.setAttribute("y1", "40"); cross.setAttribute("y2", String(dBot));
+    cross.setAttribute("stroke-dasharray", "3 3"); cross.style.display = "none";
+    svg.appendChild(cross);
+    svg.addEventListener("mousemove", function (ev) {
+      var r = svg.getBoundingClientRect();
+      var t = ((ev.clientX - r.left) / r.width * W - L) / (X1 - L) * cfg.ticks;
+      var k = Math.round(t);
+      if (k < 1 || k > cfg.ticks) { tip.style.display = "none"; cross.style.display = "none"; return; }
+      var row = sim.perTick[k - 1];
+      cross.setAttribute("x1", String(x(k))); cross.setAttribute("x2", String(x(k)));
+      cross.style.display = "";
+      var lines = ['<b>tick ' + k + '</b> <span class="tip-muted">(' + k * 10 + ' ms)</span>'];
+      row.arr.forEach(function (a) { lines.push("seq " + a.seq + " arrives (" + a.verdict + ")"); });
+      lines.push(row.action);
+      lines.push('<span class="tip-muted">depth after tick: ' + row.depth + "</span>");
+      tip.innerHTML = lines.join("<br>");
+      tip.style.display = "block";
+      var fig = plot.closest("figure");
+      var fr = fig.getBoundingClientRect();
+      var tx = ev.clientX - fr.left + 14, ty = ev.clientY - fr.top - 10;
+      if (tx > fr.width - 250) tx -= 270;
+      tip.style.left = tx + "px"; tip.style.top = ty + "px";
+    });
+    svg.addEventListener("mouseleave", function () { tip.style.display = "none"; cross.style.display = "none"; });
+
+    // table view
+    var tbl = document.getElementById("tbl-" + key);
+    if (tbl) {
+      var rows = sim.perTick.map(function (r) {
+        var arrTxt = r.arr.map(function (a) { return a.seq + " (" + a.verdict + ")"; }).join(", ");
+        return "<tr><td>" + r.tick + "</td><td>" + arrTxt + "</td><td>" + r.action + "</td><td>" + r.depth + "</td></tr>";
+      });
+      tbl.innerHTML = "<thead><tr><th>tick</th><th>arrivals</th><th>drain action</th><th>depth</th></tr></thead><tbody>" + rows.join("") + "</tbody>";
+    }
+  }
+
+  // shared legend (identity by label + swatch, never color alone)
+  var legend = document.getElementById("shared-legend");
+  if (legend) legend.innerHTML =
+    '<span class="chip"><span class="swatch" style="background:#3987e5"></span>arrivals (network)</span>' +
+    '<span class="chip"><span class="swatch" style="background:#d95926"></span>releases (drain, 1 per tick)</span>' +
+    '<span class="chip"><span class="swatch" style="background:repeating-linear-gradient(90deg,#d95926 0 3px,transparent 3px 6px)"></span>interpolated release (synthetic)</span>' +
+    '<span class="chip"><span class="swatch" style="background:#199e70;opacity:0.7"></span>queue depth</span>' +
+    '<span class="chip"><span class="swatch" style="background:none;border:1.6px solid #fab219;border-radius:2px"></span>hold: last setpoint re-sent (dim = prefill)</span>' +
+    '<span class="chip"><span style="color:#ec835a;font-weight:700">✕</span>dropped / <span style="color:#d03b3b;font-weight:700">✕</span> e-stop</span>';
+
+  function seqArr(times, firstSeq) {
+    return times.map(function (t, i) { return { t: t, seq: (firstSeq || 1) + i }; });
+  }
+
+  // ---- the scenarios ----
+  var SC = {};
+
+  SC.a = { ticks: 24, window: null,
+    arrivals: seqArr([0.3, 1.4, 2.2, 3.4, 4.1, 5.5, 6.2, 7.4, 8.1, 9.7, 9.9, 11.4, 12.1, 13.5, 14.2, 15.3, 16.4, 17.2, 18.4, 19.1, 20.3, 21.4, 22.2, 23.1]),
+    aria: "Baseline: jittered arrivals, metronomic releases, depth wobbling around N.",
+    annotations: [
+      { t: 2.5, y: 236, text: "prefill to N, then draining starts" },
+      { t: 15, y: 306, text: "depth breathes around N; the release lane never wavers" }
+    ] };
+
+  SC.b = { ticks: 14, window: null, seqLabels: true,
+    arrivals: [{ t: 0.4, seq: 1 }, { t: 1.3, seq: 2 }, { t: 2.2, seq: 3 }, { t: 3.1, seq: 5 }, { t: 3.6, seq: 4 }, { t: 4.2, seq: 6 }, { t: 5.3, seq: 7 }, { t: 6.2, seq: 8 }, { t: 7.3, seq: 9 }, { t: 8.1, seq: 10 }, { t: 9.2, seq: 11 }, { t: 10.3, seq: 12 }, { t: 11.2, seq: 13 }, { t: 12.1, seq: 14 }],
+    aria: "Reorder repair: seq 5 arrives before seq 4; releases still come out 1,2,3,4,5.",
+    annotations: [
+      { t: 3.35, y: 32, text: "4 arrives after 5", weight: 600 },
+      { t: 3.35, y: 90, text: "↓ repaired into its seq slot", size: 10.5 },
+      { t: 8.5, y: 152, text: "released in order: 1, 2, 3, 4, 5, 6 … the swap never reaches the arm", color: "#c3c2b7" }
+    ] };
+
+  SC.c = { ticks: 14, window: null, seqLabels: true,
+    arrivals: [{ t: 0.4, seq: 1 }, { t: 1.2, seq: 2 }, { t: 2.3, seq: 3 }, { t: 3.2, seq: 5 }, { t: 4.1, seq: 6 }, { t: 5.2, seq: 7 }, { t: 6.3, seq: 8 }, { t: 7.1, seq: 9 }, { t: 8.2, seq: 10 }, { t: 9.5, seq: 4 }, { t: 10.1, seq: 11 }, { t: 11.2, seq: 12 }],
+    aria: "Too late: seq 4 arrives after seqs 5 and 6 were already released and dies at the floor.",
+    annotations: [
+      { t: 9.5, y: 32, text: "4 finally shows up", color: "#ec835a", weight: 600 },
+      { t: 9.5, y: 90, text: "floor is already 6: dropped, never sent", color: "#ec835a", size: 10.5 },
+      { t: 6.5, y: 152, text: "the release lane skips 4 and keeps going; it never steps backwards", color: "#c3c2b7" }
+    ] };
+
+  SC.d = { ticks: 24, window: null, showHigh: true,
+    arrivals: seqArr([0.4, 1.4, 2.4, 3.4, 4.4, 5.4, 6.4, 7.4, 8.4, 9.4, 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7, 14.8, 15.3, 16.4, 17.2, 18.3, 19.4, 20.2]),
+    aria: "Stall then burst: the queue pays out the outage, the burst overshoots high water and the oldest entries are dropped back to N.",
+    annotations: [
+      { t: 11.8, y: 226, text: "5 ticks of silence: the queue pays it out," },
+      { t: 11.8, y: 240, text: "not one release is missed" },
+      { t: 14.5, y: 182, text: "burst lands: ✕ drop 3 oldest to N", color: "#ec835a" },
+      { t: 19.5, y: 306, text: "delay snaps back to N ticks: no standing lag" }
+    ] };
+
+  SC.e = { ticks: 26, window: null, maxAge: 10,
+    arrivals: seqArr([0.4, 1.3, 15.2, 16.3, 17.1, 18.2, 19.3, 20.1, 21.2, 22.3, 23.1, 24.2]),
+    aria: "Age cap: two setpoints from a dead stream go stale during prefill and are purged after 2 x N ticks, never sent; the resumed stream prefills clean.",
+    annotations: [
+      { t: 1.0, y: 36, text: "a stream dies mid-prefill", weight: 600 },
+      { t: 11.5, y: 316, text: "✕ aged out (cap = 2×N): purged, never sent", color: "#ec835a" },
+      { t: 6, y: 296, text: "nothing is released: a 2-deep prefill has no business moving the arm", size: 10.5, color: "#898781" },
+      { t: 19.5, y: 236, text: "the link returns: fresh prefill, clean start" }
+    ] };
+
+  SC.f = { ticks: 22, window: 4,
+    arrivals: seqArr([0.4, 1.4, 2.4, 3.4, 4.4, 5.4, 6.4, 7.4, 8.4, 9.4, 10.4]),
+    aria: "Link death: the queue pays out its depth, the drain holds through the underrun window, then fails closed with an e-stop.",
+    annotations: [
+      { t: 10.4, y: 36, text: "link dies", weight: 600 },
+      { t: 13, y: 135, text: "queue pays out its depth: N more releases", color: "#898781", size: 10.5 },
+      { t: 17.5, y: 150, text: "□ holds ×4 (underrun window)", color: "#fab219", size: 10.5 },
+      { t: 8, y: 306, text: "this exact moment used to become the runaway", size: 10.5, color: "#898781" }
+    ] };
+
+  SC.g = { ticks: 12, window: 4, holeAhead: true, seqLabels: true,
+    arrivals: [{ t: 1.2, seq: 1 }, { t: 2.1, seq: 2 }, { t: 3.3, seq: 3 }, { t: 4.2, seq: 4 }, { t: 5.1, seq: 5 }, { t: 6.2, seq: 6 }, { t: 7.2, seq: 22 }],
+    lostRegion: { t0: 6.5, t1: 7.05, label: "seqs 7–21 eaten by the network" },
+    aria: "Hole ahead: after 15 seqs are lost, the queue spans old and far-future setpoints; the drain flushes and e-stops instead of releasing into a catch-up jump.",
+    annotations: [
+      { t: 4.5, y: 146, text: "the queue now spans 18 ticks: old 4, 5, 6 plus far-future 22", size: 10.5 },
+      { t: 4.5, y: 161, text: "releasing 4 would end in one giant catch-up jump → flush + e-stop", color: "#d03b3b", size: 10.5 }
+    ] };
+
+  SC.h = { ticks: 14, window: null, seqLabels: true, interp: 3, N: 3,
+    arrivals: [{ t: 0.4, seq: 1 }, { t: 1.3, seq: 2 }, { t: 2.2, seq: 3 }, { t: 3.1, seq: 4 }, { t: 4.2, seq: 5 }, { t: 5.2, seq: 8 }, { t: 6.1, seq: 9 }, { t: 7.3, seq: 10 }, { t: 8.2, seq: 11 }, { t: 9.1, seq: 12 }, { t: 9.6, seq: 6 }, { t: 10.2, seq: 13 }],
+    lostRegion: { t0: 4.55, t1: 5.0, label: "seqs 6–7 lost" },
+    aria: "Loss concealment: seqs 6 and 7 are lost; the drain releases two synthetic lerped setpoints toward seq 8 (dashed), then the real stream continues; the late original 6 is sealed off by the floor.",
+    annotations: [
+      { t: 8.5, y: 150, text: "6′ and 7′: synthetic, lerped toward 8 — constant speed, no jump", size: 10.5 },
+      { t: 9.6, y: 32, text: "the real 6 straggles in", color: "#ec835a", weight: 600 },
+      { t: 11.5, y: 90, text: "floor is already 7: sealed, dropped", color: "#ec835a", size: 10.5 },
+      { t: 10.5, y: 300, text: "depth grows one per synthetic tick: the head waits while synthetics play", size: 10.5, color: "#898781" }
+    ] };
+
+  SC.i = { ticks: 36, window: 4, showHigh: true,
+    arrivals: seqArr([0.2, 1.1, 2.3, 2.9, 4.2, 5.1, 6.4, 6.9, 8.2, 9.1, 12.1, 12.25, 12.4, 12.55, 12.7, 12.85, 13.0, 13.9, 15.2, 16.1, 17.3, 18.1, 19.2, 20.4, 21.1, 22.3]),
+    aria: "Full session: prefill, jitter, a burst absorbed by catch-up, then link death, payout, holds and a fail-closed e-stop.",
+    annotations: [
+      { t: 2.5, y: 240, text: "prefill to N, then draining starts" },
+      { t: 13, y: 184, text: "catch-up: ✕ drop 4 oldest to N", color: "#ec835a" },
+      { t: 18, y: 300, text: "jitter and the burst become depth wobble;" },
+      { t: 18, y: 314, text: "the release lane never wavers" },
+      { t: 22.3, y: 36, text: "link dies", weight: 600 },
+      { t: 25.3, y: 135, text: "queue pays out its depth", color: "#898781", size: 10.5 },
+      { t: 30.5, y: 150, text: "□ holds ×4", color: "#fab219", size: 10.5 }
+    ] };
+
+  Object.keys(SC).forEach(function (key) {
+    var cfg = SC[key];
+    render(key, cfg, simulate(cfg));
+  });
+})();
+</script>
+
+<!-- ============================ MERMAID ============================ -->
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const paint = document.createElement("canvas").getContext("2d");
+  function toRgba(color) {
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = "#000";
+    paint.fillStyle = color;
+    paint.fillRect(0, 0, 1, 1);
+    return paint.getImageData(0, 0, 1, 1).data;
+  }
+  function compositeRgba(foreground, background) {
+    const fa = foreground[3] / 255, ba = background[3] / 255;
+    const a = fa + ba * (1 - fa);
+    if (a === 0) return [0, 0, 0, 0];
+    return [
+      (foreground[0] * fa + background[0] * ba * (1 - fa)) / a,
+      (foreground[1] * fa + background[1] * ba * (1 - fa)) / a,
+      (foreground[2] * fa + background[2] * ba * (1 - fa)) / a,
+      a * 255,
+    ];
+  }
+  function pageIsDark() {
+    const root = document.documentElement;
+    const rootBackground = toRgba(getComputedStyle(root).backgroundColor);
+    const bodyBackground = document.body ? toRgba(getComputedStyle(document.body).backgroundColor) : [0, 0, 0, 0];
+    const [r, g, b, a] = compositeRgba(bodyBackground, rootBackground);
+    if (a > 0) return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5;
+    const colorScheme = getComputedStyle(root).colorScheme;
+    if (colorScheme.includes("dark") && !colorScheme.includes("light")) return true;
+    if (colorScheme.includes("light") && !colorScheme.includes("dark")) return false;
+    return darkQuery.matches;
+  }
+  const diagrams = [...document.querySelectorAll(".mermaid")].map((el) => ({ el, src: el.textContent }));
+  let applied;
+  let rendering = false;
+  let queued = false;
+  function queueRender() {
+    queued = true;
+    if (rendering) return;
+    void render();
+  }
+  async function render() {
+    rendering = true;
+    try {
+      while (queued) {
+        queued = false;
+        const theme = pageIsDark() ? "dark" : "default";
+        if (theme === applied) continue;
+        mermaid.initialize({
+          startOnLoad: false,
+          theme,
+          securityLevel: "antiscript",
+          themeVariables: { fontSize: "12px" },
+          flowchart: { padding: 6, htmlLabels: true },
+        });
+        for (const { el, src } of diagrams) {
+          el.removeAttribute("data-processed");
+          el.textContent = src;
+        }
+        try {
+          await mermaid.run({ nodes: diagrams.map((d) => d.el) });
+        } catch (error) {
+          console.error("Mermaid diagram render failed:", error);
+          return;
+        }
+        applied = theme;
+      }
+    } finally {
+      rendering = false;
+      if (queued) queueRender();
+    }
+  }
+  if (document.readyState === "complete") queueRender();
+  else window.addEventListener("load", queueRender, { once: true });
+  const themeObserver = new MutationObserver(queueRender);
+  for (const el of [document.documentElement, document.body]) {
+    if (!el) continue;
+    themeObserver.observe(el, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  }
+  document.addEventListener("change", queueRender, true);
+  document.addEventListener("transitionend", ({ propertyName }) => {
+    if (propertyName === "background-color") queueRender();
+  }, true);
+  darkQuery.addEventListener("change", queueRender);
+</script>
+
+</body>
+</html>
