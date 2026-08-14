@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="en" data-theme="night">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Vacuum Gripper — Flow, Depth &amp; the Check Valve</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, li, td, th, .badge, .label) { overflow-wrap: anywhere; }
+  :where(img, svg, video, canvas, iframe) { max-width: 100%; }
+  .glcanvas { width: 100%; border-radius: 0.75rem; display: block; background: #0b1020; }
+  .plot { width: 100%; border-radius: 0.5rem; display: block; background: #0b1020; }
+  .stat-num { font-variant-numeric: tabular-nums; }
+  .viz-root {
+    color-scheme: dark;
+    --surface-1: #0b1020;
+    --text-primary: #f0f2f8;
+    --text-secondary: #9aa3b8;
+    --series-1: #3987e5; /* single-stage ejector */
+    --series-2: #d95926; /* multi-stage ejector */
+    --series-3: #199e70; /* vane / claw pump */
+    --series-4: #c98500; /* BLDC blower */
+    --status-good: #0ca30c;
+    --status-warn: #fab219;
+    --status-serious: #ec835a;
+    --status-critical: #d03b3b;
+  }
+  .chip { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:baseline; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body class="bg-base-200 text-base-content">
+<div class="max-w-6xl mx-auto p-4 md:p-8 space-y-10 viz-root">
+
+  <header class="space-y-2">
+    <h1 class="text-3xl md:text-4xl font-bold">The Vacuum Gripper — Flow, Depth &amp; the Check Valve</h1>
+    <p class="text-base-content/70 max-w-3xl">Why our two compressors overheat, how a venturi with no moving parts makes vacuum, how a foam gripper mechanically <em>notices</em> a hole and seals it, and why every mobile picking robot abandoned compressed air. Drag the 3D views to orbit. Numbers come from the <a class="link link-accent" href="vacuum-gripping-field-guide.md">18k-word field guide</a> (all sources cited there).</p>
+  </header>
+
+  <!-- ── headline numbers ── -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div class="bg-base-100 rounded-box p-4 shadow"><div class="text-xs text-base-content/60">The hard ceiling</div><div class="text-2xl font-bold stat-num">101.3 kPa</div><div class="text-xs text-base-content/60 mt-1">1 atmosphere = 1 kg of push per cm². Suction doesn't pull — the sky pushes.</div></div>
+    <div class="bg-base-100 rounded-box p-4 shadow"><div class="text-xs text-base-content/60">Our measured burn</div><div class="text-2xl font-bold stat-num">265 l/min</div><div class="text-xs text-base-content/60 mt-1">Compressed air per gripper at 6.5 bar — tank-drawdown measured, continuous.</div></div>
+    <div class="bg-base-100 rounded-box p-4 shadow"><div class="text-xs text-base-content/60">Cardboard's working zone</div><div class="text-2xl font-bold stat-num">−20…−40 kPa</div><div class="text-xs text-base-content/60 mt-1">Deeper vacuum just pulls more air through the pores and dents the box.</div></div>
+    <div class="bg-base-100 rounded-box p-4 shadow"><div class="text-xs text-base-content/60">Electric vs air chain</div><div class="text-2xl font-bold stat-num">5–10×</div><div class="text-xs text-base-content/60 mt-1">More suction per wall-watt from a vacuum pump than compressor→ejector.</div></div>
+  </div>
+
+  <!-- ============ 1 · EJECTOR ============ -->
+  <section class="card bg-base-100 shadow-xl">
+    <div class="card-body space-y-4">
+      <h2 class="card-title text-2xl">1 · The ejector, live — vacuum from a shaped hole</h2>
+      <p class="text-base-content/70">Cutaway of a venturi ejector. <span style="color:var(--series-1)" class="font-semibold">Supply air</span> chokes sonic in the throat and screams across an open chamber; <span style="color:var(--series-3)" class="font-semibold">ambient air</span> from the vacuum port gets dragged into the jet by momentum transfer and thrown out the exhaust. No moving parts — but the nozzle is choked, so <em>air consumption scales with absolute supply pressure</em> while vacuum stops improving past the design point. Feeding it tank pressure is pure waste.</p>
+      <div class="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
+        <div class="relative">
+          <canvas id="ejCanvas" class="glcanvas" style="height:360px"></canvas>
+          <div class="absolute top-3 left-3 badge badge-neutral">drag to orbit</div>
+          <p class="text-xs text-base-content/60 mt-2"><span class="chip" style="background:var(--series-1)"></span>drive air (burned) &nbsp; <span class="chip" style="background:var(--series-3)"></span>entrained suction air (what fights leaks) — both leave through the exhaust.</p>
+        </div>
+        <div class="space-y-3">
+          <div>
+            <label class="label text-sm pb-1">Supply pressure <span class="font-bold stat-num ml-1" id="ejPLabel">6.5 bar</span></label>
+            <input type="range" id="ejP" min="2" max="8" step="0.1" value="6.5" class="range range-sm range-primary">
+            <div class="flex justify-between text-xs text-base-content/50"><span>2</span><span>optimum ≈ 5</span><span>8 bar</span></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Air consumption</div><div class="text-lg font-bold stat-num" id="ejAir">265 l/min</div><div class="text-xs text-base-content/50">∝ absolute pressure</div></div>
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Suction capacity</div><div class="text-lg font-bold stat-num" id="ejSuc">185 l/min</div><div class="text-xs text-base-content/50">at 0 kPa (free flow)</div></div>
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Max vacuum</div><div class="text-lg font-bold stat-num" id="ejVac">−90 kPa</div><div class="text-xs text-base-content/50">at zero flow</div></div>
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Air wasted vs 5 bar</div><div class="text-lg font-bold stat-num" id="ejWaste">25%</div><div class="text-xs text-base-content/50" id="ejWasteNote">no extra vacuum for it</div></div>
+          </div>
+          <p class="text-xs text-base-content/60">Single-stage venturis return ~0.7 l/min of suction per l/min of air. Multi-stage (Piab COAX, Schmalz SBPL-HF) reuse the jet: up to 3.6:1 — but only at the shallow vacuum cardboard uses. That's the entire trick.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2 · GRIPPER SIM ============ -->
+  <section class="card bg-base-100 shadow-xl">
+    <div class="card-body space-y-4">
+      <h2 class="card-title text-2xl">2 · The check-valve foam gripper — how it "recognizes a hole"</h2>
+      <p class="text-base-content/70">A foam bar gripper is a vacuum plenum with 18 cells. Cells the box doesn't cover are giant leaks. In each cell sits a small ball: a <em>covered</em> cell flows gently and the ball hangs open; an <em>uncovered</em> cell flows hard, drag slams the ball onto its seat, and the cell seals itself — purely mechanical hole detection (Schmalz SVK, Coval MVG, AIRBEST TXM&nbsp;"-V"). Toggle the valves off and watch the plenum die. Try the four vacuum sources — same gripper, wildly different wall power.</p>
+      <div class="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
+        <div class="space-y-3">
+          <div class="relative">
+            <canvas id="grCanvas" class="glcanvas" style="height:430px"></canvas>
+            <div id="grPhase" class="absolute top-3 left-3 badge badge-lg badge-neutral">APPROACH</div>
+            <div id="grSave" class="absolute top-3 right-3 badge badge-lg hidden" style="background:var(--status-good);color:#04220a">AIR-SAVE ENGAGED</div>
+          </div>
+          <p class="text-xs text-base-content/60">Cell state: <span class="chip" style="background:var(--series-1)"></span>open + covered (feeding vacuum to the box) &nbsp; <span class="chip" style="background:var(--status-good)"></span>ball latched — sealed itself &nbsp; <span class="chip" style="background:var(--status-critical)"></span>open + leaking. Particles show air rushing into leaking cells.</p>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <label class="label text-xs pb-1">Box size <span class="font-bold stat-num ml-1" id="grCovLabel">61%</span></label>
+              <input type="range" id="grCov" min="0.25" max="1" step="0.01" value="0.61" class="range range-xs range-primary">
+            </div>
+            <div>
+              <label class="label text-xs pb-1">Box porosity <span class="font-bold stat-num ml-1" id="grPorLabel">tight</span></label>
+              <input type="range" id="grPor" min="0.15" max="3.4" step="0.05" value="0.5" class="range range-xs range-primary">
+            </div>
+            <div class="flex items-end gap-2 pb-1">
+              <label class="label cursor-pointer gap-2 text-xs"><input type="checkbox" id="grCV" class="toggle toggle-sm toggle-success" checked> check valves</label>
+            </div>
+            <div class="flex items-end gap-2 pb-1">
+              <label class="label cursor-pointer gap-2 text-xs"><input type="checkbox" id="grRun" class="toggle toggle-sm" checked> run cycle</label>
+            </div>
+          </div>
+          <div class="join w-full flex flex-wrap" id="grSrcBtns">
+            <button class="btn btn-sm join-item flex-1" data-src="single">Single-stage ejector</button>
+            <button class="btn btn-sm join-item flex-1 btn-active" data-src="multi">Multi-stage ejector</button>
+            <button class="btn btn-sm join-item flex-1" data-src="pump">Vane/claw pump</button>
+            <button class="btn btn-sm join-item flex-1" data-src="blower">BLDC blower</button>
+          </div>
+        </div>
+        <div class="space-y-3">
+          <div class="bg-base-200 rounded-box p-3">
+            <div class="flex justify-between text-xs text-base-content/60"><span>Plenum vacuum</span><span class="stat-num" id="grVmax">source max −95 kPa</span></div>
+            <div class="text-2xl font-bold stat-num" id="grV">0 kPa</div>
+            <progress class="progress progress-primary w-full" id="grVBar" value="0" max="95"></progress>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Leak flow to fight</div><div class="text-lg font-bold stat-num" id="grLeak">0 l/min</div></div>
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Source consumption</div><div class="text-lg font-bold stat-num" id="grCons">—</div><div class="text-xs text-base-content/50" id="grConsNote">wall watts</div></div>
+            <div class="bg-base-200 rounded-box p-2 col-span-2"><div class="text-xs text-base-content/60">Holding force vs required (2× weight, 8 kg box)</div><div class="text-lg font-bold stat-num"><span id="grF">0 N</span> <span class="text-base-content/50">/ 157 N</span> <span id="grFOK" class="badge badge-sm ml-1" style="background:var(--status-critical);color:#fff">NO GRIP</span></div></div>
+          </div>
+          <div class="bg-base-200 rounded-box p-2 text-xs space-y-1">
+            <div class="flex justify-between"><span class="text-base-content/60">covered cells</span><span class="stat-num" id="grNCov">11</span></div>
+            <div class="flex justify-between"><span class="text-base-content/60">latched (self-sealed)</span><span class="stat-num" id="grNLat">0</span></div>
+            <div class="flex justify-between"><span class="text-base-content/60">leaking open</span><span class="stat-num" id="grNLeak">7</span></div>
+          </div>
+          <p class="text-xs text-base-content/60">Push porosity to "torn" and even <em>covered</em> cells flow hard enough to slam their own valves shut — the real failure mode that makes VMECA sell two valve-threshold classes. Blow-off at release back-flushes dust out of the balls.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3 · SOURCE CURVES ============ -->
+  <section class="card bg-base-100 shadow-xl">
+    <div class="card-body space-y-4">
+      <h2 class="card-title text-2xl">3 · Pick your vacuum source — the curve is the spec</h2>
+      <p class="text-base-content/70">A vacuum source is a <em>curve</em>, not a number: free flow at 0 kPa falling to zero at its max vacuum. Your box is a leak line; the system settles where they cross. Deep-vacuum sources collapse on leaky cardboard; the blower barely notices. Drag the leak slider and watch each working point (dots).</p>
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <span><span class="chip" style="background:var(--series-1)"></span>Single-stage ejector (215 l/min · −85)</span>
+        <span><span class="chip" style="background:var(--series-2)"></span>Multi-stage ejector (354 l/min · −95)</span>
+        <span><span class="chip" style="background:var(--series-3)"></span>Vane/claw pump (1,030 l/min · −95)</span>
+        <span><span class="chip" style="background:var(--series-4)"></span>BLDC blower (3,000 l/min · −32)</span>
+        <span class="text-base-content/60">▪▪ leak line</span>
+      </div>
+      <div class="relative">
+        <canvas id="cvCanvas" class="plot" style="height:340px"></canvas>
+        <div id="cvTip" class="absolute hidden bg-base-300/95 rounded-box p-2 text-xs pointer-events-none shadow-lg" style="min-width:170px"></div>
+      </div>
+      <div>
+        <label class="label text-sm pb-1">Load leakiness <span class="font-bold stat-num ml-1" id="cvKLabel">moderate — decent boxes, check-valved head</span></label>
+        <input type="range" id="cvK" min="4" max="120" step="1" value="30" class="range range-sm range-primary">
+      </div>
+      <details class="text-xs text-base-content/60">
+        <summary class="cursor-pointer">table view — flow (l/min) at each vacuum level</summary>
+        <div class="overflow-x-auto mt-2"><table class="table table-xs" id="cvTable"></table></div>
+      </details>
+
+      <h3 class="font-bold text-lg pt-2">The 3,600 W wall outlet — who fits?</h3>
+      <p class="text-base-content/70 text-sm">One 230 V / 16 A group. Each bar: vacuum source + the robot (~1,000 W). Today's compressor pair doesn't fit — that's the klixon story: 120 motor starts/hour on 40 L tanks, thermal trips, dead air mid-shift.</p>
+      <div id="budget" class="space-y-2"></div>
+      <p class="text-xs text-base-content/60">Numbers: 2× oil-free compressors 5,200 W (today) · belt-drive oil-lube compressor 2,600 W · Becker/Busch-class vane or claw pump 1,500 W · 2× 48 V BLDC blowers 750 W (the Boston Dynamics / Pickle architecture).</p>
+    </div>
+  </section>
+
+  <footer class="text-sm text-base-content/60 space-y-2 pb-10">
+    <p><span class="font-semibold text-base-content/80">The three upgrade architectures</span> — (1) keep compressors + 5 bar regulator + multi-stage air-saving ejectors + check-valved heads (~50–70% air cut); (2) electric vane/claw pump + reservoir + the same heads at ~1.5 kW total (the recommendation); (3) 48 V blowers in the gripper heads at 750 W — the mobile-robot endgame.</p>
+    <p>Full derivations, product tables, failure modes, and the Shenzhen shopping list: <a class="link link-accent" href="vacuum-gripping-field-guide.md">vacuum-gripping-field-guide.md</a>.</p>
+  </footer>
+
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const CSS = getComputedStyle(document.querySelector('.viz-root'));
+const C = {
+  s1: CSS.getPropertyValue('--series-1').trim(),
+  s2: CSS.getPropertyValue('--series-2').trim(),
+  s3: CSS.getPropertyValue('--series-3').trim(),
+  s4: CSS.getPropertyValue('--series-4').trim(),
+  good: CSS.getPropertyValue('--status-good').trim(),
+  warn: CSS.getPropertyValue('--status-warn').trim(),
+  serious: CSS.getPropertyValue('--status-serious').trim(),
+  crit: CSS.getPropertyValue('--status-critical').trim(),
+  text: CSS.getPropertyValue('--text-primary').trim(),
+  muted: CSS.getPropertyValue('--text-secondary').trim(),
+};
+
+function makeRenderer(canvas){
+  const r = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false });
+  r.setPixelRatio(Math.min(devicePixelRatio, 2));
+  r.setClearColor(0x0b1020);
+  return r;
+}
+function fitRenderer(r, canvas, camera){
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== Math.floor(w*r.getPixelRatio()) || canvas.height !== Math.floor(h*r.getPixelRatio())){
+    r.setSize(w, h, false);
+    camera.aspect = w/h; camera.updateProjectionMatrix();
+  }
+}
+
+/* ============================================================
+   1 · EJECTOR CUTAWAY
+   ============================================================ */
+(() => {
+  const canvas = document.getElementById('ejCanvas');
+  const renderer = makeRenderer(canvas);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(40, 2, 0.1, 200);
+  camera.position.set(0, 7, 17);
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.target.set(0,0.5,0);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const key = new THREE.DirectionalLight(0xffffff, 1.2); key.position.set(6,10,8); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x88aaff, 0.5); rim.position.set(-8,4,-6); scene.add(rim);
+
+  // Half-lathe helper: profile pts = [ [y, radius], ... ] revolved half-way, laid along X
+  function halfLathe(profile, color, opacity=1){
+    const pts = profile.map(p => new THREE.Vector2(p[1], p[0]));
+    const g = new THREE.LatheGeometry(pts, 48, Math.PI/2, Math.PI);
+    const m = new THREE.MeshStandardMaterial({ color, metalness:0.55, roughness:0.4, side:THREE.DoubleSide,
+      transparent: opacity<1, opacity });
+    const mesh = new THREE.Mesh(g, m);
+    mesh.rotation.z = -Math.PI/2; // lathe axis Y -> X
+    return mesh;
+  }
+
+  const body = new THREE.Group();
+  // supply nozzle: inlet pipe converging to throat (x: -8 .. -2.2)
+  body.add(halfLathe([[-8,1.5],[-4.5,1.5],[-2.6,0.42],[-2.2,0.42]], 0x8a93a8));
+  // diffuser: (x: -0.8 .. 8) expanding
+  body.add(halfLathe([[-0.8,0.62],[2.5,1.1],[6,1.9],[8,1.95]], 0x8a93a8));
+  // outer housing shell around the suction chamber
+  body.add(halfLathe([[-3.2,2.6],[0,2.6],[0.4,2.4],[0.4,1.2],[0,1.0],[-3.2,1.0]], 0x39415a, 0.5));
+  // suction port riser (vertical half-tube into the chamber)
+  const port = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.9, 0.9, 3.2, 32, 1, true, Math.PI, Math.PI),
+    new THREE.MeshStandardMaterial({ color:0x39415a, metalness:0.5, roughness:0.45, side:THREE.DoubleSide, transparent:true, opacity:0.75 })
+  );
+  port.position.set(-1.5, 2.8, 0);
+  body.add(port);
+  // exhaust ring hint
+  body.add(halfLathe([[8,2.3],[8.6,2.3],[8.6,1.6],[8,1.6]], 0x39415a, 0.8));
+  scene.add(body);
+
+  // Particles
+  const N_SUP = 380, N_ENT = 260;
+  function mkPoints(n, color, size){
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n*3), 3));
+    const mat = new THREE.PointsMaterial({ color, size, transparent:true, opacity:0.95, depthWrite:false });
+    const pts = new THREE.Points(geo, mat);
+    scene.add(pts);
+    return pts;
+  }
+  const supPts = mkPoints(N_SUP, C.s1, 0.14);
+  const entPts = mkPoints(N_ENT, C.s3, 0.14);
+  const supT = new Float32Array(N_SUP).map(()=>Math.random());
+  const supJ = new Float32Array(N_SUP).map(()=>Math.random());
+  const entT = new Float32Array(N_ENT).map(()=>Math.random());
+  const entJ = new Float32Array(N_ENT).map(()=>Math.random());
+
+  // supply path: x -8 -> 10 ; radius envelope shrinks to throat then jet
+  function supPos(t, j, out){
+    const x = -8 + t*18;
+    let r;
+    if (x < -2.6) r = 1.2*(1 - (x+8)/5.4*0.7);       // converging
+    else if (x < -0.8) r = 0.28;                      // throat + free jet
+    else if (x < 6) r = 0.3 + (x+0.8)/6.8*1.2;        // diffuser spread
+    else r = 1.5;
+    const a = j*Math.PI;                              // stay in visible (front) half
+    out[0]=x; out[1]=Math.cos(a)*r*0.9; out[2]=Math.sin(a)*r*0.9;
+  }
+  // entrained path: down the port, curve into chamber, join jet
+  function entPos(t, j, out){
+    if (t < 0.35){ // descending the port
+      const u = t/0.35;
+      out[0] = -1.5 + (j-0.5)*1.0;
+      out[1] = 4.4 - u*3.4;
+      out[2] = (j-0.5)*1.0;
+    } else { // swept into jet and out
+      const u = (t-0.35)/0.65;
+      const x = -1.5 + u*11.5;
+      let r;
+      if (x < -0.8) r = 0.5;
+      else if (x < 6) r = 0.32 + (x+0.8)/6.8*1.25;
+      else r = 1.55;
+      const a = j*Math.PI;
+      out[0]=x; out[1]=Math.max(Math.cos(a)*r, -r)*0.9 + (1-u)*0.4; out[2]=Math.sin(a)*r*0.9;
+    }
+  }
+
+  // physics readouts
+  const el = id => document.getElementById(id);
+  let pGauge = 6.5;
+  function ejectorModel(pg){
+    const pAbs = pg + 1.013;
+    const air = 35.3 * pAbs;                                   // choked: ∝ absolute pressure (265 @ 6.5 barg)
+    const ramp = Math.min(1, Math.max(0, (pg-1.5)/3.0));       // dies below ~2 bar
+    const suction = 185 * Math.pow(ramp, 1.6) * (pg>5 ? 1-(pg-5)*0.015 : 1);
+    const vac = pg < 2 ? 20*ramp : Math.min(90, 30 + 60*Math.min(1,(pg-2)/2.5)) * (pg>7 ? 0.97 : 1);
+    const waste = Math.max(0, 1 - (5+1.013)/pAbs);
+    return { air, suction, vac, waste };
+  }
+  function updateReadouts(){
+    const m = ejectorModel(pGauge);
+    el('ejPLabel').textContent = pGauge.toFixed(1) + ' bar';
+    el('ejAir').textContent = Math.round(m.air) + ' l/min';
+    el('ejSuc').textContent = Math.round(m.suction) + ' l/min';
+    el('ejVac').textContent = '−' + Math.round(m.vac) + ' kPa';
+    el('ejWaste').textContent = Math.round(m.waste*100) + '%';
+    el('ejWasteNote').textContent = pGauge > 5.2 ? 'no extra vacuum for it' : (pGauge < 4 ? 'below design: vacuum collapses' : 'near optimum');
+  }
+  el('ejP').addEventListener('input', e => { pGauge = +e.target.value; updateReadouts(); });
+
+  const tmp = [0,0,0];
+  function animate(){
+    requestAnimationFrame(animate);
+    fitRenderer(renderer, canvas, camera);
+    const m = ejectorModel(pGauge);
+    const spd = 0.004 + 0.006*(m.air/320);
+    const espd = 0.003 + 0.007*(m.suction/185);
+    const sp = supPts.geometry.attributes.position.array;
+    for (let i=0;i<N_SUP;i++){
+      supT[i] += spd * (supT[i]>0.28 && supT[i]<0.62 ? 2.6 : 1);  // fast through throat/jet
+      if (supT[i] >= 1){ supT[i] = 0; supJ[i] = Math.random(); }
+      supPos(supT[i], supJ[i], tmp); sp[i*3]=tmp[0]; sp[i*3+1]=tmp[1]; sp[i*3+2]=tmp[2];
+    }
+    supPts.geometry.attributes.position.needsUpdate = true;
+    const ep = entPts.geometry.attributes.position.array;
+    const alive = Math.floor(N_ENT * Math.min(1, m.suction/185));
+    for (let i=0;i<N_ENT;i++){
+      if (i < alive){
+        entT[i] += espd * (entT[i]>0.35 ? 2.2 : 1);
+        if (entT[i] >= 1){ entT[i] = 0; entJ[i] = Math.random(); }
+        entPos(entT[i], entJ[i], tmp); ep[i*3]=tmp[0]; ep[i*3+1]=tmp[1]; ep[i*3+2]=tmp[2];
+      } else { ep[i*3]=0; ep[i*3+1]=-999; ep[i*3+2]=0; }
+    }
+    entPts.geometry.attributes.position.needsUpdate = true;
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  updateReadouts();
+  animate();
+})();
+
+/* ============================================================
+   2 · CHECK-VALVE GRIPPER SIM
+   ============================================================ */
+(() => {
+  const canvas = document.getElementById('grCanvas');
+  const renderer = makeRenderer(canvas);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(42, 2, 0.1, 200);
+  camera.position.set(7.5, 6.5, 11);
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.target.set(0, 2.2, 0);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+  const key = new THREE.DirectionalLight(0xffffff, 1.3); key.position.set(5,12,7); scene.add(key);
+  const fill = new THREE.DirectionalLight(0x99bbff, 0.4); fill.position.set(-6,5,-5); scene.add(fill);
+
+  // floor
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.MeshStandardMaterial({ color:0x131a2e, roughness:0.95 }));
+  floor.rotation.x = -Math.PI/2; scene.add(floor);
+
+  // ---- gripper ----
+  const NX = 6, NZ = 3, PITCH = 1.05;
+  const W = NX*PITCH, D = NZ*PITCH;
+  const gripper = new THREE.Group(); scene.add(gripper);
+  const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(W+0.3, 0.55, D+0.3),
+    new THREE.MeshStandardMaterial({ color:0x9aa3b8, metalness:0.7, roughness:0.35 }));
+  bodyMesh.position.y = 0.85; gripper.add(bodyMesh);
+  const plenum = new THREE.Mesh(new THREE.BoxGeometry(W+0.1, 0.8, D+0.1),
+    new THREE.MeshStandardMaterial({ color:0x2a3350, metalness:0.2, roughness:0.2, transparent:true, opacity:0.38 }));
+  plenum.position.y = 1.55; gripper.add(plenum);
+  const foam = new THREE.Mesh(new THREE.BoxGeometry(W+0.3, 0.5, D+0.3),
+    new THREE.MeshStandardMaterial({ color:0x23262e, roughness:1.0 }));
+  foam.position.y = 0.32; gripper.add(foam);
+  // stem
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.22,2.4,20),
+    new THREE.MeshStandardMaterial({ color:0x8a93a8, metalness:0.8, roughness:0.3 }));
+  stem.position.y = 3.1; gripper.add(stem);
+
+  // cells: seat ring + ball + indicator
+  const cells = [];
+  const ballGeo = new THREE.SphereGeometry(0.14, 16, 12);
+  const seatGeo = new THREE.TorusGeometry(0.16, 0.045, 10, 20);
+  const indGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.05, 20);
+  for (let ix=0; ix<NX; ix++) for (let iz=0; iz<NZ; iz++){
+    const x = (ix - (NX-1)/2)*PITCH, z = (iz - (NZ-1)/2)*PITCH;
+    const ball = new THREE.Mesh(ballGeo, new THREE.MeshStandardMaterial({ color:0xc8cede, metalness:0.6, roughness:0.3, emissive:0x000000 }));
+    ball.position.set(x, 1.35, z); gripper.add(ball);
+    const seat = new THREE.Mesh(seatGeo, new THREE.MeshStandardMaterial({ color:0x555f7a, metalness:0.5, roughness:0.5 }));
+    seat.rotation.x = Math.PI/2; seat.position.set(x, 1.72, z); gripper.add(seat);
+    const ind = new THREE.Mesh(indGeo, new THREE.MeshStandardMaterial({ color:0x394158, emissive:0x000000 }));
+    ind.position.set(x, 2.0, z); gripper.add(ind);
+    cells.push({ x, z, ball, ind, latched:false, covered:false, flow:0, latchAt:0 });
+  }
+
+  // ---- box ----
+  const boxMat = new THREE.MeshStandardMaterial({ color:0xb08a52, roughness:0.9 });
+  const boxEdge = new THREE.MeshStandardMaterial({ color:0x8a6a3c, roughness:0.9 });
+  const box = new THREE.Group(); scene.add(box);
+  const boxCore = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), boxMat); box.add(boxCore);
+  const tape = new THREE.Mesh(new THREE.BoxGeometry(1,1.002,0.18), boxEdge); box.add(tape);
+  let boxW = 4, boxD = 2.6, boxH = 2.0;
+  function shapeBox(){
+    boxCore.scale.set(boxW, boxH, boxD);
+    tape.scale.set(boxW, boxH, boxD*0.09/0.18 + 0.001);
+    tape.position.z = 0;
+  }
+
+  // ---- leak particles ----
+  const N_LK = 500;
+  const lkGeo = new THREE.BufferGeometry();
+  lkGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N_LK*3), 3));
+  const lkPts = new THREE.Points(lkGeo, new THREE.PointsMaterial({ color:C.crit, size:0.09, transparent:true, opacity:0.85, depthWrite:false }));
+  scene.add(lkPts);
+  const lkT = new Float32Array(N_LK).map(()=>Math.random());
+  const lkCell = new Int16Array(N_LK).map(()=>-1);
+  const lkOff = new Float32Array(N_LK*2).map(()=>Math.random()-0.5);
+
+  // ---- controls / model ----
+  const el = id => document.getElementById(id);
+  const SOURCES = {
+    single: { name:'Single-stage ejector', qmax:215, vmax:85, q:v=>215*Math.pow(Math.max(0,1-v/85),1.2), consFull:265, consUnit:'air', wall:3200, airSave:true },
+    multi:  { name:'Multi-stage ejector',  qmax:354, vmax:95, q:v=>v>95?0:354*Math.exp(-v/26),            consFull:110, consUnit:'air', wall:1320, airSave:true },
+    pump:   { name:'Vane/claw pump',       qmax:1030,vmax:95, q:v=>1030*Math.max(0,1-Math.pow(v/95,2)),   consFull:1500,consUnit:'W',   wall:1500, airSave:false },
+    blower: { name:'BLDC blower',          qmax:3000,vmax:32, q:v=>3000*Math.pow(Math.max(0,1-v/32),1.5), consFull:375, consUnit:'W',   wall:375,  airSave:false },
+  };
+  let srcKey = 'multi';
+  document.querySelectorAll('#grSrcBtns button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('#grSrcBtns button').forEach(x=>x.classList.remove('btn-active'));
+    b.classList.add('btn-active'); srcKey = b.dataset.src;
+  }));
+
+  let coverage = 0.61, porosity = 0.5, useCV = true, running = true;
+  el('grCov').addEventListener('input', e => {
+    coverage = +e.target.value;
+    el('grCovLabel').textContent = Math.round(coverage*100) + '%';
+    boxW = W * Math.sqrt(coverage) * 1.02; boxD = D * Math.sqrt(coverage) * 1.02; shapeBox(); assignCoverage();
+  });
+  el('grPor').addEventListener('input', e => {
+    porosity = +e.target.value;
+    el('grPorLabel').textContent = porosity < 0.7 ? 'tight' : porosity < 1.6 ? 'porous' : porosity < 2.6 ? 'leaky' : 'torn';
+  });
+  el('grCV').addEventListener('change', e => { useCV = e.target.checked; });
+  el('grRun').addEventListener('change', e => { running = e.target.checked; });
+
+  function assignCoverage(){
+    for (const c of cells) c.covered = Math.abs(c.x) <= boxW/2 - 0.12 && Math.abs(c.z) <= boxD/2 - 0.12;
+  }
+  shapeBox(); assignCoverage();
+
+  // pick-cycle state machine
+  const REST_Y = 6.2, PICK_Y = boxH + 0.02, LIFT_Y = 4.6;
+  let phase = 'approach', pt = 0, V = 0, gy = REST_Y, boxLifted = false, failFlash = 0;
+  const OPEN_K = 5.5, LATCH_FLOW = 14, RESID_K = 0.06;
+
+  function cellFlow(c){
+    if (V <= 0.2) return 0;
+    const s = Math.sqrt(V);
+    if (c.latched) return RESID_K*s;
+    return c.covered ? porosity*s : OPEN_K*s;
+  }
+
+  function setPhase(p){ phase = p; pt = 0;
+    const badge = el('grPhase');
+    badge.textContent = p === 'fail' ? 'GRIP FAILED — not enough force' : p.toUpperCase();
+    badge.className = 'absolute top-3 left-3 badge badge-lg ' + (p==='fail' ? '' : 'badge-neutral');
+    badge.style.background = p==='fail' ? C.crit : '';
+    badge.style.color = p==='fail' ? '#fff' : '';
+  }
+
+  const clock = new THREE.Clock();
+  function step(dt){
+    const src = SOURCES[srcKey];
+    pt += dt;
+    if (phase === 'approach'){
+      gy = THREE.MathUtils.damp(gy, PICK_Y + 0.02, 3, dt);
+      V = Math.max(0, V - 60*dt);
+      if (Math.abs(gy - PICK_Y) < 0.05){ setPhase('evacuate'); for (const c of cells){ c.latched=false; c.latchAt = 0.08 + Math.random()*0.5; } }
+    } else if (phase === 'evacuate' || phase === 'lift' || phase === 'hold'){
+      // latch logic
+      for (const c of cells){
+        if (!c.latched && useCV && pt > c.latchAt && cellFlow(c) > LATCH_FLOW) c.latched = true;
+      }
+      const leak = cells.reduce((s,c)=>s+cellFlow(c), 0);
+      const qs = src.q(Math.min(V, src.vmax));
+      V += (qs - leak) * dt * 0.09;
+      V = THREE.MathUtils.clamp(V, 0, src.vmax);
+      if (phase === 'evacuate' && pt > 2.6){
+        if (force() >= 157) { setPhase('lift'); boxLifted = true; }
+        else { setPhase('fail'); failFlash = 2.0; }
+      }
+      if (phase === 'lift'){
+        gy = THREE.MathUtils.damp(gy, LIFT_Y, 2.5, dt);
+        if (force() < 157*0.55){ boxLifted = false; setPhase('fail'); failFlash = 2.0; } // dropped mid-air
+        else if (Math.abs(gy - LIFT_Y) < 0.08) setPhase('hold');
+      }
+      if (phase === 'hold' && pt > 1.6) setPhase('lower');
+    } else if (phase === 'lower'){
+      gy = THREE.MathUtils.damp(gy, PICK_Y + 0.02, 3, dt);
+      if (Math.abs(gy - PICK_Y) < 0.05){ setPhase('release'); }
+    } else if (phase === 'release'){
+      V = Math.max(0, V - 220*dt);            // blow-off dumps the vacuum + back-flushes valves
+      for (const c of cells) if (pt > 0.15) c.latched = false;
+      boxLifted = false;
+      if (pt > 0.8) setPhase('retract');
+    } else if (phase === 'retract'){
+      gy = THREE.MathUtils.damp(gy, REST_Y, 2.5, dt);
+      if (Math.abs(gy - REST_Y) < 0.1) setPhase('approach');
+    } else if (phase === 'fail'){
+      failFlash -= dt;
+      const leak = cells.reduce((s,c)=>s+cellFlow(c), 0);
+      V += (src.q(Math.min(V, src.vmax)) - leak) * dt * 0.09;
+      V = THREE.MathUtils.clamp(V, 0, src.vmax);
+      if (failFlash <= 0){ setPhase('retract'); }
+    }
+  }
+
+  function force(){
+    // vacuum acts on the box through covered, un-latched cells; ~8 cm² effective seal each
+    const n = cells.filter(c=>c.covered && !c.latched).length;
+    return V*1000 * n * 8e-4;
+  }
+
+  function updateHud(){
+    const src = SOURCES[srcKey];
+    const leak = cells.reduce((s,c)=>s+cellFlow(c), 0);
+    const nCov = cells.filter(c=>c.covered).length;
+    const nLat = cells.filter(c=>c.latched).length;
+    const nLeakOpen = cells.filter(c=>!c.latched && (!c.covered || porosity>2.2) && V>1).length;
+    el('grV').textContent = (V < 0.5 ? '0' : '−' + V.toFixed(0)) + ' kPa';
+    el('grVBar').value = V; el('grVBar').max = 95;
+    el('grVmax').textContent = 'source max −' + src.vmax + ' kPa';
+    el('grLeak').textContent = Math.round(leak) + ' l/min';
+    const active = (phase==='evacuate'||phase==='lift'||phase==='hold'||phase==='fail');
+    let duty = 1, cons;
+    if (src.airSave && active){
+      const vset = Math.min(src.vmax*0.8, 55);
+      duty = V >= vset - 2 ? THREE.MathUtils.clamp(leak/Math.max(src.q(vset),1), 0.04, 1) : 1;
+    }
+    if (!active) duty = 0;
+    if (src.consUnit === 'air'){
+      cons = Math.round(src.consFull*duty) + ' l/min air';
+      el('grConsNote').textContent = '≈ ' + Math.round(src.wall*duty) + ' W wall (12 W per l/min)';
+    } else {
+      const w = srcKey==='blower' ? src.consFull*(0.35+0.65*duty||0.35) : src.consFull;
+      cons = Math.round(active ? w : (srcKey==='pump' ? w*0.35 : 40)) + ' W';
+      el('grConsNote').textContent = srcKey==='pump' ? 'dead-head = coolest, VFD idles it' : 'speed-servoed EC motor';
+    }
+    el('grCons').textContent = cons;
+    const save = el('grSave');
+    save.classList.toggle('hidden', !(src.airSave && active && duty < 0.85));
+    if (src.airSave && active && duty < 0.85) save.textContent = 'AIR-SAVE — duty ' + Math.round(duty*100) + '%';
+    const F = force();
+    el('grF').textContent = Math.round(F) + ' N';
+    const ok = F >= 157;
+    const fb = el('grFOK');
+    fb.textContent = ok ? 'GRIP OK' : 'NO GRIP';
+    fb.style.background = ok ? C.good : C.crit;
+    el('grNCov').textContent = nCov;
+    el('grNLat').textContent = nLat;
+    el('grNLeak').textContent = nLeakOpen;
+  }
+
+  function updateVisuals(dt){
+    gripper.position.y = gy;
+    if (boxLifted) box.position.y = gy - boxH/2 - 0.01;
+    else box.position.y = THREE.MathUtils.damp(box.position.y, boxH/2, 6, dt);
+    // cells
+    for (const c of cells){
+      const targetY = c.latched ? 1.68 : 1.30 + (cellFlow(c)>2 ? Math.sin(performance.now()/90 + c.x*7)*0.03 : 0);
+      c.ball.position.y = THREE.MathUtils.damp(c.ball.position.y, targetY, 10, dt);
+      let col, em;
+      if (c.latched){ col = C.good; em = 0.55; }
+      else if (c.covered && V > 1){ col = C.s1; em = 0.5; }
+      else if (!c.covered && V > 1){ col = C.crit; em = 0.6; }
+      else { col = '#394158'; em = 0; }
+      c.ind.material.color.set(col);
+      c.ind.material.emissive.set(col);
+      c.ind.material.emissiveIntensity = em;
+    }
+    // leak particles: assign to leaking cells proportional to flow
+    const leaky = cells.filter(c => cellFlow(c) > 3 && !c.latched);
+    const p = lkGeo.attributes.position.array;
+    const totalLeak = leaky.reduce((s,c)=>s+cellFlow(c),0);
+    const want = THREE.MathUtils.clamp(Math.floor(totalLeak*3), 0, N_LK);
+    for (let i=0;i<N_LK;i++){
+      if (i < want && leaky.length){
+        if (lkCell[i] < 0 || lkT[i] >= 1){
+          lkT[i] = 0; lkCell[i] = Math.floor(Math.random()*leaky.length);
+          lkOff[i*2] = (Math.random()-0.5)*1.4; lkOff[i*2+1] = (Math.random()-0.5)*1.4;
+        }
+        lkT[i] += dt*1.8;
+        const c = leaky[Math.min(lkCell[i], leaky.length-1)];
+        const u = lkT[i];
+        p[i*3]   = c.x + lkOff[i*2]*(1-u);
+        p[i*3+1] = gy + 0.05 - (1-u)*1.5;
+        p[i*3+2] = c.z + lkOff[i*2+1]*(1-u);
+      } else { p[i*3+1] = -999; lkCell[i] = -1; }
+    }
+    lkGeo.attributes.position.needsUpdate = true;
+  }
+
+  setPhase('approach');
+  function animate(){
+    requestAnimationFrame(animate);
+    fitRenderer(renderer, canvas, camera);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    if (running) step(dt);
+    updateVisuals(dt);
+    updateHud();
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+
+/* ============================================================
+   3 · SOURCE CURVES + OUTLET BUDGET (2D canvas)
+   ============================================================ */
+(() => {
+  const canvas = document.getElementById('cvCanvas');
+  const ctx = canvas.getContext('2d');
+  const tip = document.getElementById('cvTip');
+  const series = [
+    { name:'Single-stage ejector', label:'single-stage', lv:55, ldy:14,  color:C.s1, vmax:85, q:v=>215*Math.pow(Math.max(0,1-v/85),1.2) },
+    { name:'Multi-stage ejector',  label:'multi-stage',  lv:14, ldy:-10, color:C.s2, vmax:95, q:v=>v>95?0:354*Math.exp(-v/26) },
+    { name:'Vane/claw pump',       label:'vane/claw',    lv:58, ldy:-10, color:C.s3, vmax:95, q:v=>1030*Math.max(0,1-Math.pow(v/95,2)) },
+    { name:'BLDC blower',          label:'blower',       lv:22, ldy:14,  color:C.s4, vmax:32, q:v=>3000*Math.pow(Math.max(0,1-v/32),1.5) },
+  ];
+  let K = 30;
+  const YMAX = 1150, XMAX = 100;
+  const leakQ = v => K*Math.sqrt(v);
+  let PAD = { l:56, r:46, t:16, b:36 };
+  let mouse = null;
+
+  function workingPoint(s){
+    let lo=0, hi=s.vmax;
+    if (s.q(0) <= leakQ(0.01)) return { v:0, q:s.q(0) };
+    for (let i=0;i<40;i++){ const m=(lo+hi)/2; (s.q(m) > leakQ(m)) ? lo=m : hi=m; }
+    return { v:lo, q:s.q(lo) };
+  }
+
+  function draw(){
+    const dpr = Math.min(devicePixelRatio, 2);
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    canvas.width = w*dpr; canvas.height = h*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+    const X = v => PAD.l + (v/XMAX)*(w-PAD.l-PAD.r);
+    const Y = q => h-PAD.b - (Math.min(q,YMAX)/YMAX)*(h-PAD.t-PAD.b);
+
+    // grid + axes (recessive)
+    ctx.strokeStyle = 'rgba(154,163,184,0.15)'; ctx.lineWidth = 1;
+    ctx.fillStyle = C.muted; ctx.font = '11px ui-monospace, monospace';
+    for (let q=0;q<=1000;q+=250){ ctx.beginPath(); ctx.moveTo(PAD.l, Y(q)); ctx.lineTo(w-PAD.r, Y(q)); ctx.stroke(); ctx.fillText(q, 8, Y(q)+4); }
+    for (let v=0;v<=100;v+=20){ ctx.beginPath(); ctx.moveTo(X(v), PAD.t); ctx.lineTo(X(v), h-PAD.b); ctx.stroke(); ctx.fillText(v===0?'0':'−'+v, X(v)-10, h-14); }
+    ctx.fillText('suction flow, l/min', 8, 12);
+    ctx.fillText('vacuum, kPa →', w-PAD.r-90, h-14);
+
+    // leak line (dashed neutral)
+    ctx.setLineDash([5,4]); ctx.strokeStyle = 'rgba(240,242,248,0.75)'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let v=0; v<=XMAX; v+=1){ const q=leakQ(v); if (q>YMAX) break; (v===0)?ctx.moveTo(X(v),Y(q)):ctx.lineTo(X(v),Y(q)); }
+    ctx.stroke(); ctx.setLineDash([]);
+
+    // curves
+    for (const s of series){
+      ctx.strokeStyle = s.color; ctx.lineWidth = 2;
+      ctx.beginPath();
+      let started = false;
+      for (let v=0; v<=s.vmax; v+=0.5){
+        const q = s.q(v);
+        if (q > YMAX) { started = false; continue; }
+        if (!started){ ctx.moveTo(X(v), Y(q)); started = true; } else ctx.lineTo(X(v), Y(q));
+      }
+      ctx.stroke();
+      // direct label anchored along the curve (text token color + chip)
+      const lx = X(s.lv), ly = Y(Math.min(s.q(s.lv), YMAX)) + s.ldy;
+      ctx.fillStyle = s.color;
+      ctx.fillRect(lx, ly-7, 8, 8);
+      ctx.fillStyle = C.text;
+      ctx.fillText(s.label, lx+12, ly);
+      // off-scale entry marker for blower
+      if (s.q(0) > YMAX){
+        const vEnter = (() => { let lo=0, hi=s.vmax; for(let i=0;i<40;i++){const m=(lo+hi)/2; (s.q(m)>YMAX)?lo=m:hi=m;} return hi; })();
+        ctx.fillStyle = s.color;
+        ctx.fillText('↑ ' + Math.round(s.q(0)).toLocaleString() + ' l/min at 0 kPa', X(vEnter)+4, PAD.t+12);
+      }
+      // working point
+      const wp = workingPoint(s);
+      if (wp.q <= YMAX){
+        ctx.beginPath(); ctx.arc(X(wp.v), Y(wp.q), 5, 0, Math.PI*2);
+        ctx.fillStyle = s.color; ctx.fill();
+        ctx.strokeStyle = '#0b1020'; ctx.lineWidth = 2; ctx.stroke();
+      }
+    }
+
+    // crosshair
+    if (mouse){
+      const vAt = Math.max(0, Math.min(XMAX, (mouse.x - PAD.l)/(w-PAD.l-PAD.r)*XMAX));
+      ctx.strokeStyle = 'rgba(240,242,248,0.35)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(X(vAt), PAD.t); ctx.lineTo(X(vAt), h-PAD.b); ctx.stroke();
+      let html = '<div class="font-bold mb-1">at −' + vAt.toFixed(0) + ' kPa</div>';
+      for (const s of series) html += '<div><span class="chip" style="background:'+s.color+'"></span>' + Math.round(s.q(vAt)).toLocaleString() + ' l/min</div>';
+      html += '<div class="mt-1 text-base-content/60">leak: ' + Math.round(leakQ(vAt)) + ' l/min</div>';
+      tip.innerHTML = html;
+      tip.style.left = Math.min(mouse.x + 14, w - 190) + 'px';
+      tip.style.top = (mouse.y - 10) + 'px';
+      tip.classList.remove('hidden');
+    } else tip.classList.add('hidden');
+  }
+
+  canvas.addEventListener('mousemove', e => { const r = canvas.getBoundingClientRect(); mouse = { x:e.clientX-r.left, y:e.clientY-r.top }; draw(); });
+  canvas.addEventListener('mouseleave', () => { mouse = null; draw(); });
+  document.getElementById('cvK').addEventListener('input', e => {
+    K = +e.target.value;
+    const lbl = document.getElementById('cvKLabel');
+    lbl.textContent = K < 15 ? 'sealed — glossy box, check-valved head'
+      : K < 45 ? 'moderate — decent boxes, check-valved head'
+      : K < 80 ? 'leaky — porous corrugate, plain foam'
+      : 'torn open — worst-case container freight';
+    draw();
+  });
+
+  // table view (accessibility / print)
+  const tbl = document.getElementById('cvTable');
+  let thead = '<thead><tr><th>vacuum kPa</th>';
+  for (const s of series) thead += '<th>'+s.name+'</th>';
+  thead += '</tr></thead><tbody>';
+  for (const v of [0,10,20,30,40,60,80,95]){
+    thead += '<tr><td>−'+v+'</td>';
+    for (const s of series) thead += '<td class="stat-num">'+(v>s.vmax?'—':Math.round(s.q(v)).toLocaleString())+'</td>';
+    thead += '</tr>';
+  }
+  tbl.innerHTML = thead + '</tbody>';
+
+  new ResizeObserver(draw).observe(canvas);
+  draw();
+
+  // ---- outlet budget bars ----
+  const budget = document.getElementById('budget');
+  const LIMIT = 3600, SCALE_MAX = 6400, ROBOT = 1000;
+  const rows = [
+    { name:'2× oil-free compressors (today)', w:5200 },
+    { name:'Belt-drive oil-lube compressor', w:2600 },
+    { name:'Vane / claw vacuum pump', w:1500 },
+    { name:'2× 48 V BLDC blowers', w:750 },
+  ];
+  for (const r of rows){
+    const total = r.w + ROBOT;
+    const over = total > LIMIT;
+    const srcPct = (r.w/SCALE_MAX)*100, robPct = (ROBOT/SCALE_MAX)*100, limPct = (LIMIT/SCALE_MAX)*100;
+    budget.insertAdjacentHTML('beforeend', `
+      <div>
+        <div class="flex justify-between text-xs mb-1">
+          <span>${r.name}</span>
+          <span class="stat-num" style="color:${over?C.crit:C.muted}">${total.toLocaleString()} W ${over?'⚠ trips the 16 A group':''}</span>
+        </div>
+        <div class="relative h-5 rounded" style="background:rgba(154,163,184,0.12)">
+          <div class="absolute h-5 rounded-l" style="left:0;width:${srcPct}%;background:${over?C.crit:'#3987e5'}"></div>
+          <div class="absolute h-5" style="left:calc(${srcPct}% + 2px);width:${robPct}%;background:rgba(154,163,184,0.55)"></div>
+          <div class="absolute top-[-3px] h-[26px] w-[2px]" style="left:${limPct}%;background:${C.warn}"></div>
+        </div>
+      </div>`);
+  }
+  budget.insertAdjacentHTML('beforeend', `<div class="text-xs text-base-content/60 mt-1"><span class="chip" style="background:#3987e5"></span>vacuum source &nbsp; <span class="chip" style="background:rgba(154,163,184,0.55)"></span>robot ~1,000 W &nbsp; <span class="chip" style="background:${C.warn}"></span>3,600 W outlet limit</div>`);
+})();
+</script>
+</body>
+</html>

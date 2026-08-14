@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="en" data-theme="night">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why your compressor motor does what it does</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, li, td, th, .badge, .label) { overflow-wrap: anywhere; }
+  :where(img, svg, video, canvas, iframe) { max-width: 100%; }
+  .glcanvas { width: 100%; border-radius: 0.75rem; display: block; background: #0b1020; }
+  .plot { width: 100%; border-radius: 0.5rem; display: block; background: #0b1020; }
+  .stat-num { font-variant-numeric: tabular-nums; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body class="bg-base-200 text-base-content">
+<div class="max-w-6xl mx-auto p-4 md:p-8 space-y-10">
+
+  <header class="space-y-2">
+    <h1 class="text-3xl md:text-4xl font-bold">Why your compressor motor does what it does</h1>
+    <p class="text-base-content/70 max-w-3xl">An interactive tour of the induction motor: the rotating field made by flipping AC polarity, slip as the thing that <em>creates</em> torque, why low voltage means <em>more</em> current, and why the klixon eventually gives up. Drag the 3D views to orbit.</p>
+  </header>
+
+  <!-- ============ MOTOR SIM ============ -->
+  <section class="card bg-base-100 shadow-xl">
+    <div class="card-body space-y-4">
+      <h2 class="card-title text-2xl">1 · The motor, live</h2>
+      <p class="text-base-content/70">The <span class="text-warning font-semibold">amber/cyan/magenta blocks</span> are the stator coils — their cores flash <span class="text-error font-semibold">red (+)</span> and <span class="text-info font-semibold">blue (−)</span> as the AC flips polarity, and together they spin the field bar. The <span class="text-orange-400 font-semibold">cage bars glow</span> with induced current: the more the rotor lags the field (slip), the brighter they burn. Rotor lag is exaggerated for visibility — real slip is only a few %.</p>
+      <div class="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
+        <div class="space-y-3">
+          <div id="motorWrap" class="relative">
+            <canvas id="motorCanvas" class="glcanvas" style="height:400px"></canvas>
+            <div id="motorStatus" class="absolute top-3 left-3 badge badge-lg badge-neutral">OFF</div>
+          </div>
+          <div>
+            <canvas id="phasePlot" class="plot" style="height:110px"></canvas>
+            <p class="text-xs text-base-content/60 mt-1">The three coil currents. Each one just flips polarity 50×/s — the <em>rotation</em> only exists because they peak one after another. The moving line is "now".</p>
+          </div>
+          <div>
+            <canvas id="torquePlot" class="plot" style="height:200px"></canvas>
+            <p class="text-xs text-base-content/60 mt-1">Torque the motor <em>can</em> make vs rotor speed, at the voltage actually reaching it (dashed = at full 230 V). Flat line = load. The dot is the operating point: stable only on the right-hand slope. Left of the peak = the "heater pretending to be a motor" zone.</p>
+          </div>
+        </div>
+        <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">V at motor</div><div class="text-lg font-bold stat-num" id="roV">230 V</div><div class="text-xs text-base-content/50 stat-num" id="roDrop">cord drop 0 V</div></div>
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Current</div><div class="text-lg font-bold stat-num" id="roI">0.0 A</div><div class="text-xs text-base-content/50">rated 10 A</div></div>
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Rotor speed</div><div class="text-lg font-bold stat-num" id="roRpm">0 rpm</div><div class="text-xs text-base-content/50">field: 3000 rpm</div></div>
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Slip</div><div class="text-lg font-bold stat-num" id="roSlip">—</div><div class="text-xs text-base-content/50 stat-num" id="roT">torque 0.00 ×rated</div></div>
+          </div>
+          <div class="bg-base-200 rounded-box p-3 space-y-1">
+            <div class="flex justify-between text-xs"><span>Winding temperature</span><span class="stat-num" id="roTemp">22 °C</span></div>
+            <progress id="tempBar" class="progress progress-success w-full" value="0" max="100"></progress>
+            <div class="flex justify-between text-xs text-base-content/50"><span>22 °C</span><span class="text-error">klixon trips at 140 °C</span></div>
+          </div>
+          <div class="flex gap-2">
+            <button id="btnPower" class="btn btn-primary grow">Power ON</button>
+            <button id="btnReset" class="btn btn-error btn-outline" disabled>Reset klixon</button>
+          </div>
+          <fieldset class="fieldset bg-base-200 rounded-box p-3">
+            <legend class="fieldset-legend text-xs">Start scenario</legend>
+            <label class="label cursor-pointer justify-start gap-2 py-0"><input type="radio" name="scen" class="radio radio-sm" value="unloader" checked><span class="text-sm">Unloader working (head vented, load kicks in after spin-up)</span></label>
+            <label class="label cursor-pointer justify-start gap-2 py-0"><input type="radio" name="scen" class="radio radio-sm" value="pressure"><span class="text-sm">Start against tank pressure (unloader clogged)</span></label>
+          </fieldset>
+          <label class="form-control bg-base-200 rounded-box p-3 block">
+            <div class="flex justify-between text-xs mb-1"><span>Load: tank back-pressure torque</span><span class="stat-num"><span id="loadVal">0.8</span> ×rated</span></div>
+            <input id="loadSlider" type="range" min="0" max="2.2" step="0.05" value="0.8" class="range range-sm range-primary w-full">
+          </label>
+          <label class="form-control bg-base-200 rounded-box p-3 block">
+            <div class="text-xs mb-1">Extension cord (adds resistance in series)</div>
+            <select id="cordSel" class="select select-sm w-full">
+              <option value="0">None — wall socket right there (0 Ω)</option>
+              <option value="0.23">10 m · 1.5 mm² (0.23 Ω)</option>
+              <option value="0.58">25 m · 1.5 mm² (0.58 Ω)</option>
+              <option value="0.35">25 m · 2.5 mm² (0.35 Ω)</option>
+              <option value="1.17">50 m · 1.5 mm² (1.17 Ω)</option>
+              <option value="0.70">50 m · 2.5 mm² (0.70 Ω)</option>
+            </select>
+          </label>
+          <div class="bg-base-200 rounded-box p-3 text-xs space-y-1">
+            <div class="font-semibold">Things to try</div>
+            <ol class="list-decimal list-inside space-y-1 text-base-content/70">
+              <li>Power on with no cord: brief inrush, settles, temp stays low.</li>
+              <li>Pick the 50 m · 1.5 mm² cord + "start against pressure": watch it stall, current pin high, temp climb, klixon trip.</li>
+              <li>While running, drag the load past the torque peak: it falls off the cliff.</li>
+              <li>Long cord + high load: watch V fall <em>while</em> A rises — the feedback loop.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ COPPER PLATE ============ -->
+  <section class="card bg-base-100 shadow-xl">
+    <div class="card-body space-y-4">
+      <h2 class="card-title text-2xl">2 · The magnet over the copper plate</h2>
+      <p class="text-base-content/70">Same physics, unrolled flat. The magnet sweeps over the plate; the <span class="text-orange-400 font-semibold">glowing loops</span> are eddy currents induced only by <em>relative</em> motion, and they drag the plate along. Release the brake and the plate accelerates until it nearly matches the magnet — and the currents fade. That gap that never quite closes? That's slip. The brake is the compressor's back-pressure.</p>
+      <div class="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
+        <canvas id="plateCanvas" class="glcanvas" style="height:360px"></canvas>
+        <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Magnet speed</div><div class="text-lg font-bold stat-num" id="pvMag">1.5</div></div>
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Plate speed</div><div class="text-lg font-bold stat-num" id="pvPlate">0.0</div></div>
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Relative speed = slip</div><div class="text-lg font-bold stat-num text-warning" id="pvRel">1.5</div></div>
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Drag force (∝ slip)</div><div class="text-lg font-bold stat-num text-orange-400" id="pvF">0.0</div></div>
+          </div>
+          <label class="form-control bg-base-200 rounded-box p-3 block">
+            <div class="flex justify-between text-xs mb-1"><span>Magnet speed (the grid frequency)</span><span class="stat-num" id="magVal">1.5</span></div>
+            <input id="magSlider" type="range" min="0.5" max="3" step="0.1" value="1.5" class="range range-sm range-primary w-full">
+          </label>
+          <label class="form-control bg-base-200 rounded-box p-3 block">
+            <div class="flex justify-between text-xs mb-1"><span>Brake on plate (the load torque)</span><span class="stat-num" id="brakeVal">0.0</span></div>
+            <input id="brakeSlider" type="range" min="0" max="1" step="0.05" value="0" class="range range-sm range-secondary w-full">
+          </label>
+          <label class="label cursor-pointer bg-base-200 rounded-box p-3 justify-start gap-3">
+            <input id="loopChk" type="checkbox" class="toggle toggle-sm toggle-primary" checked><span class="text-sm">Auto-replay the pass</span>
+          </label>
+          <div class="bg-base-200 rounded-box p-3 text-xs text-base-content/70 space-y-1">
+            <div class="font-semibold text-base-content">Read the analogy</div>
+            <ul class="list-disc list-inside space-y-1">
+              <li>Magnet = the rotating stator field (speed fixed by 50 Hz).</li>
+              <li>Plate = the rotor cage.</li>
+              <li>Glow = induced current: exists <em>only</em> while there's lag.</li>
+              <li>Brake ↑ → plate lags more → glow &amp; drag force grow. That's the automatic feedback that "holds up" the load.</li>
+              <li>The plate never spontaneously runs backwards: any lag, in any direction, makes force that chases the magnet.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CABLE CALC ============ -->
+  <section class="card bg-base-100 shadow-xl">
+    <div class="card-body space-y-4">
+      <h2 class="card-title text-2xl">3 · The extension-cord arithmetic</h2>
+      <p class="text-base-content/70">Copper has resistivity ρ ≈ 0.0175 Ω·mm²/m. The current travels <em>out through the live wire and back through the neutral</em>, so a 25 m cord is 50 m of copper. Resistance R = ρ · (2 × length) / cross-section, and the volts it eats is just Ohm's law, V = I × R.</p>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="space-y-3">
+          <label class="form-control bg-base-200 rounded-box p-3 block">
+            <div class="flex justify-between text-xs mb-1"><span>Cord length</span><span class="stat-num"><span id="ccLenVal">25</span> m</span></div>
+            <input id="ccLen" type="range" min="1" max="50" step="1" value="25" class="range range-sm range-primary w-full">
+          </label>
+          <label class="form-control bg-base-200 rounded-box p-3 block">
+            <div class="text-xs mb-1">Conductor cross-section</div>
+            <select id="ccArea" class="select select-sm w-full">
+              <option value="0.75">0.75 mm² (cheap lamp cord)</option>
+              <option value="1">1.0 mm²</option>
+              <option value="1.5" selected>1.5 mm² (common orange cord)</option>
+              <option value="2.5">2.5 mm² (proper site cord)</option>
+              <option value="4">4.0 mm²</option>
+            </select>
+          </label>
+          <label class="form-control bg-base-200 rounded-box p-3 block">
+            <div class="flex justify-between text-xs mb-1"><span>Current through it</span><span class="stat-num"><span id="ccIVal">10</span> A</span></div>
+            <input id="ccI" type="range" min="1" max="70" step="1" value="10" class="range range-sm range-secondary w-full">
+            <div class="text-xs text-base-content/50 mt-1">~10 A = compressor running · ~60 A = motor starting</div>
+          </label>
+        </div>
+        <div class="space-y-2">
+          <div class="mockup-code text-sm"><pre data-prefix="R"><code id="ccFormula">= 0.0175 × (2×25) / 1.5 = 0.58 Ω</code></pre><pre data-prefix="ΔV"><code id="ccDropF">= 10 A × 0.58 Ω = 5.8 V</code></pre></div>
+          <div class="grid grid-cols-3 gap-2">
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Volts eaten</div><div class="text-lg font-bold stat-num" id="ccDrop">5.8 V</div></div>
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Left at motor</div><div class="text-lg font-bold stat-num" id="ccLeft">224 V</div></div>
+            <div class="bg-base-200 rounded-box p-2"><div class="text-xs text-base-content/60">Cord heats with</div><div class="text-lg font-bold stat-num" id="ccHeat">58 W</div></div>
+          </div>
+          <div id="ccVerdict" class="alert alert-success text-sm py-2"><span>Fine — under 3% drop.</span></div>
+          <p class="text-xs text-base-content/60">Coiled on a reel the same cord may only be rated ~1000 W: the turns can't shed their heat into the air (it's thermal, not inductance). Always fully unrolled.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SUCTION CALC ============ -->
+  <section class="card bg-base-100 shadow-xl">
+    <div class="card-body space-y-4">
+      <h2 class="card-title text-2xl">4 · Suction-cup budget</h2>
+      <p class="text-base-content/70">Force = vacuum × sealed area, ceiling ≈ 10 N/cm² at perfect vacuum. The ÷2 and ÷4 aren't cup strength limits — they're uncertainty stacked up: robot acceleration, vacuum ripple, cups that miss the box, and peel cascades. Sideways it's worse because cups only hold shear through <em>friction</em> (μ·F).</p>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <label class="form-control bg-base-200 rounded-box p-3 block">
+              <div class="flex justify-between text-xs mb-1"><span>Cup Ø</span><span class="stat-num"><span id="scDiaVal">30</span> mm</span></div>
+              <input id="scDia" type="range" min="10" max="60" step="2" value="30" class="range range-sm range-primary w-full">
+            </label>
+            <label class="form-control bg-base-200 rounded-box p-3 block">
+              <div class="flex justify-between text-xs mb-1"><span>Cups sealed</span><span class="stat-num" id="scNVal">15</span></div>
+              <input id="scN" type="range" min="1" max="20" step="1" value="15" class="range range-sm range-primary w-full">
+            </label>
+          </div>
+          <label class="form-control bg-base-200 rounded-box p-3 block">
+            <div class="flex justify-between text-xs mb-1"><span>Vacuum level</span><span class="stat-num">−<span id="scVacVal">40</span> kPa</span></div>
+            <input id="scVac" type="range" min="20" max="90" step="5" value="40" class="range range-sm range-secondary w-full">
+            <div class="text-xs text-base-content/50 mt-1">cardboard realistically 40–60 kPa before the liner peels</div>
+          </label>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="form-control bg-base-200 rounded-box p-3 block">
+              <div class="flex justify-between text-xs mb-1"><span>Box mass</span><span class="stat-num"><span id="scMVal">10</span> kg</span></div>
+              <input id="scM" type="range" min="1" max="40" step="1" value="10" class="range range-sm range-accent w-full">
+            </label>
+            <label class="form-control bg-base-200 rounded-box p-3 block">
+              <div class="flex justify-between text-xs mb-1"><span>Robot accel</span><span class="stat-num"><span id="scAVal">4</span> m/s²</span></div>
+              <input id="scA" type="range" min="0" max="10" step="0.5" value="4" class="range range-sm range-accent w-full">
+            </label>
+          </div>
+          <label class="form-control bg-base-200 rounded-box p-3 block">
+            <div class="text-xs mb-1">Surface friction μ (cup ↔ box)</div>
+            <select id="scMu" class="select select-sm w-full">
+              <option value="0.5" selected>0.5 — clean dry cardboard</option>
+              <option value="0.3">0.3 — dusty cardboard</option>
+              <option value="0.2">0.2 — plastic film / glossy print</option>
+            </select>
+          </label>
+        </div>
+        <div class="space-y-2">
+          <div class="bg-base-200 rounded-box p-3">
+            <div class="text-xs text-base-content/60">Holding force available (ΔP × A × n)</div>
+            <div class="text-2xl font-bold stat-num" id="scHold">424 N</div>
+            <div class="text-xs text-base-content/50 stat-num" id="scPer">28.3 N per cup — remember force grows with Ø²</div>
+          </div>
+          <div class="bg-base-200 rounded-box p-3 space-y-1">
+            <div class="flex justify-between items-center"><div class="text-sm">Vertical lift needs <span class="text-base-content/60">m·(g+a)·2</span></div><span class="badge badge-success" id="scVerdV">OK</span></div>
+            <div class="text-lg font-bold stat-num" id="scNeedV">276 N</div>
+          </div>
+          <div class="bg-base-200 rounded-box p-3 space-y-1">
+            <div class="flex justify-between items-center"><div class="text-sm">Horizontal move needs <span class="text-base-content/60">m·(g+a/μ)·2</span></div><span class="badge badge-success" id="scVerdH">OK</span></div>
+            <div class="text-lg font-bold stat-num" id="scNeedH">356 N</div>
+            <div class="text-xs text-base-content/50">sideways force must come through friction: capacity ≈ μ × normal force</div>
+          </div>
+          <p class="text-xs text-base-content/60">The safety factor 2 ≈ 1.4 (decel spikes) × 1.25 (vacuum ripple between air-saving thresholds) × 1.25 (a few cups miss the box). If one edge cup lets go, its share lands on the neighbours — without margin that's a zipper failure.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ NOTES ============ -->
+  <section class="grid md:grid-cols-3 gap-4">
+    <div class="card bg-base-100 shadow"><div class="card-body p-5">
+      <h3 class="card-title text-base">Single-phase needs a kick-start</h3>
+      <p class="text-sm text-base-content/70">One coil flipping polarity makes a field that only <em>pulses</em> — zero starting torque. Your compressor fakes a second phase with a start capacitor + auxiliary winding for the first second. That circuit works hardest exactly when voltage sags and the tank is full; a tired capacitor = humming, struggling, klixon trips on one twin but not the other.</p>
+    </div></div>
+    <div class="card bg-base-100 shadow"><div class="card-body p-5">
+      <h3 class="card-title text-base">The klixon &amp; the reset button</h3>
+      <p class="text-sm text-base-content/70">A bimetal disc clamped to the windings snaps open around 140 °C. The button just closes it again — mechanically reusable hundreds of times. The damage is the <em>event</em>: insulation life roughly halves per 10 °C over its rating, so trip → reset → trip is slow-cooking the motor. Fix the cause, not the button.</p>
+    </div></div>
+    <div class="card bg-base-100 shadow"><div class="card-body p-5">
+      <h3 class="card-title text-base">The unloader hiss</h3>
+      <p class="text-sm text-base-content/70">That short <em>pssht</em> when the compressor stops is the unloader venting the pump head so the next start begins torque-free. If it's clogged, every start is "start against pressure" — try it in the simulator above and watch what the current does.</p>
+    </div></div>
+  </section>
+
+  <footer class="text-xs text-base-content/40 pb-8">Physics simplified for intuition: Kloss torque curve, rotor current ∝ slip attenuation, first-order thermal model. Numbers are representative of a 2.2 kW single-phase compressor motor, not exact.</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+
+  function cable() {
+    var L = +$('ccLen').value, A = +$('ccArea').value, I = +$('ccI').value;
+    var R = 0.0175 * 2 * L / A;
+    var dV = I * R, left = 230 - dV, pct = dV / 230 * 100, P = I * I * R;
+    $('ccLenVal').textContent = L; $('ccIVal').textContent = I;
+    $('ccFormula').textContent = '= 0.0175 × (2×' + L + ') / ' + A + ' = ' + R.toFixed(2) + ' Ω';
+    $('ccDropF').textContent = '= ' + I + ' A × ' + R.toFixed(2) + ' Ω = ' + dV.toFixed(1) + ' V';
+    $('ccDrop').textContent = dV.toFixed(1) + ' V';
+    $('ccLeft').textContent = left.toFixed(0) + ' V';
+    $('ccHeat').textContent = P < 1000 ? P.toFixed(0) + ' W' : (P / 1000).toFixed(2) + ' kW';
+    var v = $('ccVerdict');
+    if (pct < 3) { v.className = 'alert alert-success text-sm py-2'; v.innerHTML = '<span>Fine — under 3% drop.</span>'; }
+    else if (pct < 8) { v.className = 'alert alert-warning text-sm py-2'; v.innerHTML = '<span>' + pct.toFixed(1) + '% drop — motor runs hot, drawing extra current to compensate.</span>'; }
+    else { v.className = 'alert alert-error text-sm py-2'; v.innerHTML = '<span>' + pct.toFixed(1) + '% drop — stall/flicker territory. This is where starts fail and klixons trip.</span>'; }
+  }
+  ['ccLen', 'ccArea', 'ccI'].forEach(function (id) { $(id).addEventListener('input', cable); });
+  cable();
+
+  function suction() {
+    var d = +$('scDia').value, n = +$('scN').value, vac = +$('scVac').value;
+    var m = +$('scM').value, a = +$('scA').value, mu = +$('scMu').value;
+    var area = Math.PI * Math.pow(d / 2000, 2);
+    var per = vac * 1000 * area;
+    var hold = per * n;
+    var needV = m * (9.81 + a) * 2;
+    var needH = m * (9.81 + a / mu) * 2;
+    $('scDiaVal').textContent = d; $('scNVal').textContent = n; $('scVacVal').textContent = vac;
+    $('scMVal').textContent = m; $('scAVal').textContent = a;
+    $('scHold').textContent = hold.toFixed(0) + ' N';
+    $('scPer').textContent = per.toFixed(1) + ' N per cup — remember force grows with Ø²';
+    $('scNeedV').textContent = needV.toFixed(0) + ' N';
+    $('scNeedH').textContent = needH.toFixed(0) + ' N';
+    var bv = $('scVerdV'), bh = $('scVerdH');
+    bv.className = 'badge ' + (hold >= needV ? 'badge-success' : 'badge-error');
+    bv.textContent = hold >= needV ? 'OK' : 'NOT OK';
+    bh.className = 'badge ' + (hold >= needH ? 'badge-success' : 'badge-error');
+    bh.textContent = hold >= needH ? 'OK' : 'NOT OK';
+  }
+  ['scDia', 'scN', 'scVac', 'scM', 'scA', 'scMu'].forEach(function (id) { $(id).addEventListener('input', suction); });
+  suction();
+})();
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const $ = (id) => document.getElementById(id);
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+
+function makeRenderer(canvas) {
+  const r = new THREE.WebGLRenderer({ canvas, antialias: true });
+  r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  return r;
+}
+function fitRenderer(r, canvas, camera) {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== Math.floor(w * r.getPixelRatio()) || canvas.height !== Math.floor(h * r.getPixelRatio())) {
+    r.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+}
+
+/* ================= MOTOR SIM ================= */
+const M = {
+  SB: 0.25, TBD0: 2.2, IR: 10, VN: 230, J: 1.2,
+  omega: 0, temp: 22, powerOn: false, tripped: false, spinTime: 0,
+  fieldAngle: 0, rotorAngle: 0, I: 0, V: 230, Tem: 0, Tload: 0, s: 1,
+};
+const gCur = (s) => s / Math.sqrt(s * s + 0.16);
+const G_RATED = gCur(0.06), G_LR = gCur(1);
+const iPU = (s) => Math.sqrt(0.09 + Math.pow(0.95 * gCur(s) / G_RATED, 2));
+
+function motorStep(dt) {
+  const loadSet = +$('loadSlider').value;
+  const Rcord = +$('cordSel').value;
+  const scen = document.querySelector('input[name="scen"]:checked').value;
+  const s = clamp(1 - M.omega, 0.001, 1);
+  M.s = s;
+
+  if (M.powerOn) {
+    const ip = iPU(s);
+    M.V = M.VN / (1 + M.IR * ip * Rcord / M.VN);
+    const vpu = M.V / M.VN;
+    M.I = vpu * M.IR * ip;
+    const Tbd = M.TBD0 * vpu * vpu;
+    M.Tem = 2 * Tbd / (s / M.SB + M.SB / s);
+  } else {
+    M.V = M.VN; M.I = 0; M.Tem = 0;
+  }
+
+  if (M.omega > 0.85 && M.powerOn) M.spinTime += dt; else if (!M.powerOn) M.spinTime = 0;
+  let pressure = loadSet;
+  if (scen === 'unloader') pressure = loadSet * clamp(M.spinTime / 1.0, 0, 1);
+  M.Tload = pressure + 0.05 * M.omega;
+
+  const dOmega = (M.Tem - M.Tload) / M.J * dt;
+  M.omega = clamp(M.omega + dOmega, 0, 0.999);
+
+  M.temp += (0.5 * Math.pow(M.I / M.IR, 2) - 0.012 * (M.temp - 22)) * dt;
+  if (M.temp >= 140 && !M.tripped) { M.tripped = true; M.powerOn = false; }
+
+  const FIELD_VIS = 1.5;
+  if (M.powerOn) M.fieldAngle += FIELD_VIS * dt;
+  M.rotorAngle += FIELD_VIS * (1 - Math.pow(1 - M.omega, 0.45)) * dt;
+}
+
+const motorCanvas = $('motorCanvas');
+const mRenderer = makeRenderer(motorCanvas);
+const mScene = new THREE.Scene();
+mScene.background = new THREE.Color(0x0b1020);
+const mCamera = new THREE.PerspectiveCamera(45, 2, 0.1, 100);
+mCamera.position.set(2.2, 3.2, 7.2);
+const mControls = new OrbitControls(mCamera, motorCanvas);
+mControls.enableDamping = true;
+mControls.target.set(0, 0, 0);
+mScene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(4, 6, 5); mScene.add(key);
+const rim = new THREE.DirectionalLight(0x88aaff, 0.5); rim.position.set(-5, -2, -4); mScene.add(rim);
+
+const statorMat = new THREE.MeshStandardMaterial({ color: 0x3a4152, metalness: 0.7, roughness: 0.4 });
+const stator = new THREE.Mesh(new THREE.TorusGeometry(2.7, 0.32, 20, 64), statorMat);
+mScene.add(stator);
+
+const PHASE_COLORS = [0xffb020, 0x22d3ee, 0xe879f9];
+const coils = [];
+for (let j = 0; j < 6; j++) {
+  const ang = j * Math.PI / 3;
+  const grp = new THREE.Group();
+  const ringMat = new THREE.MeshStandardMaterial({ color: PHASE_COLORS[j % 3], metalness: 0.3, roughness: 0.5 });
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.4, 2.0), ringMat);
+  const coreMat = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0x000000, emissiveIntensity: 1 });
+  const core = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.46, 1.6), coreMat);
+  grp.add(frame); grp.add(core);
+  grp.position.set(Math.cos(ang) * 2.15, Math.sin(ang) * 2.15, 0);
+  grp.rotation.z = ang;
+  mScene.add(grp);
+  coils.push({ grp, coreMat, phase: j % 3, sign: j < 3 ? 1 : -1 });
+}
+
+const rotorGroup = new THREE.Group();
+mScene.add(rotorGroup);
+const rotorBody = new THREE.Mesh(
+  new THREE.CylinderGeometry(1.35, 1.35, 2.0, 48),
+  new THREE.MeshStandardMaterial({ color: 0x232936, metalness: 0.8, roughness: 0.45 })
+);
+rotorBody.rotation.x = Math.PI / 2;
+rotorGroup.add(rotorBody);
+const shaft = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.18, 0.18, 4.4, 24),
+  new THREE.MeshStandardMaterial({ color: 0x8a93a5, metalness: 0.9, roughness: 0.3 })
+);
+shaft.rotation.x = Math.PI / 2;
+rotorGroup.add(shaft);
+const NBARS = 14;
+const bars = [];
+const copper = 0xd97b29;
+for (let i = 0; i < NBARS; i++) {
+  const phi = i * 2 * Math.PI / NBARS;
+  const mat = new THREE.MeshStandardMaterial({ color: copper, emissive: 0xff7300, emissiveIntensity: 0.05, metalness: 0.6, roughness: 0.4 });
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 2.15, 12), mat);
+  bar.rotation.x = Math.PI / 2;
+  bar.position.set(Math.cos(phi) * 1.42, Math.sin(phi) * 1.42, 0);
+  rotorGroup.add(bar);
+  bars.push({ mat, phi });
+}
+for (const zpos of [-1.08, 1.08]) {
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.42, 0.09, 12, 48),
+    new THREE.MeshStandardMaterial({ color: copper, metalness: 0.7, roughness: 0.35 }));
+  ring.position.z = zpos;
+  rotorGroup.add(ring);
+}
+
+const fieldGroup = new THREE.Group();
+mScene.add(fieldGroup);
+const fieldBarMatN = new THREE.MeshStandardMaterial({ color: 0xff3344, emissive: 0xff2233, emissiveIntensity: 0.8, transparent: true, opacity: 0.85 });
+const fieldBarMatS = new THREE.MeshStandardMaterial({ color: 0x3366ff, emissive: 0x2244ff, emissiveIntensity: 0.8, transparent: true, opacity: 0.85 });
+const fieldN = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.15, 0.22), fieldBarMatN);
+fieldN.position.y = 0.62;
+const fieldS = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.15, 0.22), fieldBarMatS);
+fieldS.position.y = -0.62;
+const coneN = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.4, 16), fieldBarMatN);
+coneN.position.y = 1.4;
+fieldGroup.add(fieldN, fieldS, coneN);
+
+const tArrows = [
+  new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(1.6, 0, 0), 0.001, 0x4ade80, 0.25, 0.15),
+  new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), new THREE.Vector3(-1.6, 0, 0), 0.001, 0x4ade80, 0.25, 0.15),
+];
+tArrows.forEach(a => mScene.add(a));
+
+function motorDraw() {
+  fieldGroup.rotation.z = M.fieldAngle - Math.PI / 2;
+  rotorGroup.rotation.z = M.rotorAngle;
+  const vpu = M.powerOn ? M.V / M.VN : 0;
+  fieldGroup.visible = M.powerOn;
+  const fieldStrength = vpu * vpu;
+  fieldBarMatN.opacity = fieldBarMatS.opacity = 0.25 + 0.6 * fieldStrength;
+
+  for (const c of coils) {
+    const i = M.powerOn ? c.sign * Math.cos(M.fieldAngle - c.phase * 2 * Math.PI / 3) * vpu : 0;
+    const mag = Math.abs(i);
+    c.coreMat.emissive.setHex(i >= 0 ? 0xff3333 : 0x3355ff);
+    c.coreMat.emissiveIntensity = mag * 1.6;
+  }
+
+  const glowBase = Math.pow((gCur(M.s) / G_RATED) / (G_LR / G_RATED), 0.6) * (M.powerOn ? 1 : 0);
+  for (const b of bars) {
+    const world = M.rotorAngle + b.phi;
+    const g = glowBase * Math.abs(Math.sin(world - M.fieldAngle));
+    b.mat.emissiveIntensity = 0.03 + 2.6 * g;
+  }
+
+  const tLen = clamp(M.Tem / M.TBD0, 0, 1) * 1.1;
+  tArrows[0].setLength(Math.max(0.001, tLen), 0.22, 0.13);
+  tArrows[1].setLength(Math.max(0.001, tLen), 0.22, 0.13);
+  tArrows[0].position.set(Math.cos(M.rotorAngle) * 1.6, Math.sin(M.rotorAngle) * 1.6, 0);
+  tArrows[0].setDirection(new THREE.Vector3(-Math.sin(M.rotorAngle), Math.cos(M.rotorAngle), 0));
+  tArrows[1].position.set(-Math.cos(M.rotorAngle) * 1.6, -Math.sin(M.rotorAngle) * 1.6, 0);
+  tArrows[1].setDirection(new THREE.Vector3(Math.sin(M.rotorAngle), -Math.cos(M.rotorAngle), 0));
+
+  fitRenderer(mRenderer, motorCanvas, mCamera);
+  mControls.update();
+  mRenderer.render(mScene, mCamera);
+}
+
+/* --- 2D plots --- */
+const phaseCv = $('phasePlot'), phaseCtx = phaseCv.getContext('2d');
+function drawPhases() {
+  const w = phaseCv.clientWidth, h = phaseCv.clientHeight;
+  if (phaseCv.width !== w * 2) { phaseCv.width = w * 2; phaseCv.height = h * 2; }
+  const c = phaseCtx;
+  c.setTransform(2, 0, 0, 2, 0, 0);
+  c.clearRect(0, 0, w, h);
+  c.strokeStyle = 'rgba(255,255,255,0.15)';
+  c.beginPath(); c.moveTo(0, h / 2); c.lineTo(w, h / 2); c.stroke();
+  const colors = ['#ffb020', '#22d3ee', '#e879f9'];
+  const span = 4 * Math.PI;
+  const t0 = M.fieldAngle;
+  for (let p = 0; p < 3; p++) {
+    c.strokeStyle = colors[p]; c.lineWidth = 1.6; c.beginPath();
+    for (let x = 0; x <= w; x += 2) {
+      const t = t0 - span + (x / w) * span;
+      const y = h / 2 - Math.cos(t - p * 2 * Math.PI / 3) * (h / 2 - 8);
+      x === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+    }
+    c.stroke();
+  }
+  c.strokeStyle = '#ffffff'; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(w - 1, 4); c.lineTo(w - 1, h - 4); c.stroke();
+  c.fillStyle = 'rgba(255,255,255,0.5)'; c.font = '10px system-ui';
+  c.fillText('+ polarity', 4, 12); c.fillText('− polarity', 4, h - 5);
+}
+
+const torqueCv = $('torquePlot'), torqueCtx = torqueCv.getContext('2d');
+function kloss(s, tbd) { return 2 * tbd / (s / M.SB + M.SB / Math.max(s, 1e-4)); }
+function drawTorque() {
+  const w = torqueCv.clientWidth, h = torqueCv.clientHeight;
+  if (torqueCv.width !== w * 2) { torqueCv.width = w * 2; torqueCv.height = h * 2; }
+  const c = torqueCtx;
+  c.setTransform(2, 0, 0, 2, 0, 0);
+  c.clearRect(0, 0, w, h);
+  const padL = 30, padB = 18, padT = 8;
+  const X = (om) => padL + om * (w - padL - 8);
+  const Y = (t) => h - padB - (t / 2.5) * (h - padB - padT);
+
+  c.fillStyle = 'rgba(255,120,50,0.07)';
+  c.fillRect(padL, padT, X(1 - M.SB) - padL, h - padB - padT);
+  c.strokeStyle = 'rgba(255,255,255,0.25)'; c.lineWidth = 1;
+  c.strokeRect(padL, padT, w - padL - 8 - padL + padL, h - padB - padT);
+
+  const vpu = M.powerOn ? M.V / M.VN : 1;
+  c.setLineDash([4, 4]); c.strokeStyle = 'rgba(255,255,255,0.35)'; c.beginPath();
+  for (let i = 0; i <= 200; i++) { const om = i / 200, t = kloss(1 - om, M.TBD0); const x = X(om), y = Y(t); i === 0 ? c.moveTo(x, y) : c.lineTo(x, y); }
+  c.stroke(); c.setLineDash([]);
+  c.strokeStyle = '#38bdf8'; c.lineWidth = 2; c.beginPath();
+  for (let i = 0; i <= 200; i++) { const om = i / 200, t = kloss(1 - om, M.TBD0 * vpu * vpu); const x = X(om), y = Y(t); i === 0 ? c.moveTo(x, y) : c.lineTo(x, y); }
+  c.stroke();
+  c.strokeStyle = '#f97316'; c.lineWidth = 1.5; c.beginPath();
+  c.moveTo(X(0), Y(M.Tload)); c.lineTo(X(1), Y(M.Tload)); c.stroke();
+
+  c.fillStyle = '#facc15';
+  c.beginPath(); c.arc(X(M.omega), Y(M.powerOn ? M.Tem : 0), 5, 0, Math.PI * 2); c.fill();
+
+  c.fillStyle = 'rgba(255,255,255,0.55)'; c.font = '10px system-ui';
+  c.fillText('0 rpm', padL, h - 5); c.fillText('3000 rpm', w - 52, h - 5);
+  c.fillText('torque', 2, padT + 10);
+  c.fillStyle = 'rgba(255,150,80,0.8)';
+  c.fillText('unstable "heater" zone', padL + 6, padT + 12);
+  c.fillStyle = '#f97316'; c.fillText('load', X(1) - 30, Y(M.Tload) - 4);
+}
+
+/* --- motor UI --- */
+const btnPower = $('btnPower'), btnReset = $('btnReset');
+btnPower.addEventListener('click', () => {
+  if (M.tripped) return;
+  M.powerOn = !M.powerOn;
+});
+btnReset.addEventListener('click', () => {
+  if (M.temp <= 95) { M.tripped = false; }
+});
+$('loadSlider').addEventListener('input', () => { $('loadVal').textContent = (+$('loadSlider').value).toFixed(2); });
+
+function motorHUD() {
+  $('roV').textContent = M.powerOn ? M.V.toFixed(0) + ' V' : '—';
+  $('roDrop').textContent = 'cord drop ' + (M.powerOn ? (M.VN - M.V).toFixed(0) : '0') + ' V';
+  $('roI').textContent = M.I.toFixed(1) + ' A';
+  $('roI').className = 'text-lg font-bold stat-num ' + (M.I > 15 ? 'text-error' : M.I > 11 ? 'text-warning' : '');
+  $('roRpm').textContent = (M.omega * 3000).toFixed(0) + ' rpm';
+  $('roSlip').textContent = M.powerOn ? (M.s * 100).toFixed(1) + ' %' : '—';
+  $('roT').textContent = 'torque ' + M.Tem.toFixed(2) + ' ×rated';
+  $('roTemp').textContent = M.temp.toFixed(0) + ' °C';
+  const bar = $('tempBar');
+  bar.value = clamp((M.temp - 22) / (140 - 22) * 100, 0, 100);
+  bar.className = 'progress w-full ' + (M.temp > 120 ? 'progress-error' : M.temp > 80 ? 'progress-warning' : 'progress-success');
+
+  const st = $('motorStatus');
+  let label = 'OFF', cls = 'badge badge-lg badge-neutral';
+  if (M.tripped) { label = M.temp > 95 ? 'KLIXON TRIPPED — cooling…' : 'TRIPPED — reset available'; cls = 'badge badge-lg badge-error'; }
+  else if (M.powerOn && M.omega < 0.05 && M.Tem <= M.Tload) { label = 'STALLED — cooking'; cls = 'badge badge-lg badge-error'; }
+  else if (M.powerOn && M.omega < 0.85) { label = 'STARTING — inrush'; cls = 'badge badge-lg badge-warning'; }
+  else if (M.powerOn) { label = 'RUNNING'; cls = 'badge badge-lg badge-success'; }
+  st.textContent = label; st.className = 'absolute top-3 left-3 ' + cls;
+
+  btnPower.textContent = M.powerOn ? 'Power OFF' : 'Power ON';
+  btnPower.disabled = M.tripped;
+  btnReset.disabled = !(M.tripped && M.temp <= 95);
+}
+
+/* ================= COPPER PLATE ================= */
+const P = { xMag: -2.5, vMag: 1.5, xPlate: 0, vPlate: 0, holdTimer: 0 };
+const plateCanvas = $('plateCanvas');
+const pRenderer = makeRenderer(plateCanvas);
+const pScene = new THREE.Scene();
+pScene.background = new THREE.Color(0x0b1020);
+pScene.fog = new THREE.Fog(0x0b1020, 14, 26);
+const pCamera = new THREE.PerspectiveCamera(45, 2, 0.1, 100);
+pCamera.position.set(1.5, 3.4, 7.5);
+const pControls = new OrbitControls(pCamera, plateCanvas);
+pControls.enableDamping = true;
+pControls.target.set(1.5, 0.3, 0);
+pScene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const pKey = new THREE.DirectionalLight(0xffffff, 1.3); pKey.position.set(3, 7, 4); pScene.add(pKey);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 20), new THREE.MeshStandardMaterial({ color: 0x141a2a, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.4; pScene.add(ground);
+const grid = new THREE.GridHelper(60, 60, 0x2a3350, 0x1c2438); grid.position.y = -0.39; pScene.add(grid);
+
+for (let i = 0; i < 10; i++) {
+  const roller = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.0, 16),
+    new THREE.MeshStandardMaterial({ color: 0x555f75, metalness: 0.8, roughness: 0.35 }));
+  roller.rotation.x = Math.PI / 2;
+  roller.position.set(-2 + i * 1.2, -0.12, 0);
+  pScene.add(roller);
+}
+
+const plate = new THREE.Mesh(new THREE.BoxGeometry(5, 0.14, 1.7),
+  new THREE.MeshStandardMaterial({ color: 0xb87333, metalness: 0.85, roughness: 0.35 }));
+plate.position.y = 0.07;
+pScene.add(plate);
+
+const magGroup = new THREE.Group();
+const magN = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.28, 0.95), new THREE.MeshStandardMaterial({ color: 0xdd2233, emissive: 0x881122, emissiveIntensity: 0.4 }));
+magN.position.y = 0.78;
+const magS = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.28, 0.95), new THREE.MeshStandardMaterial({ color: 0x2244dd, emissive: 0x112288, emissiveIntensity: 0.4 }));
+magS.position.y = 0.5;
+magGroup.add(magN, magS);
+pScene.add(magGroup);
+
+const eddy1 = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.05, 10, 40),
+  new THREE.MeshStandardMaterial({ color: 0xff8822, emissive: 0xff7300, emissiveIntensity: 1.5, transparent: true, opacity: 0.9 }));
+eddy1.rotation.x = Math.PI / 2;
+const eddy2 = eddy1.clone(); eddy2.material = eddy1.material.clone();
+pScene.add(eddy1, eddy2);
+
+const vMagArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1.35, 0), 1, 0xffffff, 0.2, 0.12);
+const vPlateArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0.35, 1.15), 0.001, 0x4ade80, 0.2, 0.12);
+const fArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0.22, -1.15), 0.001, 0xf97316, 0.2, 0.12);
+pScene.add(vMagArrow, vPlateArrow, fArrow);
+
+function plateStep(dt) {
+  P.vMag = +$('magSlider').value;
+  const brake = +$('brakeSlider').value;
+  $('magVal').textContent = P.vMag.toFixed(1);
+  $('brakeVal').textContent = brake.toFixed(2);
+
+  if (P.holdTimer > 0) {
+    P.holdTimer -= dt;
+    if (P.holdTimer <= 0) { P.xMag = -2.5; P.xPlate = 0; P.vPlate = 0; }
+  } else {
+    const vrel = P.vMag - P.vPlate;
+    const Fdrag = 1.6 * vrel;
+    const Fbrake = 3 * brake;
+    let F = Fdrag - Math.sign(P.vPlate || Fdrag) * Math.min(Fbrake, Math.abs(Fdrag) + (Math.abs(P.vPlate) > 0.01 ? Fbrake : 0));
+    if (Math.abs(P.vPlate) < 0.01 && Math.abs(Fdrag) <= Fbrake) { F = 0; P.vPlate = 0; }
+    P.vPlate += F * dt;
+    P.xPlate += P.vPlate * dt;
+    P.xMag += P.vMag * dt;
+    if (P.xMag > 7 && $('loopChk').checked) P.holdTimer = 0.9;
+    if (P.xMag > 12) P.holdTimer = 0.9;
+  }
+
+  const vrelNow = clamp(P.vMag - P.vPlate, 0, 5);
+  $('pvMag').textContent = P.vMag.toFixed(2);
+  $('pvPlate').textContent = P.vPlate.toFixed(2);
+  $('pvRel').textContent = vrelNow.toFixed(2);
+  $('pvF').textContent = (1.6 * vrelNow).toFixed(2);
+
+  magGroup.position.x = P.xMag;
+  plate.position.x = P.xPlate;
+  const glow = clamp(vrelNow / 2.5, 0, 1);
+  eddy1.position.set(P.xMag + 0.55, 0.16, 0); eddy2.position.set(P.xMag - 0.55, 0.16, 0);
+  eddy1.material.opacity = eddy2.material.opacity = 0.08 + 0.85 * glow;
+  eddy1.material.emissiveIntensity = eddy2.material.emissiveIntensity = 0.1 + 2.6 * glow;
+  eddy1.rotation.z += dt * 6 * glow; eddy2.rotation.z -= dt * 6 * glow;
+  const onPlate = P.xMag > P.xPlate - 2.7 && P.xMag < P.xPlate + 2.7;
+  eddy1.visible = eddy2.visible = onPlate;
+
+  vMagArrow.position.x = P.xMag;
+  vMagArrow.setLength(Math.max(0.001, P.vMag * 0.55), 0.18, 0.11);
+  vPlateArrow.position.x = P.xPlate;
+  vPlateArrow.setLength(Math.max(0.001, Math.abs(P.vPlate) * 0.55), 0.18, 0.11);
+  fArrow.position.x = P.xPlate;
+  fArrow.setLength(Math.max(0.001, (onPlate ? 1.6 * vrelNow : 0) * 0.4), 0.18, 0.11);
+
+  fitRenderer(pRenderer, plateCanvas, pCamera);
+  pControls.update();
+  pRenderer.render(pScene, pCamera);
+}
+
+/* ================= LOOP ================= */
+let last = performance.now();
+function tick(now) {
+  const dt = clamp((now - last) / 1000, 0.001, 0.05);
+  last = now;
+  motorStep(dt);
+  motorDraw();
+  motorHUD();
+  drawPhases();
+  drawTorque();
+  plateStep(dt);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
