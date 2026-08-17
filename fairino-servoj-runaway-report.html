@@ -1,0 +1,1513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Fairino ServoJ Runaway — Investigation &amp; Fix</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --card: #12121a;
+    --card2: #16161f;
+    --line: #23232e;
+    --line-soft: #1c1c26;
+    --ink: #e9e8f2;
+    --muted: #9b99ac;
+    --faint: #6c6a80;
+    --accent: #4ade80;
+    --accent-dim: rgba(74, 222, 128, 0.10);
+    --s1: #3987e5;   /* shaped setpoint series */
+    --s2: #d95926;   /* raw target series */
+    --good: #0ca30c;
+    --warn: #fab219;
+    --crit: #d03b3b;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+    --sans: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.7;
+  }
+  ::selection { background: rgba(74,222,128,0.25); }
+
+  #progress {
+    position: fixed; top: 0; left: 0; height: 2px; width: 0%;
+    background: var(--accent); z-index: 50;
+  }
+
+  .page { max-width: 800px; margin: 0 auto; padding: 44px 24px 90px; }
+
+  .back {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--faint); text-decoration: none;
+  }
+  .back:hover { color: var(--accent); }
+
+  .meta-row {
+    font-family: var(--mono); font-size: 12px; color: var(--faint);
+    display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 26px;
+    text-transform: uppercase; letter-spacing: 0.07em;
+  }
+  .meta-row a { color: var(--accent); text-decoration: none; }
+  .meta-row a:hover { text-decoration: underline; }
+
+  h1 {
+    font-size: clamp(28px, 5vw, 38px); font-weight: 700;
+    letter-spacing: -0.02em; line-height: 1.15; margin: 12px 0 10px;
+  }
+  .subtitle { color: var(--muted); font-size: 17.5px; margin: 0 0 26px; max-width: 62ch; }
+
+  .safety-note {
+    border: 1px solid var(--line); border-left: 3px solid var(--warn);
+    background: var(--card); border-radius: 8px;
+    padding: 12px 16px; font-size: 14.5px; color: var(--muted); margin: 0 0 30px;
+  }
+  .safety-note b { color: var(--ink); font-weight: 600; }
+
+  /* stat tiles */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 0 0 34px; }
+  .stat {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 13px 14px 11px;
+  }
+  .stat .lbl { font-size: 12px; color: var(--faint); letter-spacing: 0.02em; }
+  .stat .val { font-size: 25px; font-weight: 600; letter-spacing: -0.01em; margin: 1px 0 0; }
+  .stat .sub { font-size: 12px; color: var(--muted); line-height: 1.45; margin-top: 2px; }
+  @media (max-width: 700px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+
+  /* TOC */
+  .toc {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px 18px; margin: 0 0 46px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 5px 24px;
+  }
+  .toc a {
+    color: var(--muted); text-decoration: none; font-size: 14.5px;
+    padding: 2px 0; display: flex; gap: 10px; align-items: baseline;
+  }
+  .toc a:hover { color: var(--accent); }
+  .toc .n { font-family: var(--mono); font-size: 11.5px; color: var(--faint); min-width: 20px; }
+  @media (max-width: 640px) { .toc { grid-template-columns: 1fr; } }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent); margin: 58px 0 6px;
+  }
+  h2 { font-size: 23px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 14px; }
+  h3 { font-size: 17.5px; font-weight: 600; margin: 30px 0 8px; }
+  h3 .chip {
+    font-family: var(--mono); font-size: 11px; color: var(--accent);
+    border: 1px solid rgba(74,222,128,0.4); border-radius: 4px;
+    padding: 1px 7px; margin-right: 9px; vertical-align: 2px; letter-spacing: 0.06em;
+  }
+  p { margin: 0 0 14px; }
+  strong { font-weight: 600; color: var(--ink); }
+  em { color: var(--muted); }
+  a { color: var(--accent); }
+  ul, ol { margin: 0 0 16px; padding-left: 24px; }
+  li { margin-bottom: 7px; }
+  li::marker { color: var(--faint); }
+
+  code {
+    font-family: var(--mono); font-size: 0.87em;
+    background: var(--card2); border: 1px solid var(--line-soft);
+    border-radius: 4px; padding: 1px 5px; color: #c9d7ef;
+    overflow-wrap: anywhere;
+  }
+
+  /* findings list */
+  .finding {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+    padding: 14px 18px 12px; margin-bottom: 10px; display: flex; gap: 15px;
+  }
+  .finding .num {
+    font-family: var(--mono); font-size: 13px; color: var(--accent);
+    min-width: 22px; padding-top: 2px;
+  }
+  .finding p { margin: 0; font-size: 15px; color: var(--muted); }
+  .finding p strong { color: var(--ink); }
+
+  /* tables */
+  .tw { overflow-x: auto; margin: 18px 0 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th {
+    text-align: left; font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.09em; text-transform: uppercase; color: var(--faint);
+    font-weight: 500; padding: 0 14px 8px 0; border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  td {
+    padding: 9px 14px 9px 0; border-bottom: 1px solid var(--line-soft);
+    vertical-align: top; color: var(--muted);
+  }
+  td:first-child { font-family: var(--mono); font-size: 13px; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td b { color: var(--ink); font-weight: 600; }
+  .num-td { font-variant-numeric: tabular-nums; }
+
+  /* figure diagrams */
+  .fig {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 22px 20px 16px; margin: 20px 0 12px;
+  }
+  .fig-row { display: flex; align-items: stretch; gap: 0; }
+  .fnode {
+    border: 1px solid var(--line); border-radius: 8px; background: var(--card2);
+    padding: 12px 14px; flex: 1; min-width: 0;
+  }
+  .fnode .t { font-weight: 600; font-size: 14.5px; }
+  .fnode .s { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.55; }
+  .fmid { display: flex; flex-direction: column; justify-content: center; gap: 13px; padding: 0 14px; min-width: 168px; }
+  .flink { text-align: center; font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .flink .ln { display: block; color: var(--faint); font-size: 14px; letter-spacing: -1px; }
+  .flink.hot .ln { color: var(--accent); }
+  .fig-cap { font-size: 13px; color: var(--faint); margin-top: 14px; line-height: 1.55; }
+  @media (max-width: 640px) {
+    .fig-row { flex-direction: column; }
+    .fmid { padding: 12px 0; min-width: 0; }
+  }
+
+  /* command blocks */
+  .cmd {
+    position: relative; background: var(--card2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px 88px 12px 14px; margin: 12px 0;
+    font-family: var(--mono); font-size: 13px; line-height: 1.6; color: #c9d7ef;
+    overflow-x: auto; white-space: pre;
+  }
+  .cmd .cm { color: var(--faint); }
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.05em;
+    background: var(--card); color: var(--muted); border: 1px solid var(--line);
+    border-radius: 5px; padding: 3px 9px; cursor: pointer;
+  }
+  .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  details {
+    border: 1px solid var(--line); border-radius: 8px; background: var(--card);
+    margin: 12px 0; padding: 0;
+  }
+  details > summary {
+    cursor: pointer; padding: 11px 16px; font-size: 14.5px; font-weight: 500;
+    color: var(--muted); list-style: none; user-select: none;
+  }
+  details > summary::before { content: "▸ "; color: var(--accent); font-size: 12px; }
+  details[open] > summary::before { content: "▾ "; }
+  details[open] > summary { border-bottom: 1px solid var(--line-soft); color: var(--ink); }
+  details .body { padding: 14px 18px 6px; font-size: 15px; color: var(--muted); }
+  details .body strong { color: var(--ink); }
+
+  .callout {
+    border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    background: var(--accent-dim); border-radius: 8px;
+    padding: 13px 16px; margin: 18px 0; font-size: 15px; color: var(--ink);
+  }
+  .callout.red { border-left-color: var(--crit); background: rgba(208,59,59,0.08); }
+
+  /* ── interactive demo ── */
+  .demo {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 18px 14px; margin: 22px 0;
+  }
+  .demo-controls {
+    display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: flex-end;
+    padding-bottom: 14px; border-bottom: 1px solid var(--line-soft); margin-bottom: 6px;
+  }
+  .ctl { display: flex; flex-direction: column; gap: 4px; }
+  .ctl label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+  .ctl label b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; }
+  .ctl input[type=range] { width: 150px; accent-color: var(--accent); }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; }
+  .preset, .replay {
+    font-family: var(--mono); font-size: 12px; background: var(--card2);
+    color: var(--muted); border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px 10px; cursor: pointer;
+  }
+  .preset:hover, .replay:hover { color: var(--accent); border-color: var(--accent); }
+  .preset[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+  .replay { color: var(--accent); border-color: rgba(74,222,128,0.4); }
+
+  .legend { display: flex; gap: 22px; align-items: center; padding: 10px 4px 2px; flex-wrap: wrap; }
+  .lg { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .lg .key { width: 20px; height: 0; border-top: 3px solid; border-radius: 2px; }
+
+  .chart-wrap { position: relative; outline: none; }
+  .chart-wrap:focus-visible { box-shadow: 0 0 0 2px rgba(74,222,128,0.5); border-radius: 8px; }
+  #shaper-canvas, #phase-canvas { display: block; width: 100%; }
+  .tip {
+    position: absolute; pointer-events: none; display: none;
+    background: #1c1c27; border: 1px solid var(--line); border-radius: 7px;
+    padding: 8px 11px; font-size: 12.5px; line-height: 1.55; z-index: 5;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45); min-width: 150px;
+  }
+  .tip .t-hdr { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-bottom: 3px; }
+  .tip .t-row { display: flex; align-items: center; gap: 7px; }
+  .tip .t-key { width: 12px; height: 0; border-top: 2.5px solid; border-radius: 2px; flex: none; }
+  .tip .t-val { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .tip .t-lbl { color: var(--muted); }
+
+  .verdicts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  .verdict { border: 1px solid var(--line); border-radius: 9px; background: var(--card2); padding: 11px 14px; }
+  .verdict .v-hdr { font-family: var(--mono); font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--faint); margin-bottom: 6px; }
+  .v-chip {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600;
+    border: 1px solid; border-radius: 6px; padding: 2px 9px; margin-bottom: 6px;
+  }
+  .v-chip.ok   { border-color: var(--good); } .v-chip.ok .ic   { color: var(--good); }
+  .v-chip.warn { border-color: var(--warn); } .v-chip.warn .ic { color: var(--warn); }
+  .v-chip.bad  { border-color: var(--crit); } .v-chip.bad .ic  { color: var(--crit); }
+  .v-chip.mut  { border-color: var(--faint); } .v-chip.mut .ic { color: var(--faint); }
+  .verdict p { font-size: 13.5px; color: var(--muted); margin: 0; line-height: 1.55; }
+  .verdict p b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  @media (max-width: 640px) { .verdicts { grid-template-columns: 1fr; } }
+
+  .demo-cap { font-size: 13px; color: var(--faint); margin-top: 12px; line-height: 1.55; }
+
+  .tv table { font-size: 12.5px; }
+  .tv td, .tv th { padding-right: 18px; }
+  .tv td { font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 12px; }
+  .tv-scroll { max-height: 300px; overflow: auto; }
+
+  /* math */
+  .katex-display { margin: 14px 0 18px; overflow-x: auto; overflow-y: hidden; padding: 3px 0; }
+  .katex { font-size: 1.04em; color: var(--ink); }
+
+  footer {
+    margin-top: 80px; padding-top: 22px; border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    font-family: var(--mono); font-size: 12px; color: var(--faint);
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  footer a { color: var(--faint); text-decoration: none; }
+  footer a:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<div class="page">
+
+  <a class="back" href="index.html">← Servo7 R&amp;D Index</a>
+
+  <div class="meta-row">
+    <span>Tests 2026-08-16 · Finalized 2026-08-17</span>
+    <span>FR3 fw v3.9.6 (from v3.9.5) · FR20 via r1lite</span>
+    <span><a href="https://github.com/Servo7/atlas/pull/204" target="_blank" rel="noopener">atlas PR #204 ↗</a></span>
+  </div>
+
+  <h1>The Fairino ServoJ Runaway: Reproduced, Explained, Fixed</h1>
+  <p class="subtitle">
+    A setpoint jump of ~1–1.5° inside one 10&nbsp;ms tick latches a controller fault — and the
+    controller then executes an unbounded sweep anyway. This report maps the trigger on the real
+    FR3 and FR20, and describes the acceleration-bounded stream shaper and lag-compensated
+    divergence guard that now make it impossible to trigger from the Atlas side.
+  </p>
+
+  <div class="safety-note">
+    <b>Test conditions.</b> The diagnosis runs used a standalone Rust tool talking directly to the
+    controller — no Atlas software and <b>no software safety in the loop</b>, by design. The
+    operator held the physical e-stop at all times. The report ends with the new Atlas safety
+    system built and validated from these findings.
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="lbl">Runaway trigger</div>
+      <div class="val">~1–1.5°</div>
+      <div class="sub">setpoint jump in one 10 ms tick (a Δv of 100–150 °/s)</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Worst unshaped sweep</div>
+      <div class="val">88.6°</div>
+      <div class="sub">from a 2.5° step, peaking at 196 °/s, uncommandable for ~0.9 s</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Shaped 10° jumps</div>
+      <div class="val">0 faults</div>
+      <div class="sub">10 of 10 runs clean on the real FR3, arrival in ≈328 ms</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Teleop after fix</div>
+      <div class="val">100 °/s</div>
+      <div class="sub">sustained, zero trips — 2.5× the old false-trip ceiling</div>
+    </div>
+  </div>
+
+  <nav class="toc" aria-label="Contents">
+    <a href="#tldr"><span class="n">01</span> Conclusions</a>
+    <a href="#system"><span class="n">02</span> The system under test</a>
+    <a href="#tool"><span class="n">03</span> The test tool</a>
+    <a href="#chronology"><span class="n">04</span> Chronological findings</a>
+    <a href="#demo"><span class="n">05</span> Interactive: the shaper</a>
+    <a href="#lag"><span class="n">06</span> How lag is measured</a>
+    <a href="#safety"><span class="n">07</span> The new Atlas safety system</a>
+    <a href="#math"><span class="n">08</span> The math &amp; physics</a>
+    <a href="#repro"><span class="n">09</span> Reproduction reference</a>
+  </nav>
+
+  <!-- ══════════════ 01 CONCLUSIONS ══════════════ -->
+  <div class="eyebrow" id="tldr">01 · Conclusions</div>
+  <h2>Eleven findings, each measured on real hardware</h2>
+
+  <div class="finding"><div class="num">1</div><p><strong>The Fairino ServoJ runaway is reproduced, measured, and explained.</strong> The trigger is a <strong>velocity discontinuity</strong> in the setpoint stream: a jump of ~1.0–1.5° inside one 10 ms command period, implying a velocity change of 100–150 °/s in a single tick. The controller detects it, latches a fault — and then still executes an unbounded sweep.</p></div>
+  <div class="finding"><div class="num">2</div><p><strong>The transport does not matter.</strong> The runaway is identical over UDP (cmdType=1) and XML-RPC (cmdType=0): a 2.5° step produced an 88.57° sweep on UDP and 88.56° on XML-RPC. The defect lives in the ServoJ execution engine, not in a communication path.</p></div>
+  <div class="finding"><div class="num">3</div><p><strong>The threshold band is unstable.</strong> At a 1.0° step the arm tracked cleanly once and ran away 13.9° on an equal step minutes later. At 1.5° and above the fault fires every time. Safety margins must therefore sit below 1.0° per tick.</p></div>
+  <div class="finding"><div class="num">4</div><p><strong>High speed is safe when the motion is smooth.</strong> With a trapezoid profile (acceleration ≤ 600 °/s²) the arm ran clean at 40–120 °/s. At 120 °/s the setpoint advances 1.2° per tick (inside the step trigger band) and the arm trails the setpoint by 9.3° (six times the trigger size) — nothing bad happened, twice. <strong>The trigger is acceleration — not speed, and not the tracking gap.</strong></p></div>
+  <div class="finding"><div class="num">5</div><p><strong>Very large steps are safe in a different way.</strong> A 30° step is refused outright: every command is rejected and the arm stays frozen. The dangerous zone is mid-size steps, measured from ~1.5° to 4.8° (the 5–30° band is untested raw).</p></div>
+  <div class="finding"><div class="num">6</div><p><strong>Once the runaway starts, no command can stop it.</strong> The controller rejects all commands with errcode 14 for ~0.9 s while the arm moves. Only the physical e-stop or the end of the controller's own motion stops the arm.</p></div>
+  <div class="finding"><div class="num">7</div><p><strong>The real FR3's tracking lag is 76–79 ms, constant from 5 to 120 °/s.</strong> The SimMachine shows 37–40 ms. This lag makes Atlas's old command guard trip falsely at 38–48 °/s, because the guard measures lag × speed, not true divergence.</p></div>
+  <div class="finding"><div class="num">8</div><p><strong>The fix is validated on the real arm.</strong> An acceleration-bounded stream shaper on the follower side (state = last <em>sent</em> pose and velocity; per tick it clamps velocity at 130 °/s and velocity change at 500 °/s² × cmdT, with a braking bound so it stops on target without overshoot) makes the runaway impossible to trigger. Raw jumps of 10° (ten repeats) and 15° — 4–10× the runaway threshold — passed through the shaper onto the real FR3: <strong>zero rejects, zero controller faults, smooth arrivals in 328 and 379 ms.</strong> Unshaped, a 2.5° jump gave an 88.6° sweep at 196 °/s. The concept is shipped in the Atlas node driver.</p></div>
+  <div class="finding"><div class="num">9</div><p><strong>The runaway is joint-independent, but not joint-uniform.</strong> The proximal joints (indices 0–2: base, shoulder, elbow) trigger earliest; the wrist joints have more room, closer to 5.5° per step. When the gap is large on several joints at once, several joints sweep at once.</p></div>
+  <div class="finding"><div class="num">10</div><p><strong>The real FR20's tracking lag is measured: L = 109–111 ms, constant</strong> across joints (J1 and J6), speeds (5–20 °/s), and directions — the same pure-transport-delay model as the FR3 (78 ms) and the SimMachine (39 ms). The old ~130 ms estimate from session logs was close but high.</p></div>
+  <div class="finding"><div class="num">11</div><p><strong>The Atlas safety system was rebuilt from these numbers and is live on the Rust node path</strong>: a velocity/acceleration-bounded stream shaper at the wire plus a lag-compensated divergence guard replace the old command guards, which measured lag as if it were divergence. Validated on the real FR3 at a sustained ~100 °/s measured, with zero trips and zero controller faults. See <a href="https://github.com/Servo7/atlas/pull/204" target="_blank" rel="noopener">PR&nbsp;#204</a>.</p></div>
+
+  <!-- ══════════════ 02 SYSTEM ══════════════ -->
+  <div class="eyebrow" id="system">02 · Background</div>
+  <h2>The system under test</h2>
+
+  <p>The FAIRINO controller has three independent interfaces:</p>
+
+  <div class="fig">
+    <div class="fig-row">
+      <div class="fnode">
+        <div class="t">Host</div>
+        <div class="s">Atlas node driver<br>or servoj-lag (this report)</div>
+      </div>
+      <div class="fmid">
+        <div class="flink"><span class="ln">──────→</span>XML-RPC · TCP 20003</div>
+        <div class="flink"><span class="ln">←──────</span>CNDE state · TCP 20005 · 100 Hz</div>
+        <div class="flink hot"><span class="ln">──────→</span>ServoJ UDP 20007 · 100 Hz</div>
+      </div>
+      <div class="fnode">
+        <div class="t">FAIRINO controller</div>
+        <div class="s">FR3 fw v3.9.6<br>FR20 (via r1lite)</div>
+      </div>
+    </div>
+    <div class="fig-cap">
+      <b style="color:var(--muted)">XML-RPC (TCP 20003)</b> — commands and getters: <code>RobotEnable</code>, <code>Mode</code>, <code>ServoMoveStart</code>, <code>ResetAllError</code>, plus a synchronous <code>ServoJ</code> call (the SDK's cmdType=0).
+      &nbsp;·&nbsp; <b style="color:var(--muted)">CNDE (TCP 20005)</b> — a binary state frame pushed every 10 ms: joint positions, robot mode, robot state, and the fault codes <code>main_code</code>/<code>sub_code</code>.
+      &nbsp;·&nbsp; <b style="color:var(--muted)">ServoJ stream (UDP 20007)</b> — one joint setpoint per command period (cmdT, 10 ms in all tests); the controller replies per datagram, and a reply with <code>errcode:N</code> (N ≠ 0) is a rejection.
+    </div>
+  </div>
+
+  <p>
+    Atlas streams ServoJ setpoints at 100 Hz. A safety guard (<code>command_guard</code> /
+    <code>MaxJointDeltasGuard</code>) compares every outgoing setpoint with the last measured pose;
+    if the difference exceeds a per-joint limit (3.0° in our configs), it raises an e-stop.
+    Production had seen an unexplained "random motion runaway" that this guard caught, with an
+    unknown trigger. A separate theory said the guard's delta is dominated by controller lag, so it
+    limits speed instead of detecting divergence. Both questions are now answered: the trigger is
+    a velocity discontinuity (finding 1), and the old guard indeed measured lag, not divergence
+    (finding 7).
+  </p>
+
+  <!-- ══════════════ 03 TOOL ══════════════ -->
+  <div class="eyebrow" id="tool">03 · Instrumentation</div>
+  <h2>The test tool: servoj-lag</h2>
+
+  <p>
+    <code>servoj-lag</code> is a standalone binary in the Atlas repo at
+    <code>rust/fairino-sdk/src/bin/servoj_lag.rs</code>. It talks straight to the controller and
+    contains <strong>no safety of any kind</strong> — deliberately, because the goal was to observe
+    the runaway. Both the sender and the recorder use one host clock, so there is no clock-sync
+    problem: the measured lag is send-instant to change-observed-on-CNDE, the exact vantage point
+    the Atlas guard has.
+  </p>
+
+  <details>
+    <summary>What it does under the hood, in order</summary>
+    <div class="body">
+      <ol>
+        <li><strong>Init — the "posture walk", a mirror of the production driver:</strong> <code>ServoMoveEnd</code> (close any old servo window), <code>Mode(manual)</code>, <code>RobotEnable(1)</code>, <code>Mode(automatic)</code>, <code>RobotEnable(1)</code>, <code>ServoMoveStart</code>, all over XML-RPC, each retried on the controller's transient NOT_READY code (14). A real controller rejects all ServoJ without this walk; the SimMachine does not care.</li>
+        <li><strong>CNDE recorder thread:</strong> records every 10 ms state frame with a host timestamp — the six joints plus <code>robot_mode</code>, <code>robot_state</code>, <code>main_code</code>, <code>sub_code</code>.</li>
+        <li><strong>Acceptance-gated warm-up:</strong> the sender streams "hold the current pose" until the controller accepts the stream (an accept reply, or 300 ms with zero rejections), then holds one more second. Reason: <code>RobotEnable(1)</code> returns 0 immediately, but the robot needs ~1.4 s before it executes ServoJ (it answers errcode 101, "robot is not enabled", in that window). Without this gate a test starts against a dead stream, the setpoints run ahead, and the enable window itself creates a runaway trigger — which is exactly how we met the runaway the first time.</li>
+        <li><strong>The experiment</strong> — step mode or ramp mode, below.</li>
+        <li><strong>Teardown:</strong> <code>ServoMoveEnd</code>, then 1.5 s of extra recording (to catch post-stop drift), then disable, unless the <code>keep</code> flag is set.</li>
+        <li><strong>Output:</strong> a console report plus a CSV per run, named <code>servoj_lag_&lt;mode&gt;_&lt;UTC timestamp&gt;.csv</code>, with three row kinds: <code>send</code> (each setpoint with its send time), <code>state</code> (each CNDE frame with the status words), <code>delta</code> (|setpoint − last measured| at each send tick — exactly the quantity the Atlas guard computes). Header lines record the full run config.</li>
+      </ol>
+    </div>
+  </details>
+
+  <h3>Step mode — the gap injector</h3>
+  <div class="cmd"><button class="copy-btn" type="button">copy</button>servoj-lag &lt;IP&gt; [joint] [step_deg] [reps] [cmd_ms] [keep] [rpc]
+<span class="cm"># example:</span> servoj-lag 192.168.58.3 0 1.5 1 10 keep</div>
+  <p>
+    Arguments: joint index (0 = J1, the base), step size in degrees, number of steps, command
+    period in ms, <code>keep</code> = leave the robot enabled at exit, <code>rpc</code> = send each
+    setpoint as an XML-RPC call (cmdType=0) instead of UDP. After the warm-up, the streamed
+    setpoint of the chosen joint changes by the step size in <strong>one</strong> tick, and the new
+    value is re-sent every 10 ms for 600 ms; then it steps back. With reps &gt; 1 the level cycle
+    is +X, 0, −X, 0. There is no ramp between levels — the change is instantaneous by design,
+    injecting a gap of exactly X degrees at a known instant. Reported per step:
+    <code>first_move_ms</code> (first CNDE frame that left the pre-step pose),
+    <code>arrive_ms</code> (first frame within 10% of the target), <code>peak_delta</code>
+    (max |setpoint − measured|), and <code>guard_lag_ms</code> (how long the guard-view delta
+    stayed elevated).
+  </p>
+
+  <h3>Ramp mode — the smooth-motion prober</h3>
+  <div class="cmd"><button class="copy-btn" type="button">copy</button>servoj-lag &lt;IP&gt; ramp [joint] [sweep_deg] [speeds] [cmd_ms] [keep] [rpc]
+<span class="cm"># example:</span> servoj-lag 192.168.58.3 ramp 0 60 120 10 keep</div>
+  <p>
+    Sweeps the joint from its current pose out by <code>sweep_deg</code> degrees and back, once per
+    listed speed (comma list, °/s). Each pass is a trapezoid: velocity rises linearly over 200 ms,
+    cruises constant, falls over 200 ms. The velocity change per tick is only v/20, so there is
+    never a discontinuity. Reported per pass: mean and peak guard delta over the cruise, the
+    implied lag L = delta / v, a midpoint-crossing lag cross-check, and the overshoot after the
+    stop. The summary fits delta ≈ v × L; a constant L across speeds means the guard delta is pure
+    lag.
+  </p>
+
+  <!-- ══════════════ 04 CHRONOLOGY ══════════════ -->
+  <div class="eyebrow" id="chronology">04 · Chronological path</div>
+  <h2>Eight experiments, from baseline to fix</h2>
+
+  <h3><span class="chip">1</span>SimMachine baseline</h3>
+  <p>
+    Against the v3.9.6 Docker SimMachine: step-response lag ~33 ms; sustained-motion L = 39–40 ms,
+    constant from 5 to 40 °/s, identical on the FR3 and FR20 sim models, identical on both
+    transports (37.5 ms via XML-RPC). Delta = v × L exactly. No step size ever caused a runaway in
+    sim — the sim executes any jump almost instantly after a fixed delay. Conclusion: in sim the
+    guard delta is 100% lag, 0% divergence. Also disproved: an old note claimed "75 ms sim lag";
+    that number came from an earlier probe at cmdT = 20 ms and does not apply at cmdT = 10 ms.
+  </p>
+
+  <h3><span class="chip">2</span>First runaway encounter</h3>
+  <p>
+    A ramp run started while the robot was still inside its enable window (~1.4 s of errcode 101
+    after <code>RobotEnable</code> returns 0). The setpoints advanced ~4.8° before the controller
+    began to execute. When it did, the arm swept ~158° at 180–209 °/s, straight past the +30°
+    target, and only the operator's e-stop stopped it (errcode 31, "e-stop button", requiring a
+    control-box power cycle). Reproduction: a run that starts with the robot disabled produces the
+    runaway (2 out of 2); a run that starts with the robot already enabled is clean at the same
+    speeds, with the same L. The controlling variable is the gap at the moment execution starts.
+    This finding produced the acceptance-gated warm-up and the <code>keep</code> flag in the tool.
+  </p>
+
+  <h3><span class="chip">3</span>Controlled gap injection over UDP</h3>
+  <p>One step per run, joint 0, robot enabled and tracking before each step:</p>
+  <div class="tw"><table>
+    <thead><tr><th>Step</th><th>Result</th><th>Peak speed</th><th>Travel</th></tr></thead>
+    <tbody>
+      <tr><td>0.5°</td><td>clean, smoothed (arrive 141 ms)</td><td class="num-td">n/a</td><td class="num-td">0.5°</td></tr>
+      <tr><td>1.0°</td><td>clean once, then <b>RUNAWAY</b> on an equal return step</td><td class="num-td">75 °/s</td><td class="num-td">13.9°</td></tr>
+      <tr><td>1.5°</td><td><b>RUNAWAY</b></td><td class="num-td">142 °/s</td><td class="num-td">33°</td></tr>
+      <tr><td>2.5°</td><td><b>RUNAWAY</b></td><td class="num-td">196 °/s</td><td class="num-td">88.6°</td></tr>
+      <tr><td>~4.8°</td><td><b>RUNAWAY</b> (from experiment 2)</td><td class="num-td">180–209 °/s</td><td class="num-td">158°+, e-stopped</td></tr>
+    </tbody>
+  </table></div>
+  <p>
+    The constant pattern in the CSVs: the controller latches fault <code>main_code=1,
+    sub_code=32</code> at the step instant, <strong>before any motion</strong>. Then it rejects
+    every command with errcode 14 for ~0.9 s while the arm sweeps. The peak speed equals the
+    step's implied velocity (step / cmdT), clamped at the joint maximum. The travel is roughly
+    14–35× the step. The motion stops on its own.
+  </p>
+
+  <h3><span class="chip">4</span>Same test over XML-RPC (cmdType=0)</h3>
+  <p>
+    The tool's <code>rpc</code> flag sends every setpoint as a synchronous XML-RPC
+    <code>ServoJ</code> call; each call returns its own accept/reject code, so the tally is exact.
+    At 1.5° the fault fired but the motion stayed bounded on target (the threshold band is a coin
+    flip). At 2.5°: runaway, travel 88.56° — identical to the UDP run's 88.57°. Lag via RPC equals
+    lag via UDP. <strong>cmdType does not matter; the runaway is transport-agnostic.</strong>
+  </p>
+
+  <h3><span class="chip">5</span>The 30° step</h3>
+  <p>
+    A missing <code>ramp</code> keyword ran step mode with a 30° step. The controller refused. The
+    teach pendant showed the fault in plain text: <em>"the command speed in the joint space of
+    axis 1 exceeds the speed limit and can be reset."</em> The controller's speed check works at
+    giant steps and fails dangerously at mid-size steps.
+  </p>
+
+  <h3><span class="chip">6</span>Smooth ramps to high speed</h3>
+  <p>
+    Trapezoid ramps, robot enabled at start, one speed per run, sweep 30° (60° for the fast runs so
+    the cruise stays long enough to measure):
+  </p>
+  <div class="tw"><table>
+    <thead><tr><th>Speed</th><th>Per-tick delta</th><th>Tracking gap (v×L)</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>40 °/s</td><td class="num-td">0.4°</td><td class="num-td">3.1°</td><td>clean, L = 77–79 ms</td></tr>
+      <tr><td>60 °/s</td><td class="num-td">0.6°</td><td class="num-td">4.8°</td><td>clean</td></tr>
+      <tr><td>80 °/s</td><td class="num-td">0.8°</td><td class="num-td">6.2°</td><td>clean (see note)</td></tr>
+      <tr><td>100 °/s</td><td class="num-td">1.0°</td><td class="num-td">7.7°</td><td>clean</td></tr>
+      <tr><td>120 °/s</td><td class="num-td">1.2°</td><td class="num-td">9.3°</td><td>clean, twice, overshoot ≤ 0.02°</td></tr>
+    </tbody>
+  </table></div>
+  <p>
+    <em>Note:</em> one 80 °/s run was stopped by the controller's own Cartesian TCP speed safety,
+    set conservatively for the cell. That is a separate, configurable protection layer; after
+    adjustment the run was clean.
+  </p>
+  <div class="callout">
+    Read the 120 °/s row against the step table: the per-tick delta (1.2°) is inside the step
+    trigger band, and the tracking gap (9.3°) is six times the runaway threshold. Nothing
+    happened. <strong>The trigger is the velocity discontinuity — the acceleration impulse — not
+    the per-tick delta and not the gap.</strong> L stayed 76–79 ms across the full range, so the
+    lag is a pure transport delay.
+  </div>
+
+  <h3><span class="chip">7</span>The fix: acceleration-bounded stream shaping</h3>
+  <p>
+    The tool gained a <code>shaped</code> flag. With it, every frame passes through a stream shaper
+    before the wire. The shaper works per joint, per tick:
+  </p>
+  <ol>
+    <li>Its state is the last <strong>sent</strong> setpoint and its velocity. It never reads the measured pose, so the 78 ms lag cannot blind it.</li>
+    <li>It computes the velocity toward the raw target and clamps it three times: at v_max (130 °/s), at the discrete braking bound (so it can always stop exactly on the target, no overshoot), and at a velocity <strong>change</strong> of a_max × cmdT with a_max = 500 °/s² — the proven-clean acceleration.</li>
+    <li>When the input already respects the bounds, the shaper changes nothing. When the input jumps, the wire sees a clean trapezoid instead of a discontinuity.</li>
+  </ol>
+  <p>
+    Unit tests assert the bounds on every tick of a 2000-tick random shock stream (jumps to ±30°,
+    random freezes). Live results on the real FR3, joint 0, raw jumps injected through the shaper:
+  </p>
+  <div class="tw"><table>
+    <thead><tr><th>Raw jump</th><th>Runs</th><th>Rejects</th><th>Controller faults</th><th>Arrival</th></tr></thead>
+    <tbody>
+      <tr><td>10°</td><td class="num-td">10</td><td class="num-td"><b>0</b></td><td><b>none</b></td><td class="num-td">mean 328 ms (322–335)</td></tr>
+      <tr><td>15°</td><td class="num-td">1</td><td class="num-td"><b>0</b></td><td><b>none</b></td><td class="num-td">379 ms</td></tr>
+    </tbody>
+  </table></div>
+  <p>
+    The same class of input, unshaped, at only 2.5°, produced an 88.6° sweep at 196 °/s. The
+    shaped runs also probe the previously untested 5–30° band safely, because the wire never sees
+    the raw jump. Two numbers from these runs matter for the next design step:
+  </p>
+  <ul>
+    <li>The peak guard-view delta during a shaped 10° catch-up was <strong>4.3°</strong> (peak velocity × lag) — above the old 3.0° guard cap. Fast legitimate catch-ups still need the lag-compensated guard; the shaper alone does not stop the false trips.</li>
+    <li>The braking bound makes the shaper trail a <strong>moving</strong> target by v²/(2·a_max). At 500 °/s² and 120 °/s that is ~15° (~130 ms extra lag). For teleop feel, a_max should rise; the clean ceiling between 600 (proven) and ~10,000 °/s² (the trigger) is unexplored and can be probed with the same shaped step runs.</li>
+  </ul>
+
+  <h3><span class="chip">8</span>The FR20, measured with the same protocol</h3>
+  <p>
+    After the new system shipped, the same lag measurement ran on the real FR20 (from the r1lite
+    mini PC). Safety rules for a production arm: ramp mode <strong>only</strong> (a ramp cannot
+    create the velocity discontinuity that triggers the runaway; its per-tick velocity change is
+    v/20), the <code>shaped</code> flag as a second bound on the tool's own output, small sweeps
+    (10–15°), low speeds (5–20 °/s — enough, because L is speed-independent), the wrist joint J6
+    first (smallest motion envelope), then J1 to confirm.
+  </p>
+  <p>
+    Result: <strong>L = 109–111 ms on every pass</strong> (J6 and J1, 5/10/20 °/s, both
+    directions), zero rejects, zero overshoot. The midpoint cross-check gave the same 103–117 ms.
+    The FR20 controller also accepted UDP ServoJ directly, so its firmware needs no upgrade.
+  </p>
+
+  <!-- ══════════════ 05 DEMO ══════════════ -->
+  <div class="eyebrow" id="demo">05 · Interactive</div>
+  <h2>The shaper, live</h2>
+  <p>
+    This is the exact algorithm now sitting at the wire, running in your browser at the real tick
+    rate (cmdT = 10 ms). Inject a raw setpoint jump and watch what the controller receives: the
+    raw stream steps instantly — the discontinuity that latches the fault — while the shaped
+    stream turns the same input into a bounded trapezoid. Drag the sliders or pick a preset from
+    the measured campaign.
+  </p>
+
+  <div class="demo">
+    <div class="demo-controls">
+      <div class="ctl">
+        <label for="step-sl">Raw jump · <b id="step-val">10.0°</b></label>
+        <input type="range" id="step-sl" min="0.5" max="30" step="0.5" value="10">
+      </div>
+      <div class="ctl">
+        <label for="amax-sl">a_max · <b id="amax-val">500 °/s²</b></label>
+        <input type="range" id="amax-sl" min="100" max="2000" step="50" value="500">
+      </div>
+      <div class="ctl">
+        <label for="vmax-sl">v_max · <b id="vmax-val">130 °/s</b></label>
+        <input type="range" id="vmax-sl" min="50" max="200" step="10" value="130">
+      </div>
+      <div class="ctl">
+        <label>Measured presets</label>
+        <div class="presets">
+          <button class="preset" type="button" data-step="2.5">2.5° runaway</button>
+          <button class="preset" type="button" data-step="10" aria-pressed="true">10° validated</button>
+          <button class="preset" type="button" data-step="15">15° validated</button>
+          <button class="preset" type="button" data-step="30">30° refused</button>
+        </div>
+      </div>
+      <button class="replay" id="replay-btn" type="button">↻ replay</button>
+    </div>
+
+    <div class="legend" aria-hidden="true">
+      <span class="lg"><span class="key" style="border-color:var(--s2)"></span>Raw target (what Atlas produces)</span>
+      <span class="lg"><span class="key" style="border-color:var(--s1)"></span>Shaped setpoint (what reaches the wire)</span>
+    </div>
+
+    <div class="chart-wrap" id="shaper-wrap" tabindex="0" role="img"
+         aria-label="Two stacked time-series charts. Top: wire position in degrees — the raw target steps instantly while the shaped setpoint follows a smooth trapezoid to the same value. Bottom: shaped stream velocity in degrees per second, a trapezoid bounded by v max. Use left and right arrow keys to inspect values; the table view below lists every tick.">
+      <canvas id="shaper-canvas"></canvas>
+      <div class="tip" id="shaper-tip"></div>
+    </div>
+
+    <div class="verdicts">
+      <div class="verdict">
+        <div class="v-hdr">This jump sent raw</div>
+        <div id="raw-chip"></div>
+        <p id="raw-text"></p>
+      </div>
+      <div class="verdict">
+        <div class="v-hdr">This jump through the shaper</div>
+        <div id="shaped-chip"></div>
+        <p id="shaped-text"></p>
+      </div>
+    </div>
+
+    <details class="tv">
+      <summary>Table view — every tick of this run</summary>
+      <div class="body tv-scroll">
+        <table>
+          <thead><tr><th>tick</th><th>t (ms)</th><th>raw (°)</th><th>shaped (°)</th><th>vel (°/s)</th><th>Δv/tick (°/s)</th></tr></thead>
+          <tbody id="tv-body"></tbody>
+        </table>
+      </div>
+    </details>
+
+    <p class="demo-cap">
+      Simulated ideal wire trajectory from the shipped equations (§08). The physical arm follows
+      the shaped stream ~78 ms behind on the FR3 (~111 ms on the FR20), so measured arrivals — 328 ms
+      mean for the live 10° runs — sit slightly above the wire arrival shown here. Hover or focus
+      the chart and use ←/→ to read exact values; every value is also in the table view.
+    </p>
+  </div>
+
+  <!-- ══════════════ 06 LAG ══════════════ -->
+  <div class="eyebrow" id="lag">06 · Method</div>
+  <h2>How the lag L is actually measured</h2>
+  <p>The number every guard decision rests on comes from the tool's ramp mode:</p>
+  <ol>
+    <li><strong>One host clock stamps everything.</strong> The sender thread stamps each outgoing setpoint; the recorder thread stamps each incoming CNDE state frame. There is no clock-sync problem, and the measurement includes exactly what the guard experiences: controller execution lag plus state-reporting delay.</li>
+    <li>The tool streams a trapezoid sweep at a constant cruise speed v. At every 10 ms send tick it computes <code>delta = |setpoint just sent − latest measured joint|</code>.</li>
+    <li>During the cruise, the arm is always executing the setpoint from L seconds ago. In those L seconds the setpoints advanced by exactly v × L. So a healthy arm shows a <strong>constant</strong> delta during cruise, and that delta is the lag in disguise: <strong>L = mean cruise delta / v</strong>. One pass gives one estimate; the summary fits delta ≈ v × L through the origin across all passes.</li>
+    <li><strong>Two validity checks.</strong> First, an independent cross-check: the time shift between the commanded stream crossing the sweep midpoint and the measured stream crossing it must equal the same L. Second, the model check: L must come out constant across speeds, joints, and directions. If L grew with speed, the "lag" would contain real dynamics and the simple compensation would be wrong. On all three platforms it is constant: <strong>sim 39 ms, FR3 78 ms, FR20 111 ms</strong>.</li>
+  </ol>
+
+  <!-- ══════════════ 07 SAFETY SYSTEM ══════════════ -->
+  <div class="eyebrow" id="safety">07 · Productized</div>
+  <h2>The new Atlas safety system</h2>
+  <p>
+    This is what changed in the Atlas safety envelope, and why — the productized form of
+    everything above, shipped in <a href="https://github.com/Servo7/atlas/pull/204" target="_blank"
+    rel="noopener">PR&nbsp;#204</a>.
+  </p>
+
+  <h3>What was removed, and why</h3>
+  <p>Three mechanisms are deleted from the Rust node path (code, configs, and the safety policy):</p>
+  <ul>
+    <li><code>command_guard</code> (<code>MaxJointDeltasGuard</code>) tripped when |raw setpoint − measured| exceeded ~3°.</li>
+    <li><code>command_speed</code> tripped on the same quantity divided by cmdT — the same signal in different units.</li>
+    <li><code>cap_delta</code> clamped the raw setpoint to measured ± ~3°.</li>
+  </ul>
+  <div class="callout red">
+    All three shared one flaw: they compared the raw commanded target against the measured pose,
+    and that difference is dominated by physics, not by danger. At speed it contains the tracking
+    lag (v × L) and, once the shaper exists, also the shaper's braking trail (v²/2a). Measured
+    consequence: the old guard falsely e-stopped clean teleop at 27–48 °/s (depending on arm), and
+    <code>cap_delta</code> was worse than useless — after a network stall it emitted a ~3°
+    instantaneous step, which is <strong>inside the measured runaway trigger band</strong>. The
+    protections themselves carried the trigger.
+  </div>
+  <p>
+    The old wire names (<code>command_guard</code>, <code>command_speed</code>) still exist as
+    graceful no-ops: an old frontend toggle or runtime edit gets a "retired" warning instead of a
+    crash.
+  </p>
+
+  <h3>What replaced them: two components with strictly separated roles</h3>
+
+  <div class="fig">
+    <div class="fig-row">
+      <div class="fnode">
+        <div class="t">Producers</div>
+        <div class="s">teleop · playout · hold<br>go-home · replay</div>
+      </div>
+      <div class="fmid">
+        <div class="flink"><span class="ln">──────→</span>raw targets</div>
+      </div>
+      <div class="fnode" style="border-color:rgba(74,222,128,0.45)">
+        <div class="t">Stream shaper</div>
+        <div class="s">never trips, always shapes<br>|v| ≤ v_max · |Δv| ≤ a_max·T<br>braking bound, no overshoot</div>
+      </div>
+      <div class="fmid">
+        <div class="flink hot"><span class="ln">──────→</span>ServoJ wire</div>
+      </div>
+      <div class="fnode">
+        <div class="t">Arm</div>
+        <div class="s">tracks L behind<br>CNDE measured pose</div>
+      </div>
+    </div>
+    <div class="fig-row" style="margin-top:14px">
+      <div class="fnode" style="border-color:rgba(208,59,59,0.45)">
+        <div class="t">Divergence guard</div>
+        <div class="s">never shapes, only trips<br>|s − m| &gt; margin + |v|·lag_s → e-stop</div>
+      </div>
+      <div class="fmid">
+        <div class="flink"><span class="ln">←──────</span>shaped setpoint s, velocity v · measured m</div>
+      </div>
+      <div class="fnode">
+        <div class="t">Independent nets (kept)</div>
+        <div class="s">joint-limits · workarea<br>joint_speed · eef_speed</div>
+      </div>
+    </div>
+    <div class="fig-cap">Open-loop bounding at the wire; closed-loop tripping against the measurement; measured-state observers underneath. A Fairino cannot boot half-protected: the config refuses to construct a shaper without its divergence guard.</div>
+  </div>
+
+  <p>
+    <strong>Component 1 — the stream shaper (never trips, always shapes).</strong> It sits at the
+    single point every producer passes before ServoJ: teleop, playout, hold frames, go-home,
+    replay. Its state is the last sent setpoint and its velocity; it never reads the measured
+    pose, so lag cannot blind it. Per tick it bounds the wire three ways: velocity ≤ v_max,
+    velocity change ≤ a_max × cmdT, and a braking bound so it stops on the target without
+    overshoot (full math in §08). Any input, however broken, becomes a physically legal trapezoid.
+    It primes on the <strong>measured</strong> pose whenever a stream engages — which closes the
+    enable-window trigger — and its state is dropped on stream exit, so a re-engage never ramps
+    out of a stale pre-stop target. A raw input jump beyond the maximum braking trail (~14°) logs
+    a warning; it never trips.
+  </p>
+  <p>
+    <strong>Component 2 — the divergence guard (never shapes, only trips).</strong> The
+    closed-loop check the shaper cannot provide, because the shaper cannot see the arm. It trips
+    when
+  </p>
+  <p>$$|s(t) - m(t)| \;>\; \text{margin} \;+\; |v_{\text{shaper}}| \cdot \text{lag}_s$$</p>
+  <p>
+    with s the shaped setpoint just sent, m the measured pose, and v the shaper's own commanded
+    velocity — already in its state, so the lag term costs one multiplication; no ring buffer, no
+    time shift. The allowance breathes with the motion: at rest it is the bare margin (~3°, as
+    tight as the old guard); at full speed it grows by exactly the healthy lag term. Clean
+    tracking can never trip it; an arm that moves while we command stillness trips within the
+    margin; a fast controller runaway (140–200 °/s) crosses the allowance within one or two ticks
+    (~20 ms detection).
+  </p>
+  <p>Two floors protect the tuning against reintroducing false trips:</p>
+  <ul>
+    <li><code>lag_s</code> must be at least the measured L, rounded <strong>up</strong>. Below it, the allowance grows slower than the healthy gap and clean cruise trips the guard.</li>
+    <li><code>margin_deg</code> must be at least a_max × L² / 2 plus noise. That term is the braking transient: during a hard stop the arm briefly lags by more than v × L, and at the stop instant the allowance has collapsed to the bare margin.</li>
+  </ul>
+  <p>
+    <strong>Kept unchanged, as the independent nets:</strong> the joint-limits gate and the
+    workarea gate on the command side (they validate the raw target and trip), and the
+    measured-state observers <code>joint_speed</code> (trip above the wire ceiling: nothing we can
+    command exceeds v_max, so a faster measured arm means the controller acts on its own) and
+    <code>eef_speed</code>. These watch the <strong>arm</strong>, not the commands, so they hold
+    even if everything above them is misconfigured.
+  </p>
+  <p>
+    <strong>Fail-closed pairing:</strong> a config with a shaper but no divergence guard refuses to
+    construct, and the safety policy (<code>config/safety_policy.yaml</code>) requires
+    <code>joint_speed</code>, <code>stream_shaper</code>, and <code>divergence_guard</code> keys
+    for every strict robot type. A Fairino cannot boot half-protected.
+  </p>
+
+  <h3>Envelope reporting: no nameless e-stops</h3>
+  <p>
+    The mechanics of both components run on the driver's write path, but the SafetyEnvelope
+    remains the single reporting surface. It carries their configuration echo and the divergence
+    trip latch: <code>any_tripped</code> includes the divergence guard, the telemetry safety dict
+    gained the wire keys <code>stream_shaper</code> (bounds) and <code>divergence</code> (margin,
+    lag, tripped flag, last reason), and the operator reset clears the latch. Because the bridge,
+    the frontend, and the test harness all identify tripped guards by scanning that dict, a
+    divergence e-stop is always <strong>named</strong>: the "e-stop with an empty guard list"
+    pattern is gone.
+  </p>
+
+  <h3>Per-robot tuning, all from measured numbers</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Platform</th><th>Measured L</th><th>Wire v_max</th><th>Wire a_max</th><th>lag_s</th><th>margin</th><th>joint_speed net</th></tr></thead>
+    <tbody>
+      <tr><td>FR3 real</td><td class="num-td">78 ms</td><td class="num-td">110 °/s</td><td class="num-td">500 °/s²</td><td class="num-td">0.09</td><td class="num-td">3.0</td><td class="num-td">120</td></tr>
+      <tr><td>FR20 real</td><td class="num-td">111 ms</td><td class="num-td">100 °/s</td><td class="num-td">450 °/s²</td><td class="num-td">0.13</td><td class="num-td">3.5</td><td class="num-td">110</td></tr>
+      <tr><td>SimMachine</td><td class="num-td">39 ms</td><td class="num-td">as per family</td><td class="num-td">as per family</td><td class="num-td">0.05</td><td class="num-td">3.0</td><td class="num-td">110–120</td></tr>
+    </tbody>
+  </table></div>
+  <p>
+    The leader (SpaceMouse) caps were raised to match the follower ceilings; they are comfort
+    shaping only — the follower does not trust them.
+  </p>
+
+  <h3>Validation state</h3>
+  <ol>
+    <li>Real FR3, SpaceMouse teleop through the full Atlas stack: sustained ~100 °/s measured joint speed, smooth, zero trips, zero controller faults — two and a half times the old 40 °/s ceiling.</li>
+    <li>Real FR20: lag measured and tuned (experiment 8); the full teleop session is the next step.</li>
+    <li>CI: the old command-guard harness checks were replaced by <code>harness_shaper_check_rust.py</code> with the inverted contract — a 30° raw punch into the node must be <strong>absorbed</strong> (speed-bounded wire, clean arrival, zero trips). The divergence trip side is covered by unit tests plus a driver-level test where the simulated arm "moves on its own" and the trip is asserted by name.</li>
+  </ol>
+
+  <h3>Honest limits</h3>
+  <ul>
+    <li>During a controller-internal runaway the controller rejects all commands for ~0.9 s. The software detects within ~20 ms, but the arm stops on the controller's terms or on the physical e-stop. Detection is fast; arrest is not ours.</li>
+    <li>The Python in-process follower path is retired and does not run the new system; the main branch is the fallback.</li>
+    <li>The frontend safety panel receives the new wire keys but does not render them yet.</li>
+  </ul>
+
+  <!-- ══════════════ 08 MATH ══════════════ -->
+  <div class="eyebrow" id="math">08 · Theory</div>
+  <h2>The math and physics of the fix</h2>
+  <p>
+    This section states what the shaper is, in equations, and how it relates to classical control
+    concepts.
+  </p>
+
+  <h3>The equations</h3>
+  <p>
+    Per joint. The state is the last <strong>sent</strong> position \(s_k\) and its velocity
+    \(v_k\). The constants are the velocity limit \(v_{max}\), the acceleration limit
+    \(a_{max}\), and the tick time \(T\) (cmdT, 10 ms). The input is the raw target \(x_k\),
+    which can jump in any way. Each tick:
+  </p>
+  <p>$$d_k = x_k - s_k \qquad \text{(position error)}$$</p>
+  <p>$$v_{brk} = \sqrt{2\, a_{max}\, |d_k|} \qquad \text{(braking curve)}$$</p>
+  <p>$$v_{des} = \mathrm{sign}(d_k)\cdot \min\!\left(v_{max},\; v_{brk}\right)$$</p>
+  <p>$$v_{k+1} = \mathrm{clamp}\!\left(v_{des},\; v_k - a_{max}T,\; v_k + a_{max}T\right)$$</p>
+  <p>$$s_{k+1} = s_k + v_{k+1}\, T$$</p>
+  <p>
+    The guarantees hold for any input sequence: \(|v_k| \le v_{max}\),
+    \(|v_{k+1} - v_k| \le a_{max} T\) (bounded acceleration), no overshoot of a static target,
+    and the identity function when the input already respects the bounds.
+  </p>
+
+  <h3>Where the square root comes from</h3>
+  <p>
+    Uniform-acceleration kinematics: a mass that brakes at constant \(a\) from velocity \(v\)
+    needs the distance \(d = v^2 / (2a)\) to stop. Turned around, the highest velocity from which
+    you can still stop within the remaining distance \(d\) is
+  </p>
+  <p>$$v = \sqrt{2\, a_{max}\, d}.$$</p>
+  <p>
+    That curve is the braking limit. As long as the current velocity is below it, full
+    acceleration toward the target is allowed. On the curve, the shaper must brake at full
+    \(a_{max}\) to land exactly on the target with zero velocity.
+  </p>
+  <p>
+    In discrete time the bound is slightly stricter, because the shaper moves one full tick at
+    the chosen velocity before it can brake. Require \(vT + v^2/(2a_{max}) \le d\) and solve the
+    quadratic for \(v\):
+  </p>
+  <p>$$v_{brk} = -a_{max}T + \sqrt{a_{max}^2T^2 + 2\,a_{max}\,|d_k|}.$$</p>
+  <p>
+    The implementation uses this discrete form. For \(d \gg a_{max}T^2\) it converges to the
+    simple square root.
+  </p>
+
+  <h3>The physical picture</h3>
+  <p>
+    The last two equations form a <strong>double integrator</strong>: we choose the second
+    derivative of the sent trajectory, bounded by \(a_{max}\), and integrate twice:
+  </p>
+  <p>$$\ddot{s} = u, \qquad |u| \le a_{max}, \qquad |\dot{s}| \le v_{max}.$$</p>
+  <p>
+    The physical model is a <strong>unit mass pushed by a bounded force</strong>,
+    \(|F| \le m\,a_{max}\). In the phase plane \((d, v)\) the braking curve
+    \(v = \mathrm{sign}(d)\sqrt{2 a_{max} |d|}\) is the switching curve of
+    <strong>minimum-time (bang-bang) control</strong>: push at full force toward the target until
+    the state touches the curve, then ride the curve into the origin. With the velocity
+    saturation on top, the resulting profile is the familiar trapezoid. The shaper is not "just
+    clamping" — it is the time-optimal member of the second-order filter family. It reaches the
+    target as fast as the bounds allow, and never faster.
+  </p>
+
+  <div class="demo">
+    <div class="demo-controls" style="border-bottom:none;padding-bottom:4px;margin-bottom:0">
+      <div class="ctl" style="flex:1">
+        <label>Phase plane — the run configured in §05 (d = distance to target, v = velocity)</label>
+      </div>
+      <button class="replay" id="phase-replay" type="button">↻ animate</button>
+    </div>
+    <div class="chart-wrap" role="img"
+         aria-label="Phase-plane diagram: velocity against remaining distance to target. The trajectory pushes at full acceleration from the starting error, saturates at v max if reached, touches the square-root braking curve, and rides it into the origin. The same run is listed tick by tick in the table view of section 5.">
+      <canvas id="phase-canvas"></canvas>
+    </div>
+    <p class="demo-cap">
+      Blue: the shaped trajectory from the demo above, starting at d = the raw jump, v = 0. Gray
+      curve: the switching curve v = √(2·a_max·d). The trajectory accelerates at full a_max,
+      clips at v_max when the jump is long enough, then rides the braking curve into the origin —
+      the bang-bang minimum-time solution. Change the sliders in §05 and this plot follows.
+    </p>
+  </div>
+
+  <p>
+    The one cost of the no-overshoot guarantee: when the target itself <strong>moves</strong> at
+    velocity \(v\), the shaper trails it by the braking distance,
+  </p>
+  <p>$$\Delta_{trail} \approx \frac{v^2}{2\,a_{max}} + vT,$$</p>
+  <p>
+    because it always keeps enough margin to stop if the target stops. At \(a_{max}=500\) °/s²
+    and \(v=120\) °/s that is about 15° (~130 ms). Raising \(a_{max}\) shrinks this
+    quadratically; the safe ceiling between 600 (proven) and ~10,000 °/s² (the trigger) is still
+    open.
+  </p>
+
+  <h3>Relation to a mass-damper admittance</h3>
+  <p>A mass-spring-damper admittance is the <strong>linear</strong> second-order filter:</p>
+  <p>$$M\ddot{s} + D\dot{s} = K\,(x - s).$$</p>
+  <p>
+    Its acceleration is <strong>proportional to the error</strong>:
+    \(\ddot{s} = \left(K(x - s) - D\dot{s}\right)/M\). Feed it a 30° jump and the initial
+    acceleration is \(30K/M\) — large, unless the spring is soft. A soft spring bounds
+    acceleration only in practice, never by guarantee, and it makes the filter sluggish for
+    <strong>all</strong> inputs, all the time. The shaper is the saturated, time-optimal member of
+    the same family:
+  </p>
+  <div class="tw"><table>
+    <thead><tr><th>Property</th><th>Mass-damper (linear)</th><th>Shaper (bang-bang)</th></tr></thead>
+    <tbody>
+      <tr><td>Acceleration</td><td>proportional to error, unbounded</td><td>hard bound a_max, by construction</td></tr>
+      <tr><td>Compliant input</td><td>always filtered, always some lag</td><td>identity, zero added lag</td></tr>
+      <tr><td>Large jump</td><td>large force spike, or sluggish tuning</td><td>time-optimal trapezoid</td></tr>
+      <tr><td>Guarantee type</td><td>tuning outcome</td><td>mathematical invariant</td></tr>
+    </tbody>
+  </table></div>
+  <p>
+    Both have a place, and they are complementary, not competing. The mass-damper belongs on the
+    <strong>leader</strong>: it shapes the feel of the human input (Atlas already runs an
+    admittance filter on the SpaceMouse). But nothing on the leader can guarantee what reaches the
+    wire: network stalls, the latest-wins mailbox, go-home, replay, and bugs all enter downstream
+    of it. The shaper sits at the <strong>follower's last point before the wire</strong> and
+    bounds whatever arrives, from any source. Because it is transparent for compliant input, a
+    well-tuned leader admittance means the shaper normally does nothing at all. It is the
+    constraint, not the controller.
+  </p>
+
+  <!-- ══════════════ 09 REPRO ══════════════ -->
+  <div class="eyebrow" id="repro">09 · Appendix</div>
+  <h2>Reproduction quick reference</h2>
+
+  <p><strong>Build</strong> (in <code>rust/</code> of the Atlas repo):</p>
+  <div class="cmd"><button class="copy-btn" type="button">copy</button>cargo build --release -p fairino-sdk --bin servoj-lag</div>
+
+  <p>
+    <strong>Lag measurement</strong> — safe on any arm; this is how the tuning table was produced.
+    Wrist joint with a small sweep first, then J1 to confirm. Read L from the <code>fit</code>
+    line. Stop the Atlas node first: the CNDE stream allows one client.
+  </p>
+  <div class="cmd"><button class="copy-btn" type="button">copy</button>servoj-lag &lt;IP&gt; ramp 5 10 5,10 10 keep shaped
+servoj-lag &lt;IP&gt; ramp 0 15 5,10 10 keep shaped</div>
+
+  <p>
+    <strong>Runaway trigger</strong> — test arms <strong>only</strong>, never a production arm.
+    One 1.5° step; e-stop in hand, clear arc on the joint, power-cycle after any code-31 stop.
+  </p>
+  <div class="cmd"><button class="copy-btn" type="button">copy</button>servoj-lag &lt;IP&gt; 0 1.5 1 10 keep</div>
+
+  <p>
+    <strong>Fix demonstration</strong> — the same class of jump through the shaper; expect zero
+    rejects and a ~330 ms smooth arrival.
+  </p>
+  <div class="cmd"><button class="copy-btn" type="button">copy</button>servoj-lag &lt;IP&gt; 0 10 1 10 keep shaped</div>
+
+  <p>Every run writes a timestamped CSV with the full config in its header.</p>
+
+  <footer>
+    <span>Willem · Servo7 R&amp;D · 2026-08-17</span>
+    <span><a href="https://github.com/Servo7/atlas/pull/204" target="_blank" rel="noopener">atlas PR #204</a></span>
+  </footer>
+</div>
+
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\(',right:'\\)',display:false}]});"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ── reading progress ── */
+  var bar = document.getElementById('progress');
+  addEventListener('scroll', function () {
+    var h = document.documentElement;
+    var max = h.scrollHeight - h.clientHeight;
+    bar.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + '%';
+  }, { passive: true });
+
+  /* ── copy buttons ── */
+  document.querySelectorAll('.copy-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var text = btn.parentElement.textContent.replace(/^copy\s*/, '').trim();
+      navigator.clipboard.writeText(text).then(function () {
+        btn.textContent = 'copied';
+        setTimeout(function () { btn.textContent = 'copy'; }, 1400);
+      });
+    });
+  });
+
+  /* ══════════ the shaper — the exact shipped equations ══════════ */
+  var T = 0.01;                       // cmdT, 10 ms
+  var PRE_TICKS = 10;                 // 100 ms of flat stream before the jump
+  var state = { step: 10, aMax: 500, vMax: 130 };
+
+  function simulate(step, aMax, vMax) {
+    var pts = [], k, s = 0, v = 0;
+    for (k = 0; k < PRE_TICKS; k++) pts.push({ t: (k - PRE_TICKS) * T, raw: 0, s: 0, v: 0, dv: 0 });
+    var arrived = -1, tick = 0, aT = aMax * T;
+    while (tick < 600) {
+      var d = step - s;
+      var vbrk = -aT + Math.sqrt(aT * aT + 2 * aMax * Math.abs(d));
+      var vdes = (d >= 0 ? 1 : -1) * Math.min(vMax, vbrk);
+      var vnew = Math.min(v + aT, Math.max(v - aT, vdes));
+      var dv = vnew - v;
+      v = vnew;
+      s = s + v * T;
+      pts.push({ t: tick * T, raw: step, s: s, v: v, dv: dv });
+      if (arrived < 0 && Math.abs(step - s) < 1e-6 && Math.abs(v) < 1e-6) arrived = tick * T;
+      if (arrived >= 0 && tick * T > arrived + 0.12) break;
+      tick++;
+    }
+    var vPeak = 0, dvPeak = 0;
+    pts.forEach(function (p) {
+      vPeak = Math.max(vPeak, Math.abs(p.v));
+      dvPeak = Math.max(dvPeak, Math.abs(p.dv));
+    });
+    return { pts: pts, arriveMs: arrived >= 0 ? Math.round(arrived * 1000) : null, vPeak: vPeak, dvPeak: dvPeak };
+  }
+
+  var sim = simulate(state.step, state.aMax, state.vMax);
+  var hoverIdx = -1, reveal = 1, animId = null;
+  var reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ── colors ── */
+  var C = {
+    surface: '#12121a', grid: '#23232e', axis: '#383845',
+    ink: '#e9e8f2', muted: '#9b99ac', faint: '#6c6a80',
+    s1: '#3987e5', s2: '#d95926'
+  };
+
+  function niceCeil(x) {
+    if (x <= 0) return 1;
+    var p = Math.pow(10, Math.floor(Math.log10(x)));
+    var m = x / p, steps = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10], n = 10, i;
+    for (i = 0; i < steps.length; i++) if (m <= steps[i]) { n = steps[i]; break; }
+    return n * p;
+  }
+  function fmt(x, d) { return x.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  function tickDec(step) { return step >= 10 || Number.isInteger(step) ? 0 : step >= 1 ? 1 : 2; }
+
+  /* ══════════ main chart (two stacked panels, one canvas) ══════════ */
+  var wrap = document.getElementById('shaper-wrap');
+  var canvas = document.getElementById('shaper-canvas');
+  var ctx = canvas.getContext('2d');
+  var tip = document.getElementById('shaper-tip');
+  var geom = null;
+
+  function layout() {
+    var w = wrap.clientWidth;
+    var hPos = 210, hVel = 120, gap = 34, top = 14, bottom = 30, left = 52, right = 18;
+    var h = top + hPos + gap + hVel + bottom;
+    var dpr = devicePixelRatio || 1;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    canvas.style.height = h + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    geom = { w: w, h: h, left: left, right: right, top: top, hPos: hPos, hVel: hVel,
+             velTop: top + hPos + gap, plotW: w - left - right };
+  }
+
+  function xOf(t, tMin, tMax) { return geom.left + (t - tMin) / (tMax - tMin) * geom.plotW; }
+
+  function drawChart() {
+    if (!geom) layout();
+    var g = geom, pts = sim.pts;
+    var tMin = pts[0].t * 1000, tMax = pts[pts.length - 1].t * 1000;
+    var yMaxPos = niceCeil(state.step * 1.12);
+    var yMaxVel = niceCeil(Math.max(sim.vPeak * 1.18, 10));
+
+    ctx.clearRect(0, 0, g.w, g.h);
+    ctx.fillStyle = C.surface;
+    ctx.fillRect(0, 0, g.w, g.h);
+
+    var panels = [
+      { y0: g.top, hh: g.hPos, yMax: yMaxPos, title: 'Wire position (deg)' },
+      { y0: g.velTop, hh: g.hVel, yMax: yMaxVel, title: 'Shaped stream velocity (deg/s)' }
+    ];
+
+    ctx.font = '11px "IBM Plex Mono", monospace';
+    panels.forEach(function (p, pi) {
+      /* gridlines: 4 divisions, solid hairlines */
+      var i, ySteps = 4, yDec = tickDec(p.yMax / ySteps);
+      for (i = 0; i <= ySteps; i++) {
+        var yv = p.yMax * i / ySteps;
+        var yy = p.y0 + p.hh - (yv / p.yMax) * p.hh;
+        ctx.strokeStyle = i === 0 ? C.axis : C.grid;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(g.left, Math.round(yy) + 0.5); ctx.lineTo(g.w - g.right, Math.round(yy) + 0.5); ctx.stroke();
+        ctx.fillStyle = C.faint;
+        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        ctx.fillText(fmt(yv, yDec), g.left - 8, yy);
+      }
+      /* panel title */
+      ctx.fillStyle = C.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.font = '11.5px "IBM Plex Sans", sans-serif';
+      ctx.fillText(p.title, g.left, p.y0 - 3 + (pi === 0 ? 0 : 0));
+      ctx.font = '11px "IBM Plex Mono", monospace';
+    });
+
+    /* x ticks on bottom panel only */
+    var xStep = niceCeil((tMax - tMin) / 6);
+    var t0 = Math.ceil(tMin / xStep) * xStep;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (var tv = t0; tv <= tMax; tv += xStep) {
+      var xx = xOf(tv, tMin, tMax);
+      ctx.fillStyle = C.faint;
+      ctx.fillText(fmt(tv, 0), xx, g.velTop + g.hVel + 8);
+    }
+    ctx.fillStyle = C.faint;
+    ctx.textAlign = 'right';
+    ctx.fillText('ms', g.w - g.right, g.velTop + g.hVel + 8);
+
+    var lastIdx = Math.max(1, Math.floor((pts.length - 1) * reveal));
+
+    function yPos(val) { return g.top + g.hPos - (val / yMaxPos) * g.hPos; }
+    function yVel(val) { return g.velTop + g.hVel - (val / yMaxVel) * g.hVel; }
+
+    /* v_max reference (threshold: dashed, labeled) */
+    if (state.vMax <= yMaxVel) {
+      var yv = yVel(state.vMax);
+      ctx.save();
+      ctx.strokeStyle = C.faint; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(g.left, yv); ctx.lineTo(g.w - g.right, yv); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = C.faint; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.fillText('v_max ' + state.vMax, g.left + 4, yv - 2);
+    }
+
+    /* raw target: step line (series 2) */
+    ctx.strokeStyle = C.s2; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(xOf(tMin, tMin, tMax), yPos(0));
+    ctx.lineTo(xOf(0, tMin, tMax), yPos(0));
+    ctx.lineTo(xOf(0, tMin, tMax), yPos(state.step));
+    ctx.lineTo(xOf(pts[lastIdx].t * 1000, tMin, tMax), yPos(state.step));
+    ctx.stroke();
+
+    /* shaped position (series 1) */
+    ctx.strokeStyle = C.s1; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (var i = 0; i <= lastIdx; i++) {
+      var p = pts[i], x = xOf(p.t * 1000, tMin, tMax), y = yPos(p.s);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    /* shaped velocity */
+    ctx.strokeStyle = C.s1; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (i = 0; i <= lastIdx; i++) {
+      p = pts[i]; x = xOf(p.t * 1000, tMin, tMax); y = yVel(Math.abs(p.v));
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    /* arrival marker + selective direct label (the one label that matters) */
+    if (sim.arriveMs !== null && reveal >= 1) {
+      var ax = xOf(sim.arriveMs, tMin, tMax), ay = yPos(state.step);
+      ctx.beginPath(); ctx.arc(ax, ay, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = C.s1; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = C.surface; ctx.stroke();
+      ctx.fillStyle = C.ink; ctx.textAlign = ax > g.left + g.plotW * 0.72 ? 'right' : 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.font = '12px "IBM Plex Sans", sans-serif';
+      ctx.fillText('wire arrival ' + sim.arriveMs + ' ms', ax + (ax > g.left + g.plotW * 0.72 ? -9 : 9), ay - 7);
+      ctx.font = '11px "IBM Plex Mono", monospace';
+    }
+
+    /* crosshair */
+    if (hoverIdx >= 0 && hoverIdx < pts.length) {
+      p = pts[hoverIdx];
+      x = xOf(p.t * 1000, tMin, tMax);
+      ctx.strokeStyle = C.axis; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, g.top); ctx.lineTo(x, g.velTop + g.hVel); ctx.stroke();
+      [[yPos(p.s), C.s1], [yPos(p.raw), C.s2], [yVel(Math.abs(p.v)), C.s1]].forEach(function (m) {
+        ctx.beginPath(); ctx.arc(x, m[0], 4, 0, Math.PI * 2);
+        ctx.fillStyle = m[1]; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = C.surface; ctx.stroke();
+      });
+    }
+  }
+
+  /* ── tooltip ── */
+  function tipRow(color, val, lbl) {
+    var row = document.createElement('div'); row.className = 't-row';
+    var key = document.createElement('span'); key.className = 't-key'; key.style.borderTopColor = color;
+    var v = document.createElement('span'); v.className = 't-val'; v.textContent = val;
+    var l = document.createElement('span'); l.className = 't-lbl'; l.textContent = lbl;
+    row.appendChild(key); row.appendChild(v); row.appendChild(l);
+    return row;
+  }
+  function showTip() {
+    if (hoverIdx < 0) { tip.style.display = 'none'; return; }
+    var p = sim.pts[hoverIdx];
+    tip.textContent = '';
+    var hdr = document.createElement('div'); hdr.className = 't-hdr';
+    hdr.textContent = 't = ' + fmt(p.t * 1000, 0) + ' ms';
+    tip.appendChild(hdr);
+    tip.appendChild(tipRow(C.s2, fmt(p.raw, 2) + '°', 'raw target'));
+    tip.appendChild(tipRow(C.s1, fmt(p.s, 2) + '°', 'shaped'));
+    tip.appendChild(tipRow(C.s1, fmt(p.v, 1) + '°/s', 'velocity'));
+    tip.appendChild(tipRow(C.s1, (p.dv >= 0 ? '+' : '') + fmt(p.dv, 1) + '°/s', 'Δv this tick'));
+    tip.style.display = 'block';
+    var tMin = sim.pts[0].t * 1000, tMax = sim.pts[sim.pts.length - 1].t * 1000;
+    var x = xOf(p.t * 1000, tMin, tMax);
+    var tw = tip.offsetWidth;
+    tip.style.left = Math.min(Math.max(x + 14, 4), geom.w - tw - 4) + 'px';
+    tip.style.top = (geom.top + 8) + 'px';
+    if (x + 14 + tw > geom.w - 8) tip.style.left = (x - tw - 14) + 'px';
+  }
+
+  function idxFromX(clientX) {
+    var r = canvas.getBoundingClientRect();
+    var tMin = sim.pts[0].t * 1000, tMax = sim.pts[sim.pts.length - 1].t * 1000;
+    var t = tMin + (clientX - r.left - geom.left) / geom.plotW * (tMax - tMin);
+    var best = 0, bd = Infinity;
+    sim.pts.forEach(function (p, i) {
+      var d = Math.abs(p.t * 1000 - t);
+      if (d < bd) { bd = d; best = i; }
+    });
+    return best;
+  }
+
+  wrap.addEventListener('pointermove', function (e) {
+    hoverIdx = idxFromX(e.clientX);
+    drawChart(); showTip();
+  });
+  wrap.addEventListener('pointerleave', function () {
+    hoverIdx = -1; drawChart(); showTip();
+  });
+  wrap.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight') { hoverIdx = Math.min(sim.pts.length - 1, (hoverIdx < 0 ? 0 : hoverIdx + 1)); }
+    else if (e.key === 'ArrowLeft') { hoverIdx = Math.max(0, (hoverIdx < 0 ? sim.pts.length - 1 : hoverIdx - 1)); }
+    else if (e.key === 'Home') { hoverIdx = 0; }
+    else if (e.key === 'End') { hoverIdx = sim.pts.length - 1; }
+    else if (e.key === 'Escape') { hoverIdx = -1; }
+    else return;
+    e.preventDefault();
+    drawChart(); showTip();
+  });
+  wrap.addEventListener('focus', function () { if (hoverIdx < 0) { hoverIdx = 0; drawChart(); showTip(); } });
+  wrap.addEventListener('blur', function () { hoverIdx = -1; drawChart(); showTip(); });
+
+  /* ══════════ phase plane ══════════ */
+  var pCanvas = document.getElementById('phase-canvas');
+  var pCtx = pCanvas.getContext('2d');
+  var phaseReveal = 1, phaseAnim = null, pGeom = null;
+
+  function pLayout() {
+    var w = pCanvas.parentElement.clientWidth;
+    var h = 280, dpr = devicePixelRatio || 1;
+    pCanvas.width = Math.round(w * dpr); pCanvas.height = Math.round(h * dpr);
+    pCanvas.style.height = h + 'px';
+    pCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pGeom = { w: w, h: h, left: 52, right: 18, top: 24, bottom: 34 };
+  }
+
+  function drawPhase() {
+    if (!pGeom) pLayout();
+    var g = pGeom;
+    var dMax = niceCeil(state.step * 1.06);
+    var vMaxPlot = niceCeil(Math.max(sim.vPeak * 1.25, 10));
+    var pw = g.w - g.left - g.right, ph = g.h - g.top - g.bottom;
+
+    function X(d) { return g.left + (d / dMax) * pw; }
+    function Y(v) { return g.top + ph - (v / vMaxPlot) * ph; }
+
+    pCtx.clearRect(0, 0, g.w, g.h);
+    pCtx.fillStyle = C.surface; pCtx.fillRect(0, 0, g.w, g.h);
+
+    /* grid */
+    pCtx.font = '11px "IBM Plex Mono", monospace';
+    var i, vDec = tickDec(vMaxPlot / 4), dDec = tickDec(dMax / 5);
+    for (i = 0; i <= 4; i++) {
+      var vv = vMaxPlot * i / 4, yy = Y(vv);
+      pCtx.strokeStyle = i === 0 ? C.axis : C.grid; pCtx.lineWidth = 1;
+      pCtx.beginPath(); pCtx.moveTo(g.left, Math.round(yy) + 0.5); pCtx.lineTo(g.w - g.right, Math.round(yy) + 0.5); pCtx.stroke();
+      pCtx.fillStyle = C.faint; pCtx.textAlign = 'right'; pCtx.textBaseline = 'middle';
+      pCtx.fillText(fmt(vv, vDec), g.left - 8, yy);
+    }
+    for (i = 0; i <= 5; i++) {
+      var dd = dMax * i / 5, xx = X(dd);
+      pCtx.strokeStyle = i === 0 ? C.axis : C.grid;
+      pCtx.beginPath(); pCtx.moveTo(Math.round(xx) + 0.5, g.top); pCtx.lineTo(Math.round(xx) + 0.5, g.top + ph); pCtx.stroke();
+      pCtx.fillStyle = C.faint; pCtx.textAlign = 'center'; pCtx.textBaseline = 'top';
+      pCtx.fillText(fmt(dd, dDec), xx, g.top + ph + 8);
+    }
+    pCtx.fillStyle = C.muted; pCtx.textAlign = 'left'; pCtx.textBaseline = 'bottom';
+    pCtx.font = '11.5px "IBM Plex Sans", sans-serif';
+    pCtx.fillText('v (deg/s)', g.left, g.top - 8);
+    pCtx.textAlign = 'right';
+    pCtx.fillText('d — distance to target (deg)', g.w - g.right, g.top + ph + 30);
+    pCtx.font = '11px "IBM Plex Mono", monospace';
+
+    /* braking (switching) curve — threshold, dashed */
+    pCtx.save();
+    pCtx.strokeStyle = C.faint; pCtx.lineWidth = 1.5; pCtx.setLineDash([5, 4]);
+    pCtx.beginPath();
+    for (i = 0; i <= 100; i++) {
+      var d = dMax * i / 100, v = Math.sqrt(2 * state.aMax * d);
+      if (v > vMaxPlot) break;
+      var x = X(d), y = Y(v);
+      i === 0 ? pCtx.moveTo(x, y) : pCtx.lineTo(x, y);
+    }
+    pCtx.stroke();
+    pCtx.restore();
+    pCtx.fillStyle = C.faint; pCtx.textAlign = 'left'; pCtx.textBaseline = 'top';
+    var dLbl = Math.min(dMax * 0.55, (vMaxPlot * 0.82) * (vMaxPlot * 0.82) / (2 * state.aMax));
+    pCtx.fillText('braking curve √(2·a·d)', X(dLbl) + 8, Y(Math.sqrt(2 * state.aMax * dLbl)) + 6);
+
+    /* v_max clip line if it matters */
+    if (state.vMax <= vMaxPlot) {
+      pCtx.save();
+      pCtx.strokeStyle = C.faint; pCtx.lineWidth = 1; pCtx.setLineDash([4, 4]);
+      pCtx.beginPath(); pCtx.moveTo(g.left, Y(state.vMax)); pCtx.lineTo(g.w - g.right, Y(state.vMax)); pCtx.stroke();
+      pCtx.restore();
+      pCtx.fillStyle = C.faint; pCtx.textAlign = 'right'; pCtx.textBaseline = 'bottom';
+      pCtx.fillText('v_max ' + state.vMax, g.w - g.right - 4, Y(state.vMax) - 2);
+    }
+
+    /* trajectory: (d, |v|) from the same sim, drawn to phaseReveal */
+    var pts = sim.pts.filter(function (p) { return p.t >= 0; });
+    var last = Math.max(1, Math.floor((pts.length - 1) * phaseReveal));
+    pCtx.strokeStyle = C.s1; pCtx.lineWidth = 2; pCtx.lineJoin = 'round'; pCtx.lineCap = 'round';
+    pCtx.beginPath();
+    pCtx.moveTo(X(state.step), Y(0));
+    for (i = 0; i <= last; i++) {
+      var p = pts[i];
+      pCtx.lineTo(X(Math.max(0, state.step - p.s)), Y(Math.abs(p.v)));
+    }
+    pCtx.stroke();
+
+    /* moving dot */
+    var pd = pts[last];
+    var dx = X(Math.max(0, state.step - pd.s)), dy = Y(Math.abs(pd.v));
+    pCtx.beginPath(); pCtx.arc(dx, dy, 4.5, 0, Math.PI * 2);
+    pCtx.fillStyle = C.s1; pCtx.fill();
+    pCtx.lineWidth = 2; pCtx.strokeStyle = C.surface; pCtx.stroke();
+
+    /* start marker */
+    pCtx.beginPath(); pCtx.arc(X(state.step), Y(0), 4, 0, Math.PI * 2);
+    pCtx.fillStyle = C.s2; pCtx.fill();
+    pCtx.lineWidth = 2; pCtx.strokeStyle = C.surface; pCtx.stroke();
+    pCtx.fillStyle = C.muted; pCtx.textAlign = 'right'; pCtx.textBaseline = 'bottom';
+    pCtx.font = '11.5px "IBM Plex Sans", sans-serif';
+    pCtx.fillText('start: the raw jump lands here', X(state.step) - 2, Y(0) - 8);
+  }
+
+  /* ══════════ verdicts ══════════ */
+  function chip(kind, icon, label) {
+    var c = document.createElement('span'); c.className = 'v-chip ' + kind;
+    var ic = document.createElement('span'); ic.className = 'ic'; ic.textContent = icon;
+    c.appendChild(ic); c.appendChild(document.createTextNode(label));
+    return c;
+  }
+  function updateVerdicts() {
+    var st = state.step;
+    var rc = document.getElementById('raw-chip'), rt = document.getElementById('raw-text');
+    var sc = document.getElementById('shaped-chip'), stx = document.getElementById('shaped-text');
+    rc.textContent = ''; sc.textContent = '';
+    var impliedDv = st / T;
+
+    if (st < 1.0) {
+      rc.appendChild(chip('ok', '✓', 'tracked'));
+      rt.innerHTML = 'Below the measured trigger band. At 0.5° the controller smoothed the step (arrival 141 ms). Margins must still sit below <b>1.0°</b> per tick — the band above is unstable.';
+    } else if (st < 1.5) {
+      rc.appendChild(chip('warn', '⚠', 'coin flip'));
+      rt.innerHTML = 'The unstable band: at 1.0° the arm tracked cleanly once and ran away <b>13.9°</b> at 75 °/s on an equal step minutes later. Implied Δv this tick: <b>' + fmt(impliedDv, 0) + ' °/s</b>.';
+    } else if (st <= 4.8) {
+      rc.appendChild(chip('bad', '✕', 'runaway'));
+      rt.innerHTML = 'Fault <b>main=1 / sub=32</b> latches before any motion, then ~0.9 s of errcode-14 rejects while the arm sweeps ~14–35× the step (measured: <b>88.6°</b> at 196 °/s from a 2.5° step). Implied Δv this tick: <b>' + fmt(impliedDv, 0) + ' °/s</b>.';
+    } else if (st < 30) {
+      rc.appendChild(chip('warn', '⚠', 'untested raw'));
+      rt.innerHTML = 'Beyond the measured runaway band (~1.5–4.8°); the 5–30° band was never sent raw — it was only probed safely through the shaper. Implied Δv this tick: <b>' + fmt(impliedDv, 0) + ' °/s</b>.';
+    } else {
+      rc.appendChild(chip('mut', '⊘', 'refused'));
+      rt.innerHTML = 'The controller rejects every command and the arm stays frozen — the pendant reports an axis speed-limit fault. The speed check works at giant steps and fails dangerously at mid-size ones.';
+    }
+
+    sc.appendChild(chip('ok', '✓', 'bounded trapezoid'));
+    stx.innerHTML = 'Peak Δv per tick: <b>' + fmt(state.aMax * T, 1) + ' °/s</b> (vs ~100–150 needed to trigger). Peak velocity <b>' +
+      fmt(sim.vPeak, 1) + ' °/s</b> ≤ v_max. Wire arrival <b>' + (sim.arriveMs !== null ? sim.arriveMs + ' ms' : '—') +
+      '</b>; add ~78 ms tracking lag on the real FR3. Live 10° runs: 0 rejects, 0 faults, 10/10.';
+  }
+
+  /* ══════════ table view ══════════ */
+  function updateTable() {
+    var tb = document.getElementById('tv-body');
+    tb.textContent = '';
+    sim.pts.forEach(function (p, i) {
+      var tr = document.createElement('tr');
+      [i - PRE_TICKS, fmt(p.t * 1000, 0), fmt(p.raw, 2), fmt(p.s, 3), fmt(p.v, 2), fmt(p.dv, 2)].forEach(function (v) {
+        var td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+  }
+
+  /* ══════════ animation & orchestration ══════════ */
+  function animate() {
+    if (animId) cancelAnimationFrame(animId);
+    if (reducedMotion) { reveal = 1; phaseReveal = 1; drawChart(); drawPhase(); return; }
+    reveal = 0; phaseReveal = 0;
+    var t0 = performance.now(), dur = 750;
+    (function frame(now) {
+      var f = Math.min(1, (now - t0) / dur);
+      reveal = f; phaseReveal = f;
+      drawChart(); drawPhase();
+      if (f < 1) animId = requestAnimationFrame(frame);
+    })(t0);
+  }
+
+  function rerun(withAnim) {
+    sim = simulate(state.step, state.aMax, state.vMax);
+    hoverIdx = -1; tip.style.display = 'none';
+    updateVerdicts(); updateTable();
+    document.querySelectorAll('.preset').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(parseFloat(b.dataset.step) === state.step));
+    });
+    if (withAnim) animate();
+    else { reveal = 1; phaseReveal = 1; drawChart(); drawPhase(); }
+  }
+
+  /* controls */
+  var stepSl = document.getElementById('step-sl'),
+      amaxSl = document.getElementById('amax-sl'),
+      vmaxSl = document.getElementById('vmax-sl');
+  function syncLabels() {
+    document.getElementById('step-val').textContent = fmt(state.step, 1) + '°';
+    document.getElementById('amax-val').textContent = fmt(state.aMax, 0) + ' °/s²';
+    document.getElementById('vmax-val').textContent = fmt(state.vMax, 0) + ' °/s';
+  }
+  stepSl.addEventListener('input', function () { state.step = parseFloat(stepSl.value); syncLabels(); rerun(false); });
+  amaxSl.addEventListener('input', function () { state.aMax = parseFloat(amaxSl.value); syncLabels(); rerun(false); });
+  vmaxSl.addEventListener('input', function () { state.vMax = parseFloat(vmaxSl.value); syncLabels(); rerun(false); });
+  document.querySelectorAll('.preset').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.step = parseFloat(b.dataset.step);
+      stepSl.value = String(state.step);
+      syncLabels(); rerun(true);
+    });
+  });
+  document.getElementById('replay-btn').addEventListener('click', function () { rerun(true); });
+  document.getElementById('phase-replay').addEventListener('click', function () {
+    if (animId) cancelAnimationFrame(animId);
+    if (reducedMotion) { drawPhase(); return; }
+    phaseReveal = 0;
+    var t0 = performance.now(), dur = 900;
+    (function frame(now) {
+      var f = Math.min(1, (now - t0) / dur);
+      phaseReveal = f; drawPhase();
+      if (f < 1) animId = requestAnimationFrame(frame);
+    })(t0);
+  });
+
+  new ResizeObserver(function () { layout(); pLayout(); drawChart(); drawPhase(); }).observe(wrap);
+
+  /* init */
+  layout(); pLayout(); syncLabels(); rerun(true);
+})();
+</script>
+</body>
+</html>
