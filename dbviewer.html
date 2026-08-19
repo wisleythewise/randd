@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DB Viewer — randd</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0d0d;
+      --card: #141414;
+      --border: #242424;
+      --text: #f0f0f0;
+      --muted: #8a8a8a;
+      --dim: #555;
+      --accent: #ff8a3d;
+      --accent-soft: rgba(255, 138, 61, 0.12);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+      line-height: 1.5; font-size: 15px;
+    }
+    .container { max-width: 860px; margin: 0 auto; padding: 24px 16px 100px; }
+    .head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+    .head h1 { font-size: 1.3rem; font-weight: 700; }
+    .head .eyebrow {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: var(--accent);
+      letter-spacing: 0.15em; text-transform: uppercase; display: block; margin-bottom: 2px;
+    }
+    .head a { color: var(--muted); text-decoration: none; font-size: 0.85rem; white-space: nowrap; }
+    .head a:hover { color: var(--accent); }
+    .totals { color: var(--muted); font-size: 0.85rem; margin-bottom: 18px; font-family: 'JetBrains Mono', monospace; }
+
+    .group-label {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--dim);
+      letter-spacing: 0.16em; text-transform: uppercase; margin: 24px 0 8px;
+    }
+    .krow {
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      margin-bottom: 6px; overflow: hidden;
+    }
+    .krow-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 12px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+    }
+    .krow-head:hover { background: #1a1a1a; }
+    .kname { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; word-break: break-all; }
+    .kmeta { margin-left: auto; color: var(--muted); font-size: 0.78rem; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
+    .kbody { border-top: 1px solid var(--border); padding: 12px; display: none; }
+    .kbody.open { display: block; }
+    .kbody .loading { color: var(--muted); font-style: italic; font-size: 0.85rem; }
+
+    table.items { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    table.items th {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.62rem; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--dim); text-align: left;
+      padding: 4px 10px 4px 0; border-bottom: 1px solid var(--border);
+    }
+    table.items td { padding: 6px 10px 6px 0; border-bottom: 1px solid var(--border); vertical-align: top; color: #d8d8d8; }
+    table.items tr:last-child td { border-bottom: none; }
+    table.items .mono { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+    table.items a { color: var(--accent); }
+    .rawtoggle {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      border-radius: 6px; padding: 3px 10px; font-size: 0.72rem; font-family: inherit;
+      cursor: pointer; margin-top: 10px;
+    }
+    pre.raw {
+      margin-top: 10px; padding: 10px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+      color: #c8c8c8; overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+      max-height: 400px; overflow-y: auto; display: none;
+    }
+    pre.raw.open { display: block; }
+    .err { color: #ff6b6b; font-size: 0.85rem; }
+    .empty { color: var(--muted); font-style: italic; padding: 20px 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="head">
+      <div>
+        <span class="eyebrow">Redis inspector · read-only</span>
+        <h1>DB Viewer</h1>
+      </div>
+      <a href="datadump.html">← Datadump</a>
+    </div>
+    <div class="totals" id="totals">Loading…</div>
+    <div id="groups"></div>
+  </div>
+
+  <script>
+  (function () {
+    "use strict";
+    var API = "/api/dbview";
+    var groupsEl = document.getElementById("groups");
+    var totalsEl = document.getElementById("totals");
+
+    function el(tag, cls, text) {
+      var n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text !== undefined) n.textContent = text;
+      return n;
+    }
+    function fmtBytes(b) {
+      if (b == null) return "";
+      if (b < 1024) return b + " B";
+      if (b < 1048576) return (b / 1024).toFixed(1) + " KB";
+      return (b / 1048576).toFixed(2) + " MB";
+    }
+    function fmtTs(ms) {
+      if (!ms) return "";
+      var d = new Date(ms);
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " +
+             ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+    }
+
+    function groupOf(key) {
+      if (/^dump:.*:entries$/.test(key)) return "Datadump — entry lists";
+      if (/^dump:media:/.test(key)) return "Datadump — media blobs";
+      if (/^comments:/.test(key)) return "Comment threads";
+      return "Other";
+    }
+
+    function itemsTable(items) {
+      var tbl = el("table", "items");
+      var thead = el("thead"), tr = el("tr");
+      ["when", "author", "kind", "tag", "body / media"].forEach(function (h) { tr.appendChild(el("th", null, h)); });
+      thead.appendChild(tr); tbl.appendChild(thead);
+      var tb = el("tbody");
+      items.slice().reverse().forEach(function (it) {
+        if (typeof it !== "object" || it === null) {
+          var r0 = el("tr"), td0 = el("td");
+          td0.colSpan = 5; td0.textContent = String(it);
+          r0.appendChild(td0); tb.appendChild(r0); return;
+        }
+        var r = el("tr");
+        r.appendChild(el("td", "mono", fmtTs(it.ts)));
+        r.appendChild(el("td", null, it.author || ""));
+        r.appendChild(el("td", "mono", it.kind || "comment"));
+        r.appendChild(el("td", "mono", it.tag || ""));
+        var td = el("td");
+        if (it.body) td.appendChild(document.createTextNode(it.body.slice(0, 300) + (it.body.length > 300 ? "…" : "")));
+        if (it.kind === "image" || it.kind === "audio") {
+          if (it.body) td.appendChild(document.createTextNode(" "));
+          var a = el("a", null, "[open " + it.kind + "]");
+          a.href = "/api/datadump?media=" + it.id;
+          a.target = "_blank";
+          td.appendChild(a);
+        }
+        r.appendChild(td);
+        tb.appendChild(r);
+      });
+      tbl.appendChild(tb);
+      return tbl;
+    }
+
+    function renderDetail(body, data) {
+      body.textContent = "";
+      if (data.type === "list") {
+        body.appendChild(itemsTable(data.items || []));
+      } else if (data.type === "media") {
+        var p = el("div", null, (data.mime || "?") + " · " + fmtBytes(data.approx_bytes) + " ");
+        var a = el("a", null, "[open media]");
+        a.href = "/api/datadump?media=" + data.media_id;
+        a.target = "_blank";
+        a.style.color = "var(--accent)";
+        p.appendChild(a);
+        body.appendChild(p);
+      } else if (data.type === "string") {
+        var pre0 = el("pre", "raw open", data.value + (data.truncated ? "\n… (truncated)" : ""));
+        body.appendChild(pre0);
+        return;
+      }
+      var btn = el("button", "rawtoggle", "toggle raw JSON");
+      var pre = el("pre", "raw", JSON.stringify(data, null, 2));
+      btn.addEventListener("click", function () { pre.classList.toggle("open"); });
+      body.appendChild(btn);
+      body.appendChild(pre);
+    }
+
+    function keyRow(row) {
+      var wrap = el("div", "krow");
+      var head = el("div", "krow-head");
+      head.appendChild(el("span", "kname", row.key));
+      var meta = row.type === "list" ? (row.items + " items") : fmtBytes(row.bytes);
+      head.appendChild(el("span", "kmeta", row.type + " · " + meta));
+      var body = el("div", "kbody");
+      var loaded = false;
+      head.addEventListener("click", function () {
+        body.classList.toggle("open");
+        if (loaded || !body.classList.contains("open")) return;
+        loaded = true;
+        body.appendChild(el("div", "loading", "Loading…"));
+        fetch(API + "?key=" + encodeURIComponent(row.key))
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (res) {
+            if (!res.ok) throw new Error(res.j.error || "failed");
+            renderDetail(body, res.j);
+          })
+          .catch(function (e) {
+            body.textContent = "";
+            body.appendChild(el("div", "err", "Error: " + e.message));
+          });
+      });
+      wrap.appendChild(head);
+      wrap.appendChild(body);
+      return wrap;
+    }
+
+    fetch(API)
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.j.error || "failed to load");
+        var t = res.j.totals || {};
+        totalsEl.textContent = (t.keys || 0) + " keys · " + (t.media || 0) + " media blobs · ~" + fmtBytes(t.media_bytes || 0) + " media storage";
+        var rows = res.j.keys || [];
+        if (!rows.length) {
+          groupsEl.appendChild(el("div", "empty", "Store is empty — nothing dumped yet."));
+          return;
+        }
+        var groups = {};
+        rows.forEach(function (row) {
+          var g = groupOf(row.key);
+          (groups[g] = groups[g] || []).push(row);
+        });
+        ["Datadump — entry lists", "Comment threads", "Datadump — media blobs", "Other"].forEach(function (g) {
+          if (!groups[g]) return;
+          groupsEl.appendChild(el("div", "group-label", g + " (" + groups[g].length + ")"));
+          groups[g].forEach(function (row) { groupsEl.appendChild(keyRow(row)); });
+        });
+      })
+      .catch(function (e) {
+        totalsEl.textContent = "";
+        groupsEl.appendChild(el("div", "err", "Could not load: " + e.message));
+      });
+  })();
+  </script>
+</body>
+</html>
