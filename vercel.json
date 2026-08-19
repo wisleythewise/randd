@@ -1,7 +1,10 @@
 {
   "functions": {
     "api/comments.py": {
-      "excludeFiles": "{mp4/**,hannover-messe-assets/**,assets/**,dagger/**,*.html,*.md,*.pdf,*.js,api/__pycache__/**}"
+      "excludeFiles": "{mp4/**,hannover-messe-assets/**,wrc-2026-assets/**,assets/**,dagger/**,*.html,*.md,*.pdf,*.js,api/__pycache__/**}"
+    },
+    "api/datadump.py": {
+      "excludeFiles": "{mp4/**,hannover-messe-assets/**,wrc-2026-assets/**,assets/**,dagger/**,*.html,*.md,*.pdf,*.js,api/__pycache__/**}"
     }
   }
 }
