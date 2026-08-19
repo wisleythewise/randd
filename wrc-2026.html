@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>World Robot Conference 2026 — Company Learnings</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0d0d;
+      --card: #141414;
+      --card-hover: #1a1a1a;
+      --border: #242424;
+      --text: #f0f0f0;
+      --muted: #8a8a8a;
+      --dim: #555;
+      --accent: #ff8a3d;
+      --accent-soft: rgba(255, 138, 61, 0.12);
+      /* comments.js theme hooks */
+      --panel: #141414;
+      --line: #242424;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      font-size: 16px;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 60px 32px 120px;
+    }
+
+    .back {
+      display: inline-block;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      margin-bottom: 40px;
+      transition: color 0.15s;
+    }
+    .back:hover { color: var(--accent); }
+
+    header.page-head {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 32px;
+      margin-bottom: 48px;
+    }
+
+    .eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--accent);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    header.page-head h1 {
+      font-size: 2.8rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      margin-bottom: 16px;
+    }
+
+    header.page-head .meta {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--dim);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin: 64px 0 20px;
+    }
+
+    a { color: var(--accent); }
+
+    /* Executive summary */
+    .summary {
+      background: linear-gradient(180deg, var(--accent-soft) 0%, rgba(255,138,61,0.04) 100%);
+      border: 1px solid var(--accent);
+      border-radius: 10px;
+      padding: 32px 36px;
+      margin-bottom: 56px;
+    }
+    .summary h3 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 14px;
+      letter-spacing: -0.01em;
+    }
+    .summary h4 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--accent);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin-top: 28px;
+      margin-bottom: 14px;
+    }
+    .summary p { margin-bottom: 12px; color: #e4e4e4; }
+    .summary ul { list-style: none; padding: 0; margin: 0; }
+    .summary ul li {
+      position: relative;
+      padding: 8px 0 8px 26px;
+      color: #e4e4e4;
+      border-bottom: 1px solid rgba(255,138,61,0.12);
+    }
+    .summary ul li:last-child { border-bottom: none; }
+    .summary ul li::before {
+      content: '›';
+      position: absolute;
+      left: 4px;
+      top: 8px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .summary ul.ctas li::before { content: '☐'; font-size: 0.95rem; top: 7px; }
+
+    /* General remarks */
+    .remarks {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      padding: 24px 28px;
+      margin-bottom: 56px;
+    }
+    .remarks p { margin-bottom: 14px; color: #d8d8d8; }
+    .remarks p:last-child { margin-bottom: 0; }
+    .remark-list { list-style: none; padding: 0; margin: 0 0 14px 0; }
+    .remark-list li { position: relative; padding: 6px 0 6px 20px; color: #d8d8d8; }
+    .remark-list li::before { content: '›'; position: absolute; left: 0; color: var(--accent); font-weight: 600; }
+
+    /* Booth chip */
+    .booth {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: 1px solid rgba(255,138,61,0.35);
+      border-radius: 4px;
+      padding: 1px 7px;
+      margin-right: 6px;
+      white-space: nowrap;
+    }
+    .booth.dim {
+      color: var(--muted);
+      background: transparent;
+      border-color: var(--border);
+    }
+
+    /* Procurement cards */
+    .proc-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 48px;
+    }
+    .proc-card > img { width: 100%; display: block; border-bottom: 1px solid var(--border); }
+    .proc-body { padding: 28px 32px 24px; }
+    .proc-body h2 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 4px; }
+    .proc-body .proc-sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+    .proc-body p { color: #d8d8d8; margin-bottom: 14px; }
+
+    .spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18px 0 22px;
+      font-size: 0.92rem;
+    }
+    .spec-table th {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--dim);
+      text-align: left;
+      padding: 6px 12px 6px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .spec-table td {
+      padding: 8px 12px 8px 0;
+      border-bottom: 1px solid var(--border);
+      color: #d8d8d8;
+      vertical-align: top;
+    }
+    .spec-table td:first-child { color: var(--muted); white-space: nowrap; }
+    .spec-table tr:last-child td { border-bottom: none; }
+
+    .fit-list { list-style: none; padding: 0; margin: 0 0 8px; }
+    .fit-list li { padding: 7px 0; border-bottom: 1px solid var(--border); color: #d8d8d8; font-size: 0.95rem; }
+    .fit-list li:last-child { border-bottom: none; }
+    .fit-note { color: var(--muted); }
+
+    /* Vendor category lists */
+    .cat h2 { font-size: 1.6rem; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 6px; }
+    .cat .cat-sub { color: var(--muted); font-size: 0.92rem; margin-bottom: 18px; }
+    .vendors { list-style: none; padding: 0; margin: 0 0 12px; }
+    .vendors li { padding: 9px 0; border-bottom: 1px solid var(--border); color: #d8d8d8; font-size: 0.95rem; }
+    .vendors li:last-child { border-bottom: none; }
+    .vendors .who { font-weight: 600; color: var(--text); }
+    .compact { color: var(--muted); font-size: 0.9rem; line-height: 1.8; margin-bottom: 8px; }
+    .compact .who { color: #d8d8d8; font-weight: 600; }
+
+    .callout {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+    .callout .label { color: var(--dim); }
+    .callout .value { color: var(--text); }
+    .callout.flag { border-color: var(--accent); color: var(--accent); }
+
+    .media-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .media-grid figure {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      transition: border-color 0.15s;
+    }
+    .media-grid figure:hover { border-color: var(--accent); }
+    .media-grid img { width: 100%; height: auto; display: block; }
+    .media-grid figcaption {
+      padding: 8px 12px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+
+    /* Day plan */
+    .day {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 22px 26px;
+      margin-bottom: 20px;
+    }
+    .day h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 4px; }
+    .day .day-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--accent);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .day p { color: #d8d8d8; font-size: 0.95rem; margin-bottom: 10px; }
+    .day p:last-child { margin-bottom: 0; }
+    .route { font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; line-height: 2; color: #d8d8d8; }
+  </style>
+</head>
+<body data-page-comments>
+  <div class="container">
+    <a class="back" href="index.html">← R&amp;D index</a>
+
+    <header class="page-head">
+      <div class="eyebrow">Company Learnings · Conference Prep</div>
+      <h1>World Robot Conference 2026</h1>
+      <div class="meta">Beiren Etrong International Convention &amp; Exhibition Center, Beijing E-Town · Aug 19–23, 2026 · 09:00–17:00 · Exhibitor data scraped from worldrobotconference.com on Aug 19 · Working doc for Jasper &amp; William — leave comments under each item.</div>
+    </header>
+
+    <div class="summary">
+      <h3>TL;DR</h3>
+      <p>All 313 exhibitors scraped and classified against our four targets (AMR to mount an arm on, grippers, sensors/cameras, modular conveyors). There is <strong>no standalone conference app</strong> — tickets and navigation run through WeChat. The best days for vendor talks are <strong>Wed Aug 20 (Procurement Day)</strong> and <strong>Thu Aug 21 (Developer Day)</strong>; the weekend is public days and will be mobbed.</p>
+      <ul>
+        <li><strong>AMRs:</strong> strong field — AgileX <span class="booth">D306</span>, SLAMTEC <span class="booth">B322</span>, SEER <span class="booth">C233</span>, STEP <span class="booth">A101</span> all sell chassis-as-platform.</li>
+        <li><strong>Grippers:</strong> Hall B is the densest dexterous-hand cluster anywhere; for industrial EOAT: DH Robotics <span class="booth">B418</span>, SMC <span class="booth">B111</span>.</li>
+        <li><strong>Sensors:</strong> ORBBEC / RealSense / Hesai / Livox all present; a full row of 6-axis F/T vendors; tactile skin is the breakout category this year.</li>
+        <li><strong>Conveyors: none.</strong> Zero modular-conveyor vendors at WRC. Closest: SENAD <span class="booth">A301</span> autonomous truck/container unloading — directly on our container-unload topic. For real conveyors: CeMAT Asia, Shanghai, autumn.</li>
+      </ul>
+      <h4>Action items</h4>
+      <ul class="ctas">
+        <li>Show the two procurement photos below at every relevant booth; collect WeChat + card + quote per vendor.</li>
+        <li>Omni base: get quotes vs the spec sheet (250 kg / 15° / 24 V / CAN-or-Ethernet / true omni / no sensors / open stack).</li>
+        <li>Area gripper: SMC <span class="booth">B111</span> is the one realistic booth — compare against the Hanhua/Wantai China-sourcing quotes already in flight.</li>
+        <li>Ask SENAD <span class="booth">A301</span> what vacuum heads + base they use on iLoabot-M.</li>
+        <li>Leave findings as comments under each procurement item so we both see them same-day.</li>
+      </ul>
+    </div>
+
+    <div class="section-label">Practical — tickets, entry, app situation</div>
+    <div class="remarks">
+      <ul class="remark-list">
+        <li><strong>No standalone app.</strong> Tickets via the official WeChat account <strong>世界机器人大会</strong>; visitor registration portal: <a href="https://meet.cie.org.cn/cms/925/">meet.cie.org.cn/cms/925</a> (English-site entry: <a href="https://meet.cie.org.cn/cms/926/">/cms/926</a>).</li>
+        <li>Onsite <strong>"one-tap navigation" (一键导航) WeChat mini-program</strong> via QR codes at the venue — booth locations + route planning.</li>
+        <li>Real-name entry. Foreign passports: staffed lane (人工通道) with the original passport.</li>
+        <li>Visitor hotline 400-070-1166 (07:00–21:00). Hours 09:00–17:00 daily.</li>
+        <li>Theme days: Aug 19 Release Day · <strong>Aug 20 Procurement Day</strong> · <strong>Aug 21 Developer Day</strong> · Aug 22–23 Public Open Days.</li>
+        <li>Full scraped exhibitor DB (hall, booth, intro, exhibits per company): <a href="wrc-2026-assets/exhibitors_full.json">exhibitors_full.json</a>.</li>
+      </ul>
+    </div>
+
+    <div class="section-label">Procurement wishlist — show these photos at the booth</div>
+
+    <!-- ── Item 1: omnidirectional base ── -->
+    <div class="proc-card">
+      <img src="wrc-2026-assets/procurement/omni-base.jpg" alt="AgileX Ranger-class omnidirectional mobile base on a pallet">
+      <div class="proc-body">
+        <h2>Omnidirectional mobile base</h2>
+        <div class="proc-sub">Reference photo: AgileX "Ranger" class, 4-wheel independent steer/drive. We want the platform bare — we mount our own arm, sensors and control stack on top.</div>
+
+        <table class="spec-table">
+          <thead><tr><th>Requirement</th><th>Target</th></tr></thead>
+          <tbody>
+            <tr><td>Payload</td><td><strong>&gt; 250 kg</strong></td></tr>
+            <tr><td>Slope / ramp</td><td>Climbs a ramp up to <strong>15°</strong> at working payload (ask: hill-hold / brake behaviour on the ramp)</td></tr>
+            <tr><td>Power out</td><td>Battery delivers a <strong>24 V</strong> rail to power our top-mounted equipment</td></tr>
+            <tr><td>Interface</td><td><strong>Ethernet or CAN bus</strong>, documented protocol — we run our own external control loop</td></tr>
+            <tr><td>Drive</td><td><strong>True omnidirectional</strong> (4WS/swerve, mecanum, or omni wheels) — <strong>no Ackermann</strong></td></tr>
+            <tr><td>Sensors</td><td><strong>None.</strong> Bare platform — no lidar/camera bundle, we bring our own</td></tr>
+            <tr><td>Software</td><td><strong>Open stack</strong> — ROS 2 driver or documented low-level API, no cloud lock-in</td></tr>
+          </tbody>
+        </table>
+
+        <p><strong>Where to ask (in priority order):</strong></p>
+        <ul class="fit-list">
+          <li><span class="booth">D306</span> <strong>AgileX 松灵</strong> — the pictured Ranger is theirs (4WS omni). Ranger itself is likely under 250 kg payload — ask which model in the family (UMR line) hits 250 kg + 15°, bare, CAN-documented.</li>
+          <li><span class="booth">A422</span> <strong>Manda 山东曼大</strong> — WL100 4WS/4WD chassis with lateral/diagonal/pivot modes, CAN + VCU, explicitly built for secondary development. Payload not published — ask.</li>
+          <li><span class="booth">C233</span> <strong>SEER 仙工</strong> — P-series carries 300–1500 kg, but check drive type: pallet AMRs are often differential, not omni.</li>
+          <li><span class="booth">A101</span> <strong>STEP 新时达</strong> — IB2-150 is an open carrier chassis but 150 kg → under spec; ask about a heavier variant.</li>
+          <li><span class="booth">D207</span> <strong>Jichuang 极创</strong> · <span class="booth">D311</span> <strong>Yuhesen 煜禾森</strong> — UGV chassis houses with custom configs; ask for omni + 250 kg.</li>
+          <li><span class="booth">B322</span> <strong>SLAMTEC 思岚</strong> — Poseidon 4WS omni / Hermes arm-carrier; likely lighter class, price anchor.</li>
+          <li><span class="booth dim">C115</span> <span class="fit-note">Zhidongli drive-by-wire chassis · </span><span class="booth dim">C116</span> <span class="fit-note">Lvkong s30 (70 kg — under spec, cheap dev option) · </span><span class="booth dim">A435</span> <span class="fit-note">RobStride 悟时 omni (100 kg — under spec).</span></li>
+        </ul>
+        <p class="fit-note">Reality check: 250 kg + 15° + true omni is a demanding combo (wheel torque and hill-hold get expensive). If nobody stocks it, the fallback question is "which chassis do you customize, at what NRE and lead time?"</p>
+
+        <div data-comments="wrc-2026-omni-base" data-comments-title="Omni base — findings &amp; comments"></div>
+      </div>
+    </div>
+
+    <!-- ── Item 2: area surface gripper ── -->
+    <div class="proc-card">
+      <img src="wrc-2026-assets/procurement/area-gripper.jpg" alt="Family of 3D-printed area surface vacuum grippers (Anubis 3D style)">
+      <div class="proc-body">
+        <h2>Area surface vacuum gripper (foam, check-valved)</h2>
+        <div class="proc-sub">Reference photo: 3D-printed area surface gripper family (Anubis 3D). Desired specs come from our vacuum research — see <a href="vacuum-gripping-field-guide.md">field guide</a> §8.7/§9.2 and the <a href="vacuum-china-sourcing.md">China sourcing doc</a> (Hanhua/Wantai inquiries already drafted).</div>
+
+        <table class="spec-table">
+          <thead><tr><th>Requirement</th><th>Target</th></tr></thead>
+          <tbody>
+            <tr><td>Type</td><td>Foam-mat <strong>area gripper bar</strong> (Schmalz FXP/FMP pattern) for corrugated cartons</td></tr>
+            <tr><td>Hole tolerance</td><td><strong>Per-cell self-closing check valves</strong> — uncovered cells must not kill the vacuum</td></tr>
+            <tr><td>Vacuum source</td><td><strong>External-vacuum version</strong> (not integrated ejector) — must run on ejector, dry-vane pump <em>and</em> blower</td></tr>
+            <tr><td>Size</td><td>~130 mm wide bars; lengths ≈ <strong>640 mm and 1000 mm</strong> (current pads are 140×340)</td></tr>
+            <tr><td>Working point</td><td>−20…−40 kPa on porous corrugate; ≈ <strong>2,200 N</strong> at −25 kPa over 0.09 m² engaged foam</td></tr>
+            <tr><td>Ports</td><td>G1/4 fine for pump/ejector duty; ask for a <strong>large-bore (DN60-class) version</strong> for blower flow</td></tr>
+            <tr><td>Consumables</td><td><strong>Spare foam plates orderable</strong> — foam is a wear item; blow-off pulse supported (cleans valves)</td></tr>
+            <tr><td>Budget anchor</td><td>$250–450 per bar at CN pricing (EU list for the Schmalz/Coval basket is 5–10×)</td></tr>
+          </tbody>
+        </table>
+
+        <p><strong>Where to ask:</strong></p>
+        <ul class="fit-list">
+          <li><span class="booth">B111</span> <strong>SMC</strong> — the one realistic booth: ZGS sponge vacuum gripping units (up to 2,144 N, single cable + air line, cobot-ready plates) + MA tool changers. Ask about check-valve behaviour on holes and external-vacuum variants.</li>
+          <li><span class="booth">A301</span> <strong>SENAD 赛那德</strong> — not a vendor of grippers, but their iLoabot-M unloads box + bag freight all day; ask what heads/vacuum source they run and who supplies them.</li>
+          <li><span class="booth">B109</span> <strong>Yaskawa Shougang</strong> — 1,700 parcels/h sorting cells; same question, their EOAT supplier.</li>
+          <li><span class="booth">D401</span> <strong>CRG 希瑞格</strong> — EOAT components + tool changers; ask if they carry foam area bars or only cups.</li>
+          <li><span class="booth dim">B418</span> <span class="fit-note">DH Robotics — electric-gripper alternative path, not vacuum, but collect the catalog anyway.</span></li>
+        </ul>
+        <p class="fit-note">Expectation: WRC is a robot fair, not a pneumatics fair — Schmalz/Piab/Coval-class area grippers will be thin on the ground. Treat the booth visits as validation + supplier discovery; the Hanhua HVGP130 (640/1000, V check valve, E external-vacuum) quote from the sourcing doc remains the primary path.</p>
+
+        <div data-comments="wrc-2026-area-gripper" data-comments-title="Area gripper — findings &amp; comments"></div>
+      </div>
+    </div>
+
+    <div class="section-label">Top 10 — if time is short</div>
+    <div class="remarks">
+      <ul class="remark-list">
+        <li><span class="booth">A301</span> <strong>SENAD 赛那德</strong> — autonomous truck/container unloading (iLoabot-M, 4D vision, box + bag, no dock mods; exports NA/JP/KR). Plan 30+ min.</li>
+        <li><span class="booth">D306</span> <strong>AgileX 松灵</strong> — chassis-as-platform: UMR 4WD/4WS base, PiPER arms, open ROS/LeRobot ecosystem. Plan 30+ min.</li>
+        <li><span class="booth">B322</span> <strong>SLAMTEC 思岚</strong> — Hermes universal chassis for arm mounting + RPLIDAR line, ROS2 native.</li>
+        <li><span class="booth">C233</span> <strong>SEER 仙工</strong> — AMRs designed for third-party top modules; their controller is the de-facto AGV standard (2,100+ integrators).</li>
+        <li><span class="booth">B418</span> <strong>DH Robotics 大寰</strong> — the catalog electric-gripper vendor (AG series, PGT vision-tactile ±0.02 mm).</li>
+        <li><span class="booth">B405</span> <strong>Inspire 因时</strong> — most industrialized dexterous hand (RH56, &gt;10k delivered, 1 kHz).</li>
+        <li><span class="booth">B313</span> <strong>ORBBEC 奥比中光</strong> — Gemini 330 3D cameras with AI depth completion for transparent/reflective objects + UMI wrist-cam kits.</li>
+        <li><span class="booth">B305</span> <strong>Hesai 禾赛</strong> — JT mini hemispherical lidar (360°×189°, zero blind zone, built for robots).</li>
+        <li><span class="booth">B315</span> <strong>SRI 宇立</strong> — deepest 6-axis F/T catalog (9.2 mm ultra-thin wrist sensors, EtherCAT).</li>
+        <li><span class="booth">A101</span> <strong>STEP 新时达</strong> — IB2 open carrier chassis (150 kg, dual 3D-lidar SLAM ±10 mm, hot-swap batteries).</li>
+      </ul>
+    </div>
+
+    <div class="section-label">Targets by category — full scraped lists</div>
+
+    <div class="cat">
+      <h2>1 · AMR / mobile bases</h2>
+      <div class="cat-sub">Tier 1 = sells the bare chassis/platform. Tier 2 = composite mobile manipulators &amp; payload-friendly quadrupeds.</div>
+      <ul class="vendors">
+        <li><span class="booth">D306</span> <span class="who">AgileX 松灵</span> — UMR industrial 4WD/4WS base, IP-rated, open ROS ecosystem, PiPER arms pitched for mobile integration.</li>
+        <li><span class="booth">B322</span> <span class="who">SLAMTEC 思岚</span> — Hermes 48 V universal chassis sized for single/dual-arm mounting; Poseidon 4WS omni; ROS/ROS2 SDK.</li>
+        <li><span class="booth">C233</span> <span class="who">SEER 仙工</span> — P300/P1500 AMRs with configurable top modules; #1 robot-controller market share.</li>
+        <li><span class="booth">A101</span> <span class="who">STEP 新时达</span> — IB2S/IB2-150 open carrier chassis, 150 kg, 24/7 hot-swap batteries, sold to third parties as humanoid carrier.</li>
+        <li><span class="booth">A422</span> <span class="who">Manda 山东曼大</span> — WL100 4WS/4WD chassis (lateral/diagonal/pivot), CAN + VCU for secondary dev; tracked D100; AMR wheel modules.</li>
+        <li><span class="booth">A410</span> <span class="who">Lingyi iTech 领益</span> — "universal humanoid mobile base" product (610×470×330 std + Pro) + ODM.</li>
+        <li><span class="booth">D207</span> <span class="who">Jichuang 极创</span> — 30+ UGV chassis models, 3,000+ units to 700+ teams (Komodo tracked, Warthog 4WD).</li>
+        <li><span class="booth">D311</span> <span class="who">Yuhesen 煜禾森</span> — 10+ yrs modular indoor/outdoor drive-by-wire chassis; direct AgileX competitor.</li>
+        <li><span class="booth">C115</span> <span class="who">Zhidongli 智动力</span> — drive-by-wire chassis + force-controlled 7-DOF dual arms, ROS/Python/C++ SDK (Hubei shared booth).</li>
+        <li><span class="booth">C116</span> <span class="who">Lvkong 绿控</span> — cheap s30 wheeled (70 kg, IP55) + D100 tracked, mounting interfaces, "can mount arms" (Chengdu shared booth).</li>
+        <li><span class="booth">D302</span> <span class="who">Uniubi 宇泛</span> — 灵猫 open-API chassis, Orin onboard, 15 kg payload, developer-pitched.</li>
+      </ul>
+      <p class="compact">Tier 2 — composites: <span class="booth dim">A106</span> <span class="who">QiZhi/EFORT</span> production-validated composite, open Openmind OS · <span class="booth dim">C305</span> <span class="who">Lumos</span> MOS2 (30–50 kg dual-arm, FastUMI-compatible) · <span class="booth dim">C315</span> <span class="who">CASBOT</span> W2 (chassis/EOAT/compute/sensors all swappable) · <span class="booth dim">C210</span> <span class="who">Galaxea</span> R1 (researcher-oriented) · <span class="booth dim">C119</span> <span class="who">Dobot</span> Atom-W · <span class="booth dim">A428</span> <span class="who">Tianlian</span> · <span class="booth dim">C131</span> <span class="who">CRP</span> · <span class="booth dim">B222</span> <span class="who">Neuromeka</span> mobile welding. Quadrupeds with real payload interfaces: <span class="booth dim">A211</span> <span class="who">CVTE MAXHUB X7</span> (rails + open HTTP/WS API, 40 kg) · <span class="booth dim">C215</span> <span class="who">Unitree AS2</span> (explicitly supports a 7-axis arm, 65 kg) · <span class="booth dim">A113</span> <span class="who">Direct Drive Tech TITA</span> (wheel-leg, full SDK).</p>
+    </div>
+
+    <div class="cat">
+      <h2>2 · Grippers / end-effectors</h2>
+      <div class="cat-sub">Industrial EOAT first; then the dexterous-hand cluster (Hall B is the world's densest right now).</div>
+      <ul class="vendors">
+        <li><span class="booth">B418</span> <span class="who">DH Robotics 大寰</span> — AG 2-finger electric, PGT vision-tactile (±0.02 mm), 3- and 5-finger hands.</li>
+        <li><span class="booth">B111</span> <span class="who">SMC</span> — ZGS sponge-vacuum units pre-integrated for UR/FANUC/Techman; MA tool changers.</li>
+        <li><span class="booth">A303</span> <span class="who">LEADERDRIVE 绿的谐波</span> — AIX2 electric grippers, custom stroke/force/fingers, tactile + camera modules.</li>
+        <li><span class="booth">D401</span> <span class="who">CRG 希瑞格</span> — tool changers (air/electric/signal pass-through), vacuum + gripper components.</li>
+        <li><span class="booth">B412</span> <span class="who">OYMotion 傲意</span> — direct-drive force-controlled 3-jaw gripper with swappable tactile tips (+ ROHand).</li>
+        <li><span class="booth">B422</span> <span class="who">MISUMI</span> — commodity electric grippers, fast sourcing.</li>
+      </ul>
+      <p class="compact">Dexterous hands: <span class="booth dim">B405</span> <span class="who">Inspire</span> RH56 (most deployed) · <span class="booth dim">B205</span> <span class="who">LinkerBot</span> (widest matrix) · <span class="booth dim">B415</span> <span class="who">DexRobot</span> DexHand021 + budget 3-finger · <span class="booth dim">B403</span> <span class="who">ZHAOWEI</span> B21 (21 DOF, 700 g, 1M cycles) · <span class="booth dim">B406</span> <span class="who">BrainCo</span> Revo 2 (383 g) · <span class="booth dim">B421</span> <span class="who">CASIA Hand</span> · <span class="booth dim">B207</span> <span class="who">Xynova</span> Flex 2 · <span class="booth dim">A413</span> <span class="who">Leadshine</span> DH116 (tactile, open SDK) · <span class="booth dim">A326</span> <span class="who">Zhixingjian 智行腱</span> tendon-drive (1/3 weight) · <span class="booth dim">A315</span> <span class="who">Vizum</span> ViHero (vision fiducials) · <span class="booth dim">C301</span> <span class="who">SynapX 章鱼灵动</span> (21+ DOF, 1,900 tactile units) · <span class="booth dim">C130</span> <span class="who">Yuequan 月泉</span> (artificial-muscle hands) · <span class="booth dim">D404</span> <span class="who">Zhixing 知行</span> (L/R self-adaptive + tactile data hand).</p>
+    </div>
+
+    <div class="cat">
+      <h2>3 · Sensors / cameras</h2>
+      <div class="cat-sub">Cameras and lidar for the base; F/T and tactile for the arm/gripper.</div>
+      <p class="compact"><strong>3D cameras:</strong> <span class="booth dim">B313</span> <span class="who">ORBBEC</span> Gemini 330 (AI depth completion) · <span class="booth dim">B209</span> <span class="who">RealSense</span> D585 (120° FOV, GMSL) · <span class="booth dim">A107</span> <span class="who">Motic</span> line-laser 3D for arm mounting · <span class="booth dim">C115</span> <span class="who">Lingtu 灵途</span> solid-state near-field 3D for wrists/hands · <span class="booth dim">D502</span> <span class="who">Tensopt</span> all-conditions RGB+depth (CAS optics spin-out).</p>
+      <p class="compact"><strong>Lidar:</strong> <span class="booth dim">B305</span> <span class="who">Hesai</span> JT mini hemispherical · <span class="booth dim">A506</span> <span class="who">Livox</span> Mid-360S/L (the default AMR lidar) · <span class="booth dim">B323</span> <span class="who">ZVISION</span> NZ1 (240°×80° SPAD, robot pricing) · <span class="booth dim">B322</span> <span class="who">SLAMTEC</span> RPLIDAR + Aurora VSLAM module · <span class="booth dim">C115</span> <span class="who">Vanjee 万集</span> lidar-camera fused units.</p>
+      <p class="compact"><strong>Force/torque:</strong> <span class="booth dim">B315</span> <span class="who">SRI 宇立</span> (deepest catalog, 9.2 mm thin) · <span class="booth dim">B306</span> <span class="who">KUNWEI 坤维</span> (&lt;0.1% FS) · <span class="booth dim">B307</span> <span class="who">KELI 柯力</span> · <span class="booth dim">B326</span> <span class="who">AVIC ZEMIC</span> · <span class="booth dim">B316</span> <span class="who">XJC 鑫精诚</span> (sub-10 mm fingertip F/T) · <span class="booth dim">B308</span> <span class="who">Blue Point 蓝点</span> (supplies Unitree/UBTECH) · <span class="booth dim">D508</span> <span class="who">Lisheng 力晟</span> · <span class="booth dim">B411</span> <span class="who">MinebeaMitsumi</span> (3 g MEMS 6-axis) · <span class="booth dim">C115</span> <span class="who">Kaite 开特</span> (automotive grade).</p>
+      <p class="compact"><strong>Tactile (breakout category):</strong> <span class="booth dim">B203</span> <span class="who">PaXini 帕西尼</span> · <span class="booth dim">B218</span> <span class="who">Tashan 他山</span> (event-driven tactile chip E10A) · <span class="booth dim">B225</span> <span class="who">XELA</span> (uSkin) · <span class="booth dim">B329</span> <span class="who">TY Sensor 探源</span> (calibration-free 3-axis chips) · <span class="booth dim">B426</span> <span class="who">Huaweike 华威科</span> (drop-in gripper-jaw tactile, UART/I2C/SPI) · <span class="booth dim">A107</span> <span class="who">Xense 千觉</span> (micron-res visuotactile + LeRobot-compatible XTac UMI gripper) · <span class="booth dim">A107</span> <span class="who">Moxian 墨现</span> e-skin · <span class="booth dim">D506</span> <span class="who">Jingzhigan 晶智感</span> (1,400+ taxel palms, UMI module) · <span class="booth dim">D507</span> <span class="who">Tujian 途见</span> stretchable e-skin · <span class="booth dim">C115</span> <span class="who">LatentSpace 潜空间</span> LS-Tac see-through visuotactile.</p>
+    </div>
+
+    <div class="cat">
+      <h2>4 · Conveyors / logistics</h2>
+      <div class="cat-sub">Managed expectations: zero modular-conveyor vendors at WRC 2026. These are the closest matches.</div>
+      <ul class="vendors">
+        <li><span class="booth">A301</span> <span class="who">SENAD 赛那德</span> — autonomous truck/container loading &amp; unloading. Top priority for us.</li>
+        <li><span class="booth">B109</span> <span class="who">Yaskawa Shougang</span> — AI-vision parcel sorting cells fed by conveyor lines (1,700 pcs/h).</li>
+        <li><span class="booth">D112</span> <span class="who">Reconova 瑞为</span> — airport luggage identify-grasp-carry-load robots.</li>
+        <li><span class="booth">C233</span> <span class="who">SEER 仙工</span> — pallet-AMR fleets as the conveyor alternative.</li>
+      </ul>
+      <p class="compact">For actual modular conveyors → <span class="who">CeMAT Asia / LogiMAT China</span>, Shanghai, autumn. WRC is robots, not intralogistics.</p>
+    </div>
+
+    <div class="cat">
+      <h2>Bonus — worth a detour</h2>
+      <ul class="vendors">
+        <li><span class="booth">C132</span> <span class="who">Huiwen 慧闻</span> — 7-DOF force-feedback teleop master + open-source bilateral dual-arm rig. Directly relevant to our teleop work.</li>
+        <li><span class="booth">B415</span> <span class="who">DexRobot DexCap</span> — 65-DOF wearable whole-body teleop suit.</li>
+        <li><span class="booth">C301</span> <span class="who">SynapX Ego</span> — EMG wristband + tactile glove + headband data capture.</li>
+        <li><span class="booth">D504</span> <span class="who">Qingzhuo 清卓</span> — hydraulic-electric hybrid heavy humanoid, 500 kgf grip, launching at the show.</li>
+        <li><span class="booth">A416</span> <span class="who">Shihe 史河</span> — magnetic wall-climbing dual-arm robot with VR teleop (ship hulls).</li>
+        <li><span class="booth">D505</span> <span class="who">Damiao 达妙</span> — DJI-alumni cheap MIT-mode CAN joint motors (up to 400 Nm peak).</li>
+        <li><span class="booth">C121</span> <span class="who">Lightwheel 光轮</span> — real-to-sim + physics-accurate cloud benchmarks (Hardware-CI angle).</li>
+        <li><span class="booth">A215</span> <span class="who">ECOVACS 八界</span> — fully open ROS2 home-robot dev platform (36 atomic skills, PCIe for local 7B models).</li>
+        <li><span class="booth">B408</span> <span class="who">Hanwei 汉威</span> — robot e-nose, 100+ gases.</li>
+      </ul>
+    </div>
+
+    <div class="section-label">Day plan</div>
+
+    <div class="day">
+      <div class="day-tag">Day 1 · Wed Aug 20 · Procurement Day — staff expect buying conversations</div>
+      <h3>Morning: Hall B (component hall, highest target density)</h3>
+      <p class="route">B111 SMC → B205 LinkerBot → B209 RealSense → B203 PaXini → B305 Hesai → B313 ORBBEC → B306/B307/B308/B315/B316 F/T row → B322 SLAMTEC → B323 ZVISION → B405 Inspire → B412 OYMotion → B415 DexRobot → B418 DH Robotics</p>
+      <h3>Afternoon: Hall A</h3>
+      <p class="route">A101 STEP → A107 shared booth (Xense, Moxian, Motic) → A301 SENAD (30+ min) → A303 LEADERDRIVE → A310 MOONS' → A410/A413/A422 → A506 Livox</p>
+    </div>
+
+    <div class="day">
+      <div class="day-tag">Day 2 · Thu Aug 21 · Developer Day — best day for SDK/API-openness questions</div>
+      <h3>Morning: Hall D</h3>
+      <p class="route">D306 AgileX (30+ min) → D207 Jichuang → D311 Yuhesen → D302 Uniubi → D404 Zhixing → D401 CRG cluster → D502 Tensopt → D506/D507/D508 sensor row → D504 Qingzhuo launch → D505 Damiao</p>
+      <h3>Afternoon: Hall C</h3>
+      <p class="route">C233 SEER → C115 Hubei pavilion (Vanjee, Lingtu, LatentSpace, Kaite, Zhidongli) → C116 Lvkong → C301 SynapX → C130 Yuequan → C132 Huiwen → C305 Lumos → C210 Galaxea → C215 Unitree</p>
+      <p>Aug 22–23 (public days): spillover + demos only; too crowded for serious talks.</p>
+    </div>
+
+    <div class="remarks">
+      <p><strong>Booth-visit script</strong> (per playbook): price / lead time → API &amp; SDK openness (ROS2? documented CAN protocol? can we run our own control loop?) → EU export &amp; support story → collect WeChat contact + business card → photo of booth + product tag → drop findings in the comments on this page.</p>
+      <p>Shared-booth warning: <span class="booth dim">A107</span>, <span class="booth dim">C115</span>, <span class="booth dim">C116</span> and <span class="booth dim">D401</span> are multi-company cluster booths — several distinct vendors share one number.</p>
+    </div>
+
+    <div class="section-label">Recommendations</div>
+    <div class="summary">
+      <ul>
+        <li><strong>Omni base:</strong> get a written quote from AgileX <span class="booth">D306</span> and Manda <span class="booth">A422</span> against the spec table above — they're the two most likely to hit 250 kg + true omni + documented CAN. Treat SEER <span class="booth">C233</span> as the industrial fallback if we can accept non-omni drive.</li>
+        <li><strong>Gripper:</strong> don't expect to buy the area gripper at WRC — validate specs at SMC <span class="booth">B111</span>, interrogate SENAD <span class="booth">A301</span> about their unloading heads, and keep the Hanhua HVGP130 (640 + 1000, V-valve, external-vacuum) inquiry as the buying path.</li>
+        <li><strong>Sensors:</strong> best value-per-minute is the Hall B F/T row (B305–B326) — one aisle, six vendors, directly comparable quotes. For the container-unload cell, also price ORBBEC Gemini 330 vs RealSense D585 side by side.</li>
+        <li><strong>Conveyor:</strong> deprioritize at this fair; book CeMAT Asia (Shanghai) instead and spend the freed time on SENAD + the teleop bonus booths.</li>
+      </ul>
+    </div>
+
+    <div class="section-label">Floor plans</div>
+    <div class="media-grid">
+      <figure><a href="wrc-2026-assets/floorplans/All.jpg"><img src="wrc-2026-assets/floorplans/All.jpg" alt="All halls overview floor plan" loading="lazy"></a><figcaption>All halls — overview</figcaption></figure>
+      <figure><a href="wrc-2026-assets/floorplans/A.jpg"><img src="wrc-2026-assets/floorplans/A.jpg" alt="Hall A floor plan" loading="lazy"></a><figcaption>Hall A — 95 exhibitors</figcaption></figure>
+      <figure><a href="wrc-2026-assets/floorplans/B.jpg"><img src="wrc-2026-assets/floorplans/B.jpg" alt="Hall B floor plan" loading="lazy"></a><figcaption>Hall B — 90 exhibitors (components)</figcaption></figure>
+      <figure><a href="wrc-2026-assets/floorplans/C.jpg"><img src="wrc-2026-assets/floorplans/C.jpg" alt="Hall C floor plan" loading="lazy"></a><figcaption>Hall C — 76 exhibitors (humanoids)</figcaption></figure>
+      <figure><a href="wrc-2026-assets/floorplans/D1.jpg"><img src="wrc-2026-assets/floorplans/D1.jpg" alt="Hall D1 floor plan" loading="lazy"></a><figcaption>Hall D1 — SOE pavilion + applications</figcaption></figure>
+      <figure><a href="wrc-2026-assets/floorplans/D2.jpg"><img src="wrc-2026-assets/floorplans/D2.jpg" alt="Hall D2 floor plan" loading="lazy"></a><figcaption>Hall D2</figcaption></figure>
+    </div>
+
+  </div>
+  <script src="comments.js" defer></script>
+</body>
+</html>

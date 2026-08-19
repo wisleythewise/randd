@@ -25,10 +25,14 @@ import urllib.error
 from http.server import BaseHTTPRequestHandler
 
 # Only these pages may be commented on (matches the RFC tab in index.html).
+# Entries without ".html" are per-section thread slugs (data-comments attributes).
 ALLOWED_PAGES = {
     "sim-design-discussion.html",
     "bus-and-digital-twin.html",
     "digital-twin-flow.html",
+    "wrc-2026.html",
+    "wrc-2026-omni-base",
+    "wrc-2026-area-gripper",
 }
 
 MAX_BODY_LEN = 5000
