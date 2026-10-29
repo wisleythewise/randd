@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="How the standard Ø41 mm office suction cup's measured loading fit becomes a logarithmic simulation law. Interactive 3D and force–extension plots.">
+<title>The Standard Cup — From Measurement to Model</title>
+<style>
+:root{color-scheme:dark;--bg:#0c131d;--panel:#131e2c;--line:#2c3a4a;--ink:#edf2f5;--muted:#a8b8c8;--mint:#79dfc1;--amber:#ffc574;--blue:#85b9ff}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,sans-serif}main{max-width:1240px;margin:auto;padding:32px 28px 70px}a{color:var(--mint);text-underline-offset:4px}nav{display:flex;justify-content:space-between;gap:20px;font-size:14px}.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.18em;color:var(--mint);margin:56px 0 12px}h1{font-size:clamp(36px,5vw,66px);line-height:1.08;letter-spacing:-.045em;font-weight:650;max-width:900px;margin:0 0 24px}h1 span{color:var(--mint)}.intro{color:var(--muted);max-width:810px;font-size:18px}h2{font-size:24px;line-height:1.3;letter-spacing:-.02em}h3{font-size:17px}p{margin:.6em 0 1em}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:30px 0}.metric{padding:20px;background:var(--panel)}.metric strong{display:block;font-size:27px;font-weight:600;font-variant-numeric:tabular-nums}.metric small,.muted{color:var(--muted)}.lab{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;margin-top:25px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;min-width:0}.panel h2{margin:0 0 12px}.badge{display:inline-block;font-size:12px;border:1px solid #496051;padding:3px 9px;border-radius:20px;color:var(--mint)}.viewer{position:relative;background:#0c1520;border-radius:10px;overflow:hidden;margin-top:16px;height:420px}.viewer canvas{display:block;width:100%;height:100%;touch-action:none}.overlay{position:absolute;top:16px;left:16px;z-index:1;pointer-events:none;font-size:12px;color:var(--muted)}.overlay.right{left:auto;right:16px}.view-note{position:absolute;bottom:12px;left:16px;right:16px;font-size:12px;color:var(--muted);pointer-events:none}.controls{display:grid;gap:14px;margin-top:18px}label{display:block;font-size:14px;color:var(--muted)}input[type=range]{width:100%;accent-color:var(--mint);margin:14px 0;cursor:pointer}select,button{font:inherit;background:#1e2d3e;color:var(--ink);border:1px solid #43556b;border-radius:7px;padding:8px 12px}select{width:100%}button{cursor:pointer}button:hover{border-color:var(--mint)}button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--mint);outline-offset:4px}.buttons{display:flex;gap:8px;flex-wrap:wrap}.readouts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0}.readouts strong{display:block;font-size:21px;font-variant-numeric:tabular-nums}.readouts small{font-size:12px;color:var(--muted)}#state{padding:10px 14px;background:#17362f;color:var(--mint);border-radius:7px;min-height:48px;font-size:14px}#state.warn{background:#3a2b20;color:var(--amber)}.plot{width:100%;height:auto;display:block;margin:16px 0}svg text{font:12px system-ui,sans-serif;fill:var(--muted)}.legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:var(--muted)}.legend i{display:inline-block;width:16px;height:3px;vertical-align:middle;margin-right:6px;background:var(--mint)}.legend i.amber{background:var(--amber)}.legend i.blue{background:var(--blue)}.warning{border-left:3px solid var(--amber);padding:10px 16px;color:#e5ccb0;background:#201f20;border-radius:0 8px 8px 0;font-size:14px;margin:20px 0}.formula{font:14px/1.8 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#0c1520;padding:18px;border-radius:8px;color:var(--mint)}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin:28px 0}.step-num{font:12px ui-monospace,monospace;color:var(--mint);letter-spacing:.1em}.table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;border-bottom:1px solid var(--line);padding:12px 14px}th{color:var(--muted);font-weight:500}td:first-child{color:var(--ink)}.columns{display:grid;grid-template-columns:1fr 1fr;gap:30px}footer{margin-top:38px;padding-top:20px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}@media(max-width:850px){.lab,.columns{grid-template-columns:1fr}.steps{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}main{padding:24px 16px 45px}.viewer{height:360px}.panel{padding:18px}nav{flex-wrap:wrap}.eyebrow{margin-top:36px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body><main>
+<nav><a href="index.html">← R&D notebook</a><a href="standard-suction-cup.md">Read the full Markdown reference ↗</a></nav>
+<header><div class="eyebrow">Gripper knowledge / 01 / Office cup</div><h1>A measured cup.<br>A <span>nonlinear</span> spring.</h1><p class="intro">How the standard Ø41 mm suction cup’s loading fit became a force law for the gripper simulator — and where the measurements stop.</p></header>
+<div class="metrics"><div class="metric"><small>Standard cup envelope</small><strong>Ø41 mm</strong></div><div class="metric"><small>Free / working design height</small><strong>47 / 28 mm</strong></div><div class="metric"><small>Loading fit through</small><strong>36.97 N</strong></div><div class="metric"><small>Recorded pull-off</small><strong>41.19 N</strong></div></div>
+<section class="lab" aria-label="Interactive cup model">
+<div class="panel"><span class="badge">STATIC AXIAL MODEL · ≈ −60 kPa</span><h2 style="margin-top:14px">Pull on the cup</h2><p class="muted">Drag to orbit; scroll to zoom. Move the load slider to stretch the cup and follow its force curve.</p>
+<div class="viewer" id="viewer"><span class="overlay">SCHEMATIC · NOT MANUFACTURING CAD</span><span class="overlay right">Y ↑</span><canvas id="cup" aria-label="Interactive schematic of a suction cup between a fixed mount and a loaded plate"></canvas><span class="view-note" id="view-note">Loading 3D view… The plots and numerical model work independently.</span></div>
+<div class="controls"><label for="reference">Height reference<select id="reference"><option value="sim">Simulator · rebased to 27.351 mm</option><option value="original">Original fit · zero load at 28.723 mm</option><option value="free">Free cup · 47 mm, no box attached</option></select></label><label for="load">Equivalent suspended mass <strong id="load-label">2.00 kg · 19.61 N</strong><input type="range" id="load" min="0" max="4.2" step="0.01" value="2"></label><div class="buttons"><button id="zero" type="button">Zero load</button><button id="fit" type="button">Fit boundary · 3.77 kg</button><button id="pull" type="button">Pull-off · 4.20 kg</button><button id="reset" type="button">Reset view</button></div></div>
+</div>
+<div class="panel"><h2>Force versus extension</h2><p class="muted">A logarithmic force law: the cup becomes softer as it extends. Dashed amber marks extrapolation beyond the recorded fit range.</p>
+<svg id="plot" class="plot" viewBox="0 0 520 310" role="img" aria-labelledby="plot-title plot-desc"><title id="plot-title">Axial force versus extension</title><desc id="plot-desc">Force rises logarithmically to 36.97 newtons within the reported loading fit, then extrapolates to a pull-off threshold of 41.19 newtons.</desc></svg>
+<div class="legend"><span><i></i>Stored fit, rebased</span><span><i class="amber"></i>Extrapolation</span></div>
+<div class="readouts" aria-live="polite"><div><small>Axial force</small><strong id="force">—</strong></div><div><small>Cup height</small><strong id="height">—</strong></div><div><small>Tangent stiffness</small><strong id="stiffness">—</strong></div></div><div id="state" role="status"></div>
+<h3>Same compliance. Different height datum.</h3><svg id="height-plot" class="plot" viewBox="0 0 520 235" role="img" aria-labelledby="height-title"><title id="height-title">Original and rebased cup heights versus load, offset by 1.372 millimetres</title></svg><div class="legend"><span><i class="blue"></i>Original fit</span><span><i></i>Simulator</span></div><p class="warning">The simulator moves the original curve down by <strong>1.372 mm</strong>. This rebase is unvalidated: it changes absolute height at every load. The points on these plots are calculated, not raw bench samples.</p>
+</div></section>
+<section class="steps"><article class="panel"><div class="step-num">01 / MEASUREMENT</div><h2>Height from load</h2><p>The stored coefficients imply an exponential height law. The original sample table and regression procedure are absent from the inspected files.</p><div class="formula">h_original(m) = 27.351
+  + 1.372 exp(0.7669 m) mm</div><p class="muted">m is equivalent mass in kg. At m = 0, the original fit is 28.723 mm high.</p></article><article class="panel"><div class="step-num">02 / REFERENCE CHANGE</div><h2>Start at the seal</h2><p>The model needs zero force at its sealed rest state. Subtracting 1.372 mm creates a zero-extension origin.</p><div class="formula">d = 1.372 expm1(F / B) mm
+h_sim = 27.351 + d mm</div><p class="muted">B = g / 0.7669 ≈ 12.78739 N. The 28 mm design height remains a separate packaging value.</p></article><article class="panel"><div class="step-num">03 / SIMULATION</div><h2>Force from motion</h2><p>Invert the exponential and evaluate it at each cup’s axial displacement. The 3D view here shows the static elastic branch.</p><div class="formula">F = B log1p(d / 1.372) N
+k = B / (1.372 + d) N/mm</div><p class="muted">The simulator additionally includes provisional damping, compression, shear and failure laws.</p></article></section>
+<section class="panel"><h2>The standard cup, specified honestly</h2><div class="table-wrap"><table><thead><tr><th>Property</th><th>Value</th><th>What we know</th></tr></thead><tbody>
+<tr><td>Identity</td><td>Office cup · profile <code>office</code></td><td>Brand and part number not recorded</td></tr><tr><td>Lip / packing diameter</td><td>41 mm / 41 mm</td><td>Profile dimensions and GEO-03 requirement</td></tr><tr><td>Free / working height</td><td>47 mm / 28 mm</td><td>Design requirement; no box / box attached</td></tr><tr><td>Sealed simulation height</td><td>27.351 mm</td><td>Stored calibration reference</td></tr><tr><td>Bellows diameter</td><td>38 mm</td><td>Illustrative rendering value, not a vendor specification</td></tr><tr><td>Folds / physical stroke</td><td>Unconfirmed</td><td>The drawn folds and neck are illustrative</td></tr><tr><td>Loading fit</td><td>Through 3.77 kg / 36.9710705 N</td><td>Source-reported measured range at approximately −60 kPa</td></tr><tr><td>Pull-off</td><td>4.2 kg / 41.18793 N</td><td>Separate observation; per-cup and cardboard applicability unconfirmed</td></tr><tr><td>Material / fitting / hardness</td><td>Not recorded</td><td>Requires inspection or a manufacturer specification</td></tr></tbody></table></div><p class="muted">At the fit boundary the rebased model predicts 50.696 mm total height; at pull-off it predicts 60.351 mm. These are calculated heights, not measured travel limits. Free height is not a calibrated extension stop.</p></section>
+<section class="columns" style="margin-top:30px"><article><h2>What happens at failure?</h2><p>The simulation detaches at tensile force ≥ 41.18793 N. It does not keep carrying the threshold force after separation. In this explorer, the load remains as a threshold marker while the separated cup returns to its illustrative free shape.</p><p class="muted">Beyond 3.77 kg the curve is extrapolated. Dynamic damping can reach pull-off sooner. Shear and peeling can detach a cup before the axial threshold is reached.</p></article><article><h2>What remains provisional?</h2><p>Default damping: 8 N·s/m. Compression stiffness: 12 N/mm. Shear stiffness: 4 N/mm. Friction: 0.5. Peel angle: 20°. Sliding limit: 5 mm. These are model inputs, not measured material properties.</p><p class="muted">No leakage, pressure dynamics, cardboard flex, hysteresis or physical rubber travel limit is solved. Optional pressure scaling is a hypothesis; VMECA curves are separate similarity estimates.</p></article></section>
+<footer><p>Source: <code>gripper-config</code> working tree, 28 October 2026 — requirements GEO-03, simulator README, settings, catalogue and contact implementation. <a href="standard-suction-cup.md#source-trail">Exact source files and snapshot hashes</a>.</p><p>3D schematic built with <a href="https://threejs.org/docs/">Three.js</a>. Pinned modules load from jsDelivr; numerical plots remain available if 3D cannot load. <a href="vacuum-gripper-explainer.html">Explore the vacuum system →</a></p></footer>
+</main>
+<script id="model-data" type="application/json">{"A_mm": 1.372, "B_N": 12.787390794106141, "g": 9.80665, "sealed_mm": 27.351, "original_zero_mm": 28.723, "free_mm": 47, "working_mm": 28, "diameter_mm": 41, "fit_kg": 3.77, "pull_kg": 4.2}</script>
+<script>
+'use strict';
+const M=JSON.parse(document.getElementById('model-data').textContent);
+const el=id=>document.getElementById(id), ns='http://www.w3.org/2000/svg';
+function node(tag,attrs={},text=''){const n=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,v);n.textContent=text;return n;}
+function line(svg,x1,y1,x2,y2,color,dash){svg.append(node('line',{x1,y1,x2,y2,stroke:color,'stroke-dasharray':dash||''}));}
+function label(svg,x,y,text,anchor='middle'){svg.append(node('text',{x,y,'text-anchor':anchor},text));}
+function ext(m){return M.A_mm*Math.expm1(.7669*m)}
+function force(d){return M.B_N*Math.log1p(d/M.A_mm)}
+function curve(svg,fn,start,end,x,y,color,dashed=false){let d='';for(let i=0;i<=160;i++){const t=start+(end-start)*i/160;d+=(i?'L':'M')+x(t).toFixed(2)+','+y(fn(t)).toFixed(2)}svg.append(node('path',{d,fill:'none',stroke:color,'stroke-width':2.5,'stroke-dasharray':dashed?'6 5':''}));}
+let marker,heightSim,heightOrig;
+function drawPlots(){
+ const s=el('plot'), x=d=>58+d/36*438,y=f=>258-f/45*230;
+ for(let d=0;d<=35;d+=5){line(s,x(d),28,x(d),258,'#263648');label(s,x(d),280,d)}
+ for(let f=0;f<=40;f+=10){line(s,58,y(f),496,y(f),'#263648');label(s,48,y(f)+4,f,'end')}
+ label(s,277,306,'Extension from rebased seal (mm)');label(s,58,16,'Force (N)','start');
+ curve(s,force,0,ext(M.fit_kg),x,y,'#79dfc1');curve(s,force,ext(M.fit_kg),ext(M.pull_kg),x,y,'#ffc574',true);
+ line(s,x(ext(M.fit_kg)),25,x(ext(M.fit_kg)),258,'#ffc574','3 5');label(s,x(ext(M.fit_kg))-7,48,'fit ends','end');
+ line(s,58,y(M.pull_kg*M.g),496,y(M.pull_kg*M.g),'#677c93','3 5');label(s,491,y(M.pull_kg*M.g)-8,'pull-off 41.19 N','end');
+ marker=node('circle',{r:6,fill:'#edf2f5',stroke:'#0c131d','stroke-width':2});s.append(marker);
+ const h=el('height-plot'),hx=m=>58+m/4.2*438,hy=v=>190-(v-25)/40*158;
+ for(let m=0;m<=4;m++){line(h,hx(m),25,hx(m),190,'#263648');label(h,hx(m),210,m)}
+ for(let v=30;v<=60;v+=10){line(h,58,hy(v),496,hy(v),'#263648');label(h,48,hy(v)+4,v,'end')}
+ label(h,58,15,'Height (mm)','start');label(h,277,233,'Equivalent mass (kg)');
+ for(const [offset,color] of [[M.sealed_mm,'#79dfc1'],[M.original_zero_mm,'#85b9ff']]){curve(h,m=>offset+ext(m),0,M.fit_kg,hx,hy,color);curve(h,m=>offset+ext(m),M.fit_kg,M.pull_kg,hx,hy,color,true)}
+ line(h,hx(M.fit_kg),25,hx(M.fit_kg),190,'#ffc574','3 5');
+ heightSim=node('circle',{r:5,fill:'#79dfc1'});heightOrig=node('circle',{r:5,fill:'#85b9ff'});h.append(heightSim,heightOrig);
+}
+let renderCup=()=>{};
+function update(){
+ const m=Number(el('load').value),f=m*M.g,d=ext(m),mode=el('reference').value,free=mode==='free',failed=!free&&m>=M.pull_kg,original=mode==='original',h=(original?M.original_zero_mm:M.sealed_mm)+d;
+ el('load').disabled=free;
+ el('load-label').textContent=free?'not applied':`${m.toFixed(2)} kg · ${f.toFixed(2)} N`;
+ el('force').textContent=free?'0 N':failed?'0 N*':f.toFixed(2)+' N';
+ el('height').textContent=(free||failed?M.free_mm:h).toFixed(3)+' mm';
+ el('stiffness').textContent=free||failed?'—':(M.B_N/(M.A_mm+d)).toFixed(3)+' N/mm';
+ el('state').className=!free&&(failed||m>M.fit_kg)?'warn':'';
+ el('state').textContent=free?'Free cup · no seal and no tensile force.':failed?'Pull-off threshold reached · detached, transmitted force = 0 N. *Plot marker shows demand at separation.':m>M.fit_kg?'Extrapolated region · beyond the reported 3.77 kg loading fit.':original?'Original-fit height reference · reconstructed from stored coefficients.':'Within reported fit range · simulator reference uses the unvalidated 1.372 mm shift.';
+ marker.setAttribute('cx',58+d/36*438);marker.setAttribute('cy',258-f/45*230);marker.style.display=free?'none':'';
+ for(const [n,offset] of [[heightSim,M.sealed_mm],[heightOrig,M.original_zero_mm]]){n.setAttribute('cx',58+m/4.2*438);n.setAttribute('cy',190-(offset+d-25)/40*158);n.style.display=free?'none':'';}
+ renderCup({height:free||failed?M.free_mm:h,free,failed});
+}
+drawPlots();el('load').addEventListener('input',update);el('reference').addEventListener('change',update);
+for(const [id,m] of [['zero',0],['fit',M.fit_kg],['pull',M.pull_kg]])el(id).addEventListener('click',()=>{if(el('reference').value==='free')el('reference').value='sim';el('load').value=m;update()});
+update();
+// Optional rendering: failures must not disable the self-contained numerical explorer.
+(async()=>{
+ try{
+ const THREE=await import('three'),{OrbitControls}=await import('three/addons/controls/OrbitControls.js');
+ const canvas=el('cup'),scene=new THREE.Scene();scene.background=new THREE.Color('#0c1520');
+ const renderer=new THREE.WebGLRenderer({canvas,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.outputColorSpace=THREE.SRGBColorSpace;
+ const camera=new THREE.PerspectiveCamera(38,1,.1,500);camera.position.set(94,39,104);
+ const controls=new OrbitControls(camera,canvas);controls.target.set(0,-25,0);controls.minDistance=70;controls.maxDistance=220;controls.enablePan=false;controls.update();
+ scene.add(new THREE.HemisphereLight(0xc7edff,0x253440,2.5));const key=new THREE.DirectionalLight(0xffffff,3);key.position.set(50,80,90);scene.add(key);const rim=new THREE.DirectionalLight(0x79dfc1,2);rim.position.set(-65,10,-50);scene.add(rim);
+ const rubber=new THREE.MeshStandardMaterial({color:0x51b699,roughness:.48,metalness:.08,side:THREE.DoubleSide});const metal=new THREE.MeshStandardMaterial({color:0xa4b4c4,roughness:.32,metalness:.7});const cardboard=new THREE.MeshStandardMaterial({color:0xae845d,roughness:1});
+ function cylinder(r1,r2,h,mat,y){const mesh=new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,h,80),mat);mesh.position.y=y;scene.add(mesh);return mesh}
+ const mount=new THREE.Mesh(new THREE.BoxGeometry(59,4,44),metal);mount.position.y=2;scene.add(mount);cylinder(6,6,8,metal,8);
+ const cup=new THREE.Mesh(new THREE.BufferGeometry(),rubber);scene.add(cup);
+ const plate=new THREE.Mesh(new THREE.BoxGeometry(65,3,56),cardboard);scene.add(plate);
+ // Ghost envelope: the specified free height, not a hard tensile travel limit.
+ const envelope=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.CylinderGeometry(20.5,20.5,47,64)),new THREE.LineBasicMaterial({color:0x65809a,transparent:true,opacity:.17}));envelope.position.y=-23.5;scene.add(envelope);
+ const arrow=new THREE.ArrowHelper(new THREE.Vector3(0,-1,0),new THREE.Vector3(30,-10,0),20,0xffc574,4,2);scene.add(arrow);
+ function dimension(h){const old=scene.getObjectByName('dimension');if(old){scene.remove(old);old.geometry.dispose()};const pts=[new THREE.Vector3(-29,0,0),new THREE.Vector3(-29,-h,0),new THREE.Vector3(-32,-h,0),new THREE.Vector3(-26,-h,0),new THREE.Vector3(-32,0,0),new THREE.Vector3(-26,0,0)];const dim=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([pts[0],pts[1],pts[2],pts[3],pts[4],pts[5]]),dimMat);dim.name='dimension';scene.add(dim)}
+ const dimMat=new THREE.LineBasicMaterial({color:0x79dfc1});
+ renderCup=({height:h,free,failed})=>{
+  const points=[];
+  // Smooth illustrative bellows; no inference of actual fold count or wall profile.
+  for(let i=0;i<=160;i++){const t=i/160;let r;if(t<.08)r=7;else if(t>.87)r=13+7.5*(t-.87)/.13;else{const u=(t-.08)/.79;r=12.5+5.8*Math.pow(Math.sin(u*Math.PI*3),2)}points.push(new THREE.Vector2(r,-h*t));}
+  cup.geometry.dispose();cup.geometry=new THREE.LatheGeometry(points,96);rubber.color.set(failed?0xbb7c5e:0x51b699);
+  plate.visible=!free;plate.position.y=-h-1.5-(failed?11:0);arrow.visible=!free;arrow.position.y=-h+4;dimension(h);
+  el('view-note').textContent=free?'47 mm free height · ghost envelope shown.':failed?'Seal separated · cup shown at free height; plate offset is illustrative.':`Height ${h.toFixed(3)} mm · lip Ø41 mm · folds and fitting are illustrative.`;
+  draw();
+ };
+ function draw(){renderer.render(scene,camera)}
+ const resize=new ResizeObserver(()=>{const rect=el('viewer').getBoundingClientRect();renderer.setSize(rect.width,rect.height,false);camera.aspect=rect.width/rect.height;camera.updateProjectionMatrix();draw()});resize.observe(el('viewer'));
+ controls.addEventListener('change',draw);el('reset').addEventListener('click',()=>{camera.position.set(94,39,104);controls.target.set(0,-25,0);controls.update();draw()});
+ update();
+ }catch(error){el('view-note').textContent='3D unavailable: WebGL or the Three.js CDN could not load. The plots and model still work.';console.warn('Optional 3D viewer unavailable:',error)}
+})();
+</script></body></html>
