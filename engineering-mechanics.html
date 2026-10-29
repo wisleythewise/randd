@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A 21-page visual engineering mechanics reference covering structures, fluids, heat transfer, dynamics, mathematics and more.">
+  <title>Engineering Mechanics · Servo7 R&D</title>
+  <link rel="stylesheet" href="randd.css">
+  <script src="randd-shell.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="site-bar"><a class="brand" href="index.html"><span class="brand-mark">S7</span><span>Servo7 <span class="muted">/ Research &amp; development</span></span></a><span class="muted">Team library</span></div>
+  <main id="main">
+    <a class="reader-back" href="index.html#pages">← Back to the library</a>
+    <div class="heading-row"><div>
+      <p class="eyebrow">ENGINEERING REFERENCE</p>
+      <h1>Engineering mechanics</h1>
+      <p class="intro">Visual quick-reference cheat sheet</p>
+    </div><span class="badge">PDF · 21 pages · 357 KB</span></div>
+    <div class="reader-layout">
+      <aside class="contents">
+        <h2>In this reference</h2>
+        <nav aria-label="PDF contents">
+          <a href="#page=1" aria-current="page">Contents <span>01</span></a>
+          <a href="#page=2">Structural mechanics <span>02</span></a>
+          <a href="#page=10">Fluid mechanics <span>10</span></a>
+          <a href="#page=12">Gas dynamics <span>12</span></a>
+          <a href="#page=14">Rocket mechanics <span>14</span></a>
+          <a href="#page=15">Heat transfer <span>15</span></a>
+          <a href="#page=17">Orbital mechanics <span>17</span></a>
+          <a href="#page=18">Dynamics &amp; vibration <span>18</span></a>
+          <a href="#page=20">Mathematics &amp; units <span>20</span></a>
+          <a href="#page=21">Analysis checklist <span>21</span></a>
+        </nav>
+      </aside>
+      <section class="reader-document" aria-label="PDF reader">
+        <div class="reader-toolbar"><span class="document-meta">Original document</span><div>
+          <a class="button" id="open-pdf" href="Engineering_Mechanics_Visual_Cheat_Sheet.pdf#page=1" target="_blank" rel="noopener">Open PDF ↗</a>
+          <a class="button" href="Engineering_Mechanics_Visual_Cheat_Sheet.pdf" download>Download ↓</a>
+        </div></div>
+        <iframe class="pdf-frame" id="pdf-frame" title="Engineering Mechanics Visual Quick-Reference Cheat Sheet" src="Engineering_Mechanics_Visual_Cheat_Sheet.pdf#page=1"></iframe>
+        <p class="reader-fallback">If the preview or page navigation is unavailable in your browser, <a href="Engineering_Mechanics_Visual_Cheat_Sheet.pdf" target="_blank" rel="noopener">open the PDF directly</a>. Its contents page also links to each topic.</p>
+      </section>
+    </div>
+  </main>
+  <footer><span>Servo7 · Research &amp; development</span><span>Build. Test. Learn.</span></footer>
+  <script>
+    const file = 'Engineering_Mechanics_Visual_Cheat_Sheet.pdf';
+    const frame = document.getElementById('pdf-frame');
+    const openPDF = document.getElementById('open-pdf');
+    const links = [...document.querySelectorAll('.contents a')];
+    function selectPage() {
+      const match = location.hash.match(/^#page=(\d+)$/);
+      const page = match ? Math.min(21, Math.max(1, Number(match[1]))) : 1;
+      const url = file + '#page=' + page;
+      frame.src = url;
+      openPDF.href = url;
+      links.forEach(link => {
+        if (link.hash === '#page=' + page) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+      });
+    }
+    addEventListener('hashchange', selectPage);
+    selectPage();
+  </script>
+</body>
+</html>
