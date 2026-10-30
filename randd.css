@@ -64,7 +64,7 @@ main { padding-top: 28px; padding-bottom: 60px; }
 .search-wrap input, .pod-search-wrap input, #auth-input { width: 100%; min-height: 44px; border: 1px solid var(--border-lit); border-radius: 5px; background: var(--bg); color: var(--text); padding: 11px 14px 11px 40px; }
 input::placeholder { color: var(--muted); }
 .search-icon { position: absolute; top: 50%; left: 15px; transform: translateY(-50%); color: var(--muted); font-size: 20px; pointer-events: none; }
-.pages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.pages { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .page-link { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 22px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; text-decoration: none; min-width: 0; }
 .page-link:hover { background: var(--hover); border-color: var(--border-lit); }
 .page-link > div { min-width: 0; }
@@ -138,4 +138,19 @@ footer { border-top: 1px solid var(--border); padding-block: 24px; display: flex
   footer { flex-wrap: wrap; }
   .contents { padding: 16px; }
   .pdf-frame { min-height: 420px; height: 70vh; }
+}
+
+/* Chronological document lists share a single readable row layout. */
+.section-intro { color: var(--muted); margin: -4px 0 22px; }
+.page-link { justify-content: flex-start; gap: 22px; padding: 16px 20px; }
+.page-preview { flex: none; width: 180px; height: 116px; object-fit: cover; object-position: top; border: 1px solid var(--border-lit); border-radius: 5px; background: var(--bg); }
+.page-preview.pdf-preview { object-fit: contain; background: #eee; }
+.page-copy { flex: 1; }
+.page-date { color: var(--text); white-space: nowrap; }
+@media (max-width: 600px) {
+  .page-link { padding: 12px; gap: 12px; }
+  .page-preview { width: 96px; height: 74px; }
+  .page-title { font-size: 13px; }
+  .page-meta { gap: 4px 8px; margin-top: 7px; }
+  .page-link > .arrow { display: none; }
 }

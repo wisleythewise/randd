@@ -22,3 +22,20 @@ existing library password check or introduce shared authentication.
 The downloaded 247TailorSteel CAD/design guide and Harmonic Drive SHA58A swivel
 evaluation also have PDF readers at `247tailorsteel-design-guide.html` and
 `harmonic-drive-sha58a.html`. The original PDFs are preserved without editing.
+
+The **Cheatsheets** tab groups the 247TailorSteel guide and Engineering Mechanics
+reference; both also remain searchable under Pages. Document lists use one column
+and are ordered newest first by their library-added date (not their source's
+publication date). Each card stores that date in `data-added` and displays it in a
+`time` element. When adding a document, insert its card in descending date order.
+
+Cards use small, static previews in `assets/previews/`: the first page for PDFs,
+and a browser capture for HTML documents. Regenerate them with:
+
+```sh
+uv run --with playwright python scripts/generate-library-previews.py
+```
+
+This requires Playwright Chromium (`uv run --with playwright playwright install
+chromium`) and `pdftoppm`. Add new PDF readers to the script's `PDFS` mapping.
+Original documents are not modified; previews load lazily in the library.
