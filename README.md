@@ -18,3 +18,7 @@ footer inside an iframe while keeping the page title and section navigation.
 Use `?embed=1` to preview that presentation without a frame. Section deep links
 such as `index.html?embed=1#reports` work too. Embedding does not bypass the
 existing library password check or introduce shared authentication.
+
+The downloaded 247TailorSteel CAD/design guide and Harmonic Drive SHA58A swivel
+evaluation also have PDF readers at `247tailorsteel-design-guide.html` and
+`harmonic-drive-sha58a.html`. The original PDFs are preserved without editing.
